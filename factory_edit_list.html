@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>入力履歴一覧 | 車のお薬手帳</title>
+  
+  <link rel="stylesheet" href="common.css">
+  <script src="app.js"></script>
+  <script src="theme.js"></script>
+  
+  <style>
+    /* 34pxグリッド設計および付箋UI（角折れ）の数値を完全維持 */
+    .sub-title { margin: 0; color: var(--muted); font-size: 12.5px; font-weight: 700; line-height: 1.6; padding-top: 8px; }
+
+    .log-card {
+      position: relative; background: var(--paper); border-radius: 18px 18px 0 18px; 
+      padding: 20px; box-shadow: var(--shadow); border: 1px solid var(--line); 
+      margin-bottom: 34px; display: flex; flex-direction: column; gap: 12px;
+    }
+    .log-card::after {
+      content: ""; position: absolute; right: -1px; bottom: -1px; width: 0; height: 0;
+      border-style: solid; border-width: 0 0 24px 24px;
+      border-color: transparent transparent var(--page-bg) transparent; 
+    }
+
+    .log-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed var(--line); padding-bottom: 8px; }
+    .log-date { font-size: 14px; font-weight: 900; color: var(--accent); }
+    .log-vin { font-size: 11px; font-weight: 800; color: var(--muted); background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 4px; }
+
+    .log-body { text-align: left; }
+    .log-title { font-size: 17px; font-weight: 900; margin-bottom: 4px; color: var(--text); }
+    .log-parts { font-size: 13px; color: var(--muted); font-weight: 700; line-height: 1.4; }
+
+    .action-row { display: flex; gap: 10px; margin-top: 4px; position: relative; z-index: 1; }
+    
+    .btn-action {
+      flex: 1; padding: 12px; border-radius: 10px; font-size: 13.5px; font-weight: 900;
+      text-align: center; cursor: pointer; text-decoration: none; transition: all 0.1s; border: none;
+    }
+    .btn-edit { background: var(--paper); border: 2px solid var(--accent); color: var(--accent); }
+    .btn-edit:active { transform: scale(0.97); }
+
+    .btn-delete { background: #fff1f2; border: 2px solid #fda4af; color: #ef4444; }
+    .btn-delete:active { background: #ffe4e6; transform: scale(0.97); }
+
+    .empty-msg {
+      background: rgba(255,255,255,0.5); border: 2px dashed var(--line); border-radius: 18px;
+      padding: 40px 20px; text-align: center; color: var(--muted); font-weight: 800; line-height: 1.8;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    
+    <div class="header">
+      <a id="backToInputBtn" class="back-link">≪戻る</a>
+      <h1 class="title">入力履歴一覧</h1>
+      <p class="sub-title" id="shopIndicator">読み込み中...</p>
+    </div>
+
+    <div id="editListArea"></div>
+
+  </div>
+
+  <script>
+    let currentProfile = null;
+
+    window.addEventListener('DOMContentLoaded', () => {
+      showLoading("データ取得中", "入力履歴を読み込んでいます...");
+
+      setTimeout(() => {
+        currentProfile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+        if (!currentProfile) {
+          hideLoading();
+          return location.replace("login.html");
+        }
+
+        document.getElementById('shopIndicator').innerHTML = 
+          `<strong>${currentProfile.shopName}</strong> の直近7日間の記録です。<br>` +
+          `それ以前の記録は改ざん防止のためロックされています。`;
+
+        const inputPage = currentProfile.shopType === 'dealer' ? 'dealer_input.html' : 'factory_input.html';
+        document.getElementById('backToInputBtn').onclick = () => goBackSmart(inputPage);
+
+        renderEditList();
+        hideLoading();
+      }, 300);
+    });
+
+    function renderEditList() {
+      let logs = JSON.parse(localStorage.getItem('nappy_logs_v1') || '[]');
+      const container = document.getElementById('editListArea');
+
+      const now = new Date();
+      const sevenDaysAgo = new Date(now.getTime() - (7 * 24 * 60 * 60 * 1000));
+
+      const myShopId = (currentProfile.shopId || "").trim();
+      const myRecentLogs = logs.filter(log => {
+        if (!myShopId) return false;
+        if ((log.shopId || "").trim() !== myShopId) return false;
+        const createdDate = new Date(log.createdAt || log.date); 
+        return createdDate >= sevenDaysAgo;
+      });
+
+      if (myRecentLogs.length === 0) {
+        container.innerHTML = `
+          <div class="empty-msg">
+            <span style="font-size: 16px; color: var(--text);">編集可能な履歴はありません。</span><br>
+            <span style="font-size: 12px;">※新しく入力した記録がここに表示されます。</span>
+          </div>
+        `;
+        return;
+      }
+
+      myRecentLogs.sort((a, b) => new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date));
+
+      let html = "";
+      myRecentLogs.forEach((log, index) => {
+        const uniqueId = log.log_id || `temp_${new Date(log.createdAt).getTime()}_${index}`;
+        
+        html += `
+          <div class="log-card">
+            <div class="log-header">
+              <div class="log-date">作業日: ${log.date || '未設定'}</div>
+              <div class="log-vin">VIN: ${log.vin || '---'}</div>
+            </div>
+            <div class="log-body">
+              <div class="log-title">${log.title || '一般整備'}</div>
+              <div class="log-parts">内容: ${log.parts || '（詳細なし）'}</div>
+            </div>
+            
+            <div class="action-row">
+              <button onclick="deleteLog('${uniqueId}')" class="btn-action btn-delete">消去する</button>
+              <a href="factory_edit_detail.html?log_id=${uniqueId}&vin=${encodeURIComponent(log.vin || '')}" class="btn-action btn-edit">内容を修正</a>
+            </div>
+          </div>
+        `;
+      });
+
+      container.innerHTML = html;
+    }
+
+    function deleteLog(targetId) {
+      if(!confirm("この記録を消去しますか？\n※この操作は元に戻せません。")) return;
+
+      showLoading("削除中", "記録を消去しています...");
+
+      setTimeout(() => {
+        let logs = JSON.parse(localStorage.getItem('nappy_logs_v1') || '[]');
+        const initialCount = logs.length;
+
+        logs = logs.filter((log, index) => {
+          const uniqueId = log.log_id || `temp_${new Date(log.createdAt).getTime()}_${index}`;
+          if (uniqueId === targetId && log.shopId === currentProfile.shopId) return false;
+          return true;
+        });
+
+        if (logs.length < initialCount) {
+          localStorage.setItem('nappy_logs_v1', JSON.stringify(logs));
+          renderEditList();
+          hideLoading();
+          alert("履歴を消去しました。");
+        } else {
+          hideLoading();
+          alert("エラー：データの特定に失敗しました。");
+        }
+      }, 500);
+    }
+  </script>
+</body>
+</html>

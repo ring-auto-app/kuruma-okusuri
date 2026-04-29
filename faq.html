@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>よくある質問 | 車のお薬手帳</title>
+  <link rel="stylesheet" href="common.css">
+  <script src="app.js"></script>
+  <script src="theme.js"></script>
+  <style>
+    .faq-item {
+      background: var(--paper); border: 1px solid var(--line); border-radius: 14px;
+      margin-bottom: 10px; overflow: hidden; box-shadow: var(--shadow);
+    }
+    .faq-q {
+      display: flex; justify-content: space-between; align-items: center; gap: 12px;
+      padding: 16px; cursor: pointer; user-select: none; transition: background 0.15s;
+    }
+    .faq-q:active { background: var(--page-bg); }
+    .faq-q-text { font-size: 14px; font-weight: 900; color: var(--text); flex: 1; line-height: 1.4; }
+    .faq-q-icon { font-size: 18px; color: var(--accent); flex-shrink: 0; transition: transform 0.2s; }
+    .faq-a {
+      display: none; padding: 0 16px 16px;
+      font-size: 13px; font-weight: 700; color: var(--muted); line-height: 1.8;
+      border-top: 1px dashed var(--line); padding-top: 12px;
+    }
+    .faq-item.open .faq-q-icon { transform: rotate(45deg); }
+    .faq-item.open .faq-a { display: block; }
+
+    .cat-title {
+      font-size: 13px; font-weight: 900; color: var(--muted);
+      margin: 28px 0 10px; padding-left: 4px;
+      border-left: 3px solid var(--accent); padding-left: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <a onclick="history.back()" class="back-link">≪戻る</a>
+      <h1 class="title">よくある質問</h1>
+    </div>
+
+    <p style="font-size:13px; font-weight:700; color:var(--muted); margin-bottom:24px; line-height:1.6;">
+      タップで回答を表示します。解決しない場合はお問い合わせください。
+    </p>
+
+    <div class="cat-title">🚙 車両・VINについて</div>
+
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggle(this)">
+        <div class="faq-q-text">Q. 車台番号（VIN）はどこで確認できますか？</div>
+        <div class="faq-q-icon">＋</div>
+      </div>
+      <div class="faq-a">
+        車検証の「車台番号」欄に記載されています。また、運転席ドア付近のステッカー（コーションプレート）や、ダッシュボード下部にも刻印されています。
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggle(this)">
+        <div class="faq-q-text">Q. VINを入力しても検索結果が出ません</div>
+        <div class="faq-q-icon">＋</div>
+      </div>
+      <div class="faq-a">
+        まだ整備工場からの記録が入力されていない車両は履歴が表示されません。また、全角・半角・大文字・小文字は自動で変換されますが、スペースや記号が混入していないかご確認ください。
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggle(this)">
+        <div class="faq-q-text">Q. 同じVINを複数のアカウントで登録できますか？</div>
+        <div class="faq-q-icon">＋</div>
+      </div>
+      <div class="faq-a">
+        はい。同一のVINを複数のアカウントで閲覧・登録できます。整備履歴はVINを共通キーとして全員が参照できます。
+      </div>
+    </div>
+
+    <div class="cat-title">📋 整備履歴について</div>
+
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggle(this)">
+        <div class="faq-q-text">Q. 入力した整備記録を修正したいのにできません</div>
+        <div class="faq-q-icon">＋</div>
+      </div>
+      <div class="faq-a">
+        整備記録は入力から<strong>7日間のみ修正可能</strong>です。7日が経過すると改ざん防止のため自動ロックされます。修正が必要な場合はお問い合わせください。
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggle(this)">
+        <div class="faq-q-text">Q. 他の工場が入力した記録は見られますか？</div>
+        <div class="faq-q-icon">＋</div>
+      </div>
+      <div class="faq-a">
+        ユーザーは全工場の整備履歴を閲覧できます。工場・事業者は自社が入力した記録のみ修正できます（7日以内）。他社の記録は閲覧のみです。
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggle(this)">
+        <div class="faq-q-text">Q. 日常点検と整備履歴の違いは何ですか？</div>
+        <div class="faq-q-icon">＋</div>
+      </div>
+      <div class="faq-a">
+        <strong>日常点検</strong>はユーザー自身が行う目視チェック（オイル量・タイヤ・ライトなど）の記録です。<br>
+        <strong>整備履歴</strong>は工場・事業者が実施した専門的な整備・部品交換の記録です。データは別々に管理されています。
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggle(this)">
+        <div class="faq-q-text">Q. 作業日に制限がありますか？</div>
+        <div class="faq-q-icon">＋</div>
+      </div>
+      <div class="faq-a">
+        はい。作業日・点検日は<strong>今日から2週間前まで</strong>の範囲のみ選択できます。未来の日付や2週間以上前の日付は入力できません（改ざん防止のため）。
+      </div>
+    </div>
+
+    <div class="cat-title">🔑 アカウント・ログインについて</div>
+
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggle(this)">
+        <div class="faq-q-text">Q. パスワードを忘れました</div>
+        <div class="faq-q-icon">＋</div>
+      </div>
+      <div class="faq-a">
+        スタッフの方は所属する工場・事業者のオーナーにご連絡ください。オーナーがパスワードの再設定を行えます。<br>
+        オーナー自身がパスワードを忘れた場合はお問い合わせフォームからご連絡ください。
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggle(this)">
+        <div class="faq-q-text">Q. スタッフに整備記録の入力をさせたくない</div>
+        <div class="faq-q-icon">＋</div>
+      </div>
+      <div class="faq-a">
+        オーナー権限で「スタッフ管理」を開き、対象スタッフの「整備入力許可」をOFFにしてください。OFFにすると閲覧のみのアカウントになります。
+      </div>
+    </div>
+
+    <div class="cat-title">📱 アプリの操作について</div>
+
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggle(this)">
+        <div class="faq-q-text">Q. しおり（⚙）アイコンが表示されません</div>
+        <div class="faq-q-icon">＋</div>
+      </div>
+      <div class="faq-a">
+        しおりアイコンはホーム画面にのみ表示されます。ホーム画面（ログイン後の最初の画面）に戻ってご確認ください。
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggle(this)">
+        <div class="faq-q-text">Q. QRコードの読み取りが使えません</div>
+        <div class="faq-q-icon">＋</div>
+      </div>
+      <div class="faq-a">
+        QRコード読み取りはカメラの許可が必要です。ブラウザの設定からカメラへのアクセスを許可してください。また、PCブラウザでは使用できない場合があります。スマートフォンでのご利用を推奨します。
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggle(this)">
+        <div class="faq-q-text">Q. データが消えてしまいました</div>
+        <div class="faq-q-icon">＋</div>
+      </div>
+      <div class="faq-a">
+        本アプリはサーバーにデータを同期保存しています。ブラウザのキャッシュやCookieを削除した場合、端末上の一時データが消える場合がありますが、サーバー上のデータは保持されています。ログインし直すとデータが復元されます。
+      </div>
+    </div>
+
+    <div style="height: 40px;"></div>
+  </div>
+
+  <script>
+    function toggle(qEl) {
+      const item = qEl.closest('.faq-item');
+      item.classList.toggle('open');
+    }
+  </script>
+</body>
+</html>

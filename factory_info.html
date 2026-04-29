@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>会社・工場情報 | 車のお薬手帳</title>
+  
+  <link rel="stylesheet" href="common.css">
+  <script src="app.js"></script>
+  <script src="theme.js"></script>
+  
+  <style>
+    /* 34pxグリッド同期設計および店舗情報固有のデザインを完全維持 */
+    .section-desc {
+      font-size: 12px; font-weight: 800; color: var(--muted);
+      margin: 0 0 17px 0; line-height: 1.5;
+    }
+    .shop-id-display {
+      font-size: 13px; font-weight: 800; color: var(--muted);
+      height: 34px; line-height: 34px; margin: 0;
+    }
+    .note { font-size: 11.5px; font-weight: 800; color: var(--muted); margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    
+    <div class="header">
+      <a id="backBtn" class="back-link">◁ ホームへ戻る</a>
+      <h1 class="title">会社・工場情報</h1>
+      <p class="shop-id-display" id="dispShopId">店舗ID: 読込中...</p>
+    </div>
+
+    <p class="section-desc">※ここに登録した情報が、お客様の「かかりつけ画面」に表示されます。</p>
+
+    <div class="field">
+      <span class="label">会社名・屋号</span>
+      <input type="text" id="inShopName" placeholder="例：Aモータース">
+    </div>
+
+    <div id="factoryArea" style="display: none;">
+      <div class="field">
+        <span class="label">工場種別 / 認証・指定番号</span>
+        <input type="text" id="inFactoryNumber" readonly>
+        <div class="note">※番号の変更はマスター権限でサポートにお問い合わせください</div>
+      </div>
+    </div>
+
+    <div class="field">
+      <span class="label">住所 📍</span>
+      <input type="text" id="inAddress" placeholder="例：東京都〇〇区1-2-3">
+      <div class="note">※お客様がGoogleマップで道案内を出せるようになります</div>
+    </div>
+
+    <div class="field" style="margin-top: 34px;">
+      <span class="label">電話番号 📞</span>
+      <input type="tel" id="inTel" placeholder="例：03-1234-5678">
+      <div class="note">※お客様のスマホからワンタップで電話がかけられます</div>
+    </div>
+    
+    <div class="field">
+      <span class="label">メールアドレス ✉️</span>
+      <input type="email" id="inEmail" placeholder="例：info@example.com">
+    </div>
+    
+    <div class="field">
+      <span class="label">LINE公式URL 💬</span>
+      <input type="url" id="inLineUrl" placeholder="例：https://line.me/R/ti/p/...">
+      <div class="note">※お客様がLINEアプリを直接起動して予約できるようになります</div>
+    </div>
+
+    <button class="save-btn" onclick="saveShopInfo()" id="saveBtn" style="margin-top: 34px;">この内容で公開・保存する</button>
+
+    <p class="section-desc" style="margin-top: 28px; text-align: center; line-height: 1.65;">
+      <a href="ads/ad_recruit.html" style="font-weight: 900; color: var(--accent);">📢 広告掲載のお申し込み</a><br>
+      <span style="font-size: 11px; font-weight: 800; color: var(--muted);">掲載内容は運営確認後に公開されます（フォームは準備中）</span>
+    </p>
+
+  </div>
+
+  <script>
+    let currentProfile = null;
+
+    window.addEventListener('DOMContentLoaded', () => {
+      showLoading("データ取得中", "店舗情報を読み込んでいます...");
+
+      setTimeout(async () => {
+        currentProfile = typeof getCurrentProfile === "function" ? getCurrentProfile() : null;
+        
+        if (!currentProfile) {
+          hideLoading();
+          alert("ログイン情報の有効期限が切れました。再度ログインしてください。");
+          location.replace("login.html");
+          return;
+        }
+
+        // 戻るボタンの動的設定
+        const backBtn = document.getElementById('backBtn');
+        let backUrl = "dealer_home.html";
+        if (currentProfile.shopType === 'factory') {
+          backUrl = "factory_home.html";
+        }
+        backBtn.innerText = "戻る";
+        backBtn.onclick = () => goBackSmart(backUrl);
+
+        // オーナー以外の編集制限
+        const isMaster = currentProfile.role === 'master' || currentProfile.isAdmin === true;
+        if (!isMaster) {
+          const targets = ['inShopName', 'inAddress', 'inTel', 'inEmail', 'inLineUrl'];
+          targets.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+              el.readOnly = true;
+              el.style.background = "rgba(255, 255, 255, 0.8)";
+              el.style.border = "2px solid var(--line)";
+              el.style.pointerEvents = "none";
+            }
+          });
+          document.getElementById('saveBtn').style.display = 'none';
+        }
+
+        document.getElementById('dispShopId').textContent = `店舗ID: ${currentProfile.shopId}`;
+        document.getElementById('inShopName').value = currentProfile.shopName || "";
+        
+        if (currentProfile.shopType === 'factory') {
+          document.getElementById('factoryArea').style.display = 'block';
+          document.getElementById('inFactoryNumber').value = `${currentProfile.factoryType || ""} ${currentProfile.factoryNumber || ""}`.trim();
+        }
+
+        await loadShopInfo();
+        hideLoading();
+      }, 300);
+    });
+
+    /**
+     * 店舗情報の取得処理
+     */
+    async function loadShopInfo() {
+      try {
+        const res = await fetch(GAS_URL, {
+          method: 'POST', headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({ action: 'get_shop_info', shopId: currentProfile.shopId })
+        });
+        const data = await res.json();
+        
+        if (data.success && data.info) {
+          document.getElementById('inAddress').value = data.info.address || "";
+          document.getElementById('inTel').value = data.info.tel || "";
+          document.getElementById('inEmail').value = data.info.email || "";
+          document.getElementById('inLineUrl').value = data.info.lineUrl || "";
+        }
+      } catch (e) {
+        console.error("店舗情報取得エラー", e);
+      }
+    }
+
+    /**
+     * 店舗情報の更新処理
+     */
+    async function saveShopInfo() {
+      showLoading("保存中", "店舗情報を更新しています...");
+
+      const btn = document.getElementById('saveBtn');
+      btn.disabled = true;
+
+      const shopName = document.getElementById('inShopName').value.trim();
+      const address = document.getElementById('inAddress').value.trim();
+      const tel = document.getElementById('inTel').value.trim();
+      const email = document.getElementById('inEmail').value.trim();
+      const lineUrl = document.getElementById('inLineUrl').value.trim();
+
+      try {
+        const res = await fetch(GAS_URL, {
+          method: 'POST', headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({ 
+            action: 'update_shop_info', 
+            shopId: currentProfile.shopId,
+            shopName: shopName,
+            address: address,
+            tel: tel,
+            email: email,
+            lineUrl: lineUrl
+          })
+        });
+        const data = await res.json();
+        
+        if (data.success) {
+          showToast('success', '正常に登録されました');
+          currentProfile.shopName = shopName;
+          login(currentProfile); 
+        } else {
+          showToast('error', '保存に失敗しました: ' + data.error);
+        }
+      } catch (e) {
+        showToast('error', '通信エラーが発生しました');
+      } finally {
+        btn.disabled = false;
+        hideLoading();
+      }
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>工場ホーム | 車のお薬手帳 Pro</title>
+  
+  <link rel="stylesheet" href="common.css">
+  <link rel="stylesheet" href="ads/ring-ads.css">
+  <script src="app.js"></script>
+  <script src="theme.js"></script>
+  <script src="ads/ads.js"></script>
+  
+  <style>
+    /* 掟：34pxグリッドと「青いノート」のプロ仕様デザイン */
+    :root {
+      --biz-blue: #2563eb;
+      --biz-light-blue: #eff6ff;
+    }
+
+    body {
+      margin: 0; font-family: -apple-system, sans-serif;
+      background: linear-gradient(to bottom, var(--page-line) 1px, transparent 1px) 0 0 / 100% 34px, var(--page-bg);
+      color: var(--text); padding: 34px 16px 100px; line-height: 34px;
+    }
+    .container { max-width: 600px; margin: 0 auto; }
+    
+    .header { 
+      margin-bottom: 34px; border-bottom: 2px solid var(--biz-blue); 
+      padding-bottom: 16px; display: flex; justify-content: space-between; align-items: flex-end;
+    }
+    
+    .title { 
+      font-size: 24px; font-weight: 900; color: var(--biz-blue); margin: 0; 
+      position: relative; display: inline-block; line-height: 34px;
+    }
+    .title::after {
+      content: ""; position: absolute; left: 0; right: 0; bottom: 4px; height: 12px;
+      background: var(--highlighter); z-index: -1; border-radius: 4px; transform: rotate(-1deg);
+    }
+
+    .shop-info {
+      background: var(--biz-light-blue); border: 2px solid var(--biz-blue);
+      border-radius: 12px; padding: 16px; margin-bottom: 34px; line-height: 1.5;
+    }
+    .shop-name { font-size: 18px; font-weight: 900; color: var(--biz-blue); }
+    .staff-name { font-size: 14px; color: var(--text); font-weight: 700; }
+
+    /* メニューボタン：付箋風ではなく「プロの道具」感のあるデザイン */
+    .menu-grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+    
+    .menu-item {
+      background: var(--paper); border: 2px solid var(--line);
+      border-radius: 16px; padding: 24px 16px; text-align: center;
+      text-decoration: none; color: var(--text); transition: transform 0.1s;
+      box-shadow: var(--shadow); cursor: pointer; display: flex; flex-direction: column; gap: 8px;
+    }
+    .menu-item:active { transform: scale(0.96); }
+    .menu-icon { font-size: 32px; }
+    .menu-label { font-size: 15px; font-weight: 900; line-height: 1.2; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1 class="title">工場ホーム</h1>
+      <span id="displayDate" style="font-size: 12px; font-weight: 800; color: var(--muted);"></span>
+    </div>
+
+    <div class="shop-info">
+      <div class="shop-name" id="shopName">--- 工場</div>
+      <div class="staff-name" id="staffName">担当：---</div>
+    </div>
+
+    <div class="menu-grid">
+      <a onclick="location.href='factory_input.html'" class="menu-item">
+        <span class="menu-icon">🛠</span>
+        <span class="menu-label">整備履歴入力</span>
+      </a>
+      
+      <a onclick="location.href='factory_search.html'" class="menu-item">
+        <span class="menu-icon">🔍</span>
+        <span class="menu-label">整備履歴検索</span>
+      </a>
+
+      <a onclick="location.href='vehicles.html'" class="menu-item">
+        <span class="menu-icon">🚗</span>
+        <span class="menu-label">管理車両</span>
+      </a>
+    </div>
+
+    <div class="ring-ad-section" aria-hidden="true" style="display:none;">
+      <div class="ring-ad-section-label">おすすめ・お知らせ</div>
+      <div class="ring-ad-list"></div>
+    </div>
+  </div>
+
+  <script>
+    window.addEventListener('DOMContentLoaded', () => {
+      // 日付表示
+      const now = new Date();
+      document.getElementById('displayDate').innerText = `${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()}`;
+
+      // プロフィール読み込み
+      const profile = (typeof getCurrentProfile === "function") ? getCurrentProfile() : JSON.parse(localStorage.getItem('nappy_profile_v1') || 'null');
+      
+      if (profile) {
+        document.getElementById('shopName').innerText = profile.shopName || "登録工場";
+        document.getElementById('staffName').innerText = `担当：${profile.staffName || "未設定"}`;
+      } else {
+        // 万が一プロフィールがない場合はログインへ戻す
+        location.href = 'login.html';
+        return;
+      }
+      if (typeof ringAdsInit === 'function') ringAdsInit('factory_home');
+    });
+  </script>
+</body>
+</html>

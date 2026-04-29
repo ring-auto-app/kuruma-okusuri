@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>車両詳細 | 車のお薬手帳</title>
+  
+  <link rel="stylesheet" href="common.css">
+  <script src="app.js"></script>
+  <script src="theme.js"></script>
+  
+  <style>
+    /* 34pxグリッド設計：全ページ共通のノート規格に統一 */
+    body {
+      margin: 0; font-family: -apple-system, sans-serif;
+      background: linear-gradient(to bottom, var(--page-line) 1px, transparent 1px) 0 0 / 100% 34px, var(--page-bg);
+      color: var(--text); padding: 34px 16px 110px; line-height: 34px;
+    }
+
+    .container { max-width: 600px; margin: 0 auto; }
+    .header { margin-bottom: 34px; }
+    .back-link { color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 800; display: inline-block; cursor: pointer; height: 34px; line-height: 34px; }
+
+    .title { 
+      font-size: 24px; font-weight: 900; color: var(--text); margin: 0; 
+      position: relative; display: inline-block; line-height: 34px;
+    }
+    .title::after {
+      content: ""; position: absolute; left: -4px; right: -4px; bottom: 4px; height: 12px;
+      background: var(--highlighter); z-index: -1; border-radius: 4px;
+    }
+
+    .sub-text { font-size: 13px; color: var(--muted); font-weight: 800; line-height: 34px; }
+
+    /* 付箋・角折れカード：20px角丸を維持 */
+    .car-card {
+      background: var(--paper); border: 1px solid var(--line);
+      border-radius: 20px; padding: 20px; box-shadow: var(--shadow);
+      margin-bottom: 34px; position: relative; line-height: 1.5;
+    }
+
+    .car-card::after {
+      content: ""; position: absolute; bottom: -1px; right: -1px;
+      border-width: 0 0 26px 26px; border-style: solid;
+      border-color: transparent transparent var(--page-bg) transparent;
+      filter: drop-shadow(-2px -2px 3px rgba(0,0,0,0.05));
+      border-radius: 0 0 0 8px;
+    }
+
+    .car-name { font-size: 22px; font-weight: 900; margin: 0 0 12px; color: var(--accent); }
+
+    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+    .info-box { background: var(--page-bg); border: 1px dashed var(--line); border-radius: 12px; padding: 10px; }
+    .info-label { display: block; font-size: 11px; color: var(--muted); font-weight: 800; margin-bottom: 4px; }
+    .info-value { display: block; font-size: 14px; font-weight: 900; color: var(--text); word-break: break-all; }
+
+    .top-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+
+    .btn {
+      padding: 12px; border-radius: 12px; text-align: center; text-decoration: none;
+      font-size: 14px; font-weight: 900; box-shadow: var(--shadow);
+      border: 2px solid var(--accent); cursor: pointer; transition: transform 0.1s;
+    }
+    .btn:active { transform: scale(0.98); }
+    .btn-outline { background: var(--paper); color: var(--accent); }
+    .btn-main { background: var(--accent); color: #fff; }
+
+    .section-title { font-size: 18px; font-weight: 900; margin: 34px 0 17px; color: var(--text); line-height: 34px; border-bottom: 2px solid var(--line); }
+
+    .history-list { display: flex; flex-direction: column; gap: 14px; }
+
+    .log-card {
+      background: var(--paper); border: 1px solid var(--line); border-radius: 16px;
+      padding: 16px; box-shadow: var(--shadow); text-decoration: none; color: inherit; display: block;
+    }
+
+    .log-header {
+      display: flex; justify-content: space-between; align-items: flex-start;
+      gap: 10px; margin-bottom: 10px; border-bottom: 1px dashed var(--line); padding-bottom: 10px;
+    }
+
+    .log-header-left { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .badge { font-size: 11px; font-weight: 900; padding: 2px 8px; border-radius: 6px; border: 1px solid; display: inline-flex; align-items: center; gap: 4px; line-height: 1.2; }
+    .badge-blue { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+    .badge-yellow { background: #fefce8; color: #a16207; border-color: #fef08a; }
+
+    .log-date { font-size: 14px; font-weight: 900; color: var(--text); }
+    .log-mileage { font-size: 13px; font-weight: 800; color: var(--muted); }
+    .log-title { font-size: 17px; font-weight: 900; color: var(--accent); margin: 0 0 8px; }
+    .log-preview { font-size: 13px; color: var(--text); font-weight: 700; line-height: 1.5; opacity: 0.8; }
+    .detail-hint { text-align: right; font-size: 12px; color: var(--accent); font-weight: 900; margin-top: 10px; }
+
+    .empty-state { text-align: center; padding: 34px 18px; color: var(--muted); font-weight: 800; line-height: 34px; border: 2px dashed var(--line); border-radius: 20px; background: var(--paper); opacity: 0.7; }
+
+    .bottom-actions { margin-top: 34px; display: grid; gap: 12px; }
+    .bottom-btn { display: block; text-align: center; padding: 14px; border-radius: 14px; text-decoration: none; font-weight: 900; background: var(--paper); color: var(--text); border: 2px solid var(--line); cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <a onclick="goBackSmart('vehicles.html')" class="back-link">◁ 戻る</a>
+      <h1 class="title" id="pageTitle">車両詳細</h1>
+      <div class="sub-text" id="subText">車両情報を表示します</div>
+    </header>
+
+    <section class="car-card">
+      <h2 class="car-name" id="carName">読み込み中...</h2>
+
+      <div class="info-grid">
+        <div class="info-box">
+          <span class="info-label">VIN</span>
+          <span class="info-value" id="carVin">---</span>
+        </div>
+        <div class="info-box">
+          <span class="info-label">車検日</span>
+          <span class="info-value" id="carShaken">---</span>
+        </div>
+        <div class="info-box">
+          <span class="info-label">最終整備</span>
+          <span class="info-value" id="carLastMaint">---</span>
+        </div>
+        <div class="info-box">
+          <span class="info-label">走行距離</span>
+          <span class="info-value" id="carMileage">---</span>
+        </div>
+      </div>
+
+      <div class="top-actions">
+        <a href="#" id="dailyBtn" class="btn btn-main">日常点検</a>
+        <a href="#" id="historyBtn" class="btn btn-outline">履歴詳細</a>
+      </div>
+    </section>
+
+    <h3 class="section-title">履歴一覧</h3>
+    <div id="historyArea" class="history-list"></div>
+
+    <div class="bottom-actions">
+      <button class="bottom-btn" id="removeBtn">一覧から外す</button>
+    </div>
+  </div>
+
+  <script>
+    const profile = typeof getCurrentProfile === "function" ? getCurrentProfile() : null;
+    const params = new URLSearchParams(location.search);
+    const targetVin = params.get("vin");
+
+    /**
+     * モード切替と初期化
+     */
+    function init() {
+      if (!profile) {
+        document.getElementById("pageTitle").innerText = "マイカー詳細";
+      } else if (profile.shopType === 'factory' || profile.shopType === 'dealer') {
+        document.getElementById("pageTitle").innerText = "管理車両詳細";
+        document.getElementById("subText").innerText = "登録されている車両情報を確認できます";
+      }
+      
+      renderVehicle();
+      
+      document.getElementById("removeBtn").onclick = () => {
+        alert("この車両を管理一覧から外しますか？（機能は後ほど実装）");
+      };
+    }
+
+    /**
+     * 車両および履歴の表示
+     */
+    function renderVehicle() {
+      if (!targetVin) {
+        alert("車両データが見つかりません。");
+        location.replace("vehicles.html");
+        return;
+      }
+
+      showLoading("読込中", "車両カルテを開いています...");
+
+      setTimeout(() => {
+        const vehicles = JSON.parse(localStorage.getItem("nappy_vehicles_v1") || "[]");
+        const vehicle = vehicles.find(v => v.vin === targetVin);
+        const allLogs = JSON.parse(localStorage.getItem("nappy_logs_v1") || "[]");
+        const logs = allLogs.filter(l => l.vin === targetVin).sort((a, b) => new Date(b.date) - new Date(a.date));
+        
+        const latestLog = logs[0] || null;
+
+        document.getElementById("carName").innerText = vehicle?.nickname || vehicle?.model || "名称未設定";
+        document.getElementById("carVin").innerText = targetVin;
+        document.getElementById("carShaken").innerText = vehicle?.nextShaken || "---";
+        document.getElementById("carLastMaint").innerText = latestLog?.date || "---";
+        document.getElementById("carMileage").innerText = latestLog?.mileage ? `${latestLog.mileage} km` : "---";
+
+        // リンク先の設定
+        const inspectPath = (profile?.shopType) ? 'inspection_biz.html' : 'inspection_user.html';
+        const historyPath = (profile?.shopType) ? 'history.html' : 'user_history.html';
+        
+        document.getElementById("dailyBtn").href = `${inspectPath}?vin=${encodeURIComponent(targetVin)}`;
+        document.getElementById("historyBtn").href = `${historyPath}?vin=${encodeURIComponent(targetVin)}`;
+
+        renderHistoryList(logs);
+        hideLoading();
+      }, 300);
+    }
+
+    function renderHistoryList(logs) {
+      const container = document.getElementById("historyArea");
+      if (!logs.length) {
+        container.innerHTML = `<div class="empty-state">まだ整備履歴がありません。</div>`;
+        return;
+      }
+
+      let html = "";
+      logs.forEach(log => {
+        let badgeHtml = "";
+        if (log.shopType === "factory") {
+          const factoryType = log.factoryType || "指定";
+          badgeHtml = factoryType === "指定" 
+            ? `<span class="badge badge-blue">🟦 指定工場</span>` 
+            : `<span class="badge badge-yellow">🟨 認証工場</span>`;
+        }
+
+        let previewText = (log.parts ? `【内容】${log.parts.replace(/\n/g, ' ')} ` : "") + (log.memo ? `【メモ】${log.memo}` : "");
+        if (!previewText) previewText = "詳細データなし";
+
+        const detailPage = (profile?.shopType) ? 'detail.html' : 'user_detail.html';
+
+        html += `
+          <a href="${detailPage}?vin=${encodeURIComponent(targetVin)}&log_id=${log.log_id}" class="log-card">
+            <div class="log-header">
+              <div class="log-header-left">${badgeHtml}<span class="log-date">${escapeHtml(log.date)}</span></div>
+              <span class="log-mileage">${log.mileage ? escapeHtml(log.mileage) + ' km' : ''}</span>
+            </div>
+            <h4 class="log-title">${escapeHtml(log.title || '一般整備')}</h4>
+            <div class="log-preview">${escapeHtml(previewText)}</div>
+            <div class="detail-hint">詳細を見る ＞</div>
+          </a>
+        `;
+      });
+      container.innerHTML = html;
+    }
+
+    function escapeHtml(str) {
+      if (!str) return "";
+      return String(str).replace(/[&<>"'`=\/]/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','/':'&#x2F;','`':'&#x60;','=':'&#x3D;'}[s]));
+    }
+
+    window.addEventListener("DOMContentLoaded", init);
+  </script>
+</body>
+</html>

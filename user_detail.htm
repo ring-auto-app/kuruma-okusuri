@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>整備履歴 | 車のお薬手帳</title>
+  
+  <link rel="stylesheet" href="common.css">
+  <script src="app.js"></script>
+  <script src="theme.js"></script>
+  
+  <style>
+    /* 34pxグリッド設計および共通世界観を完全維持 */
+    body {
+      margin: 0; font-family: -apple-system, sans-serif;
+      background: linear-gradient(to bottom, var(--page-line) 1px, transparent 1px) 0 0 / 100% 34px, var(--page-bg);
+      color: var(--text); padding: 34px 16px 100px; line-height: 34px;
+    }
+    .container { max-width: 600px; margin: 0 auto; }
+    
+    .header { margin-bottom: 34px; border-bottom: 2px dashed var(--accent); padding-bottom: 16px; }
+    .back-link { color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 800; display: inline-block; cursor: pointer; height: 34px; line-height: 34px; }
+    
+    .title { 
+      font-size: 24px; font-weight: 900; color: var(--text); margin: 0; 
+      position: relative; display: inline-block; line-height: 34px;
+    }
+    .title::after {
+      content: ""; position: absolute; left: 0; right: 0; bottom: 4px; height: 12px;
+      background: var(--highlighter); z-index: -1; border-radius: 4px; transform: rotate(-1deg);
+    }
+    .sub-title { font-size: 13px; color: var(--muted); font-weight: 800; margin-top: 4px; line-height: 34px; }
+
+    .log-card {
+      background: var(--paper); border: 2px solid var(--line);
+      border-radius: 16px; padding: 16px; margin-bottom: 17px;
+      box-shadow: var(--shadow); transition: transform 0.1s;
+      text-decoration: none; display: block; line-height: 1.5;
+    }
+    .log-card:active { transform: scale(0.98); }
+
+    .log-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 12px; border-bottom: 1px dashed var(--line); padding-bottom: 12px;
+    }
+    .log-header-left { display: flex; align-items: center; gap: 8px; }
+
+    .badge {
+      font-size: 11px; font-weight: 900; padding: 2px 8px; border-radius: 6px; border: 1px solid;
+      display: inline-flex; align-items: center; gap: 4px; line-height: 1.2;
+    }
+    /* バッジ色は固定色ではなくテーマ変数から派生 */
+    .badge-blue { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+    .badge-yellow { background: #fefce8; color: #a16207; border-color: #fef08a; }
+
+    .log-date { font-size: 14px; color: var(--text); font-weight: 900; }
+    .log-mileage { font-size: 13px; color: var(--muted); font-weight: 800; }
+
+    .log-title { font-size: 18px; font-weight: 900; color: var(--accent); margin: 0 0 8px 0; line-height: 1.2; }
+    .log-preview { 
+      font-size: 13px; color: var(--text); font-weight: 700; line-height: 1.5;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+      opacity: 0.8;
+    }
+    
+    .detail-hint { text-align: right; font-size: 12px; color: var(--accent); font-weight: 900; margin-top: 8px; }
+
+    .empty-msg { text-align: center; color: var(--muted); font-weight: 800; margin-top: 68px; line-height: 34px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <a onclick="goBackSmart('user_home.html')" class="back-link">◁ マイカーへ戻る</a>
+      <h1 class="title">📖 整備履歴</h1>
+      <p class="sub-title" id="carInfo">車両情報を読み込み中...</p>
+    </div>
+
+    <div id="historyArea"></div>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const targetVin = params.get("vin");
+
+    window.addEventListener('DOMContentLoaded', () => {
+      if (!targetVin) {
+        alert("車両データが見つかりません。");
+        location.href = "user_home.html";
+        return;
+      }
+
+      // 車両情報の表示
+      const vehicles = JSON.parse(localStorage.getItem('nappy_vehicles_v1') || '[]');
+      const myCar = vehicles.find(v => v.vin === targetVin);
+      if (myCar) {
+        document.getElementById('carInfo').innerText = `管理車両: ${myCar.nickname || 'マイカー'} (VIN: ${myCar.vin})`;
+      }
+
+      renderHistory();
+    });
+
+    /**
+     * 履歴データの描画処理
+     */
+    function renderHistory() {
+      showLoading("読込中", "整備履歴を取得しています...");
+
+      setTimeout(() => {
+        const allLogs = JSON.parse(localStorage.getItem('nappy_logs_v1') || '[]');
+        
+        const myLogs = allLogs
+          .filter(log => log.vin === targetVin)
+          .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+        const container = document.getElementById('historyArea');
+
+        if (myLogs.length === 0) {
+          container.innerHTML = `
+            <div class="empty-msg">
+              まだ整備履歴がありません。<br>
+              工場や事業者で作業した記録がここに並びます。
+            </div>`;
+          hideLoading();
+          return;
+        }
+
+        let html = "";
+        myLogs.forEach(log => {
+          let badgeHtml = "";
+          
+          if (log.shopType === "factory") {
+            const factoryType = log.factoryType || "指定"; 
+            if (factoryType === "指定") {
+              badgeHtml = `<span class="badge badge-blue">🟦 指定工場</span>`;
+            } else if (factoryType === "認証") {
+              badgeHtml = `<span class="badge badge-yellow">🟨 認証工場</span>`;
+            }
+          } 
+
+          let previewText = "";
+          if (log.parts) previewText += `【内容】${log.parts.replace(/\n/g, ' ')} `;
+          if (log.memo) previewText += `【メモ】${log.memo}`;
+          if (!previewText) previewText = "詳細データなし";
+
+          html += `
+            <a href="user_detail.html?vin=${encodeURIComponent(log.vin)}&log_id=${log.log_id}" class="log-card">
+              <div class="log-header">
+                <div class="log-header-left">
+                  ${badgeHtml}
+                  <span class="log-date">${escapeHtml(log.date)}</span>
+                </div>
+                <span class="log-mileage">${log.mileage ? escapeHtml(log.mileage) + ' km' : ''}</span>
+              </div>
+              
+              <h3 class="log-title">${escapeHtml(log.title || '一般整備')}</h3>
+              <div class="log-preview">${escapeHtml(previewText)}</div>
+              
+              <div class="detail-hint">詳細を見る ＞</div>
+            </a>
+          `;
+        });
+        
+        container.innerHTML = html;
+        hideLoading();
+      }, 300);
+    }
+
+    function escapeHtml(str) {
+      if (!str) return "";
+      return String(str).replace(/[&<>"'`=\/]/g, function (s) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '/': '&#x2F;', '`': '&#x60;', '=': '&#x3D;' }[s];
+      });
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>点検詳細 | 車のお薬手帳</title>
+  
+  <link rel="stylesheet" href="common.css">
+  <script src="app.js"></script>
+  <script src="theme.js"></script>
+  
+  <style>
+    /* ページ固有のデザイン設定：34pxルールおよび正円チェックUIを完全維持 */
+    body {
+      margin: 0; font-family: -apple-system, sans-serif;
+      background: linear-gradient(to bottom, var(--page-line) 1px, transparent 1px) 0 0 / 100% 34px, var(--page-bg);
+      color: var(--text); padding: 34px 16px 68px;
+      line-height: 34px;
+    }
+    .container { max-width: 600px; margin: 0 auto; }
+    
+    .header { margin-bottom: 34px; display: block;}
+    
+    .back-link { 
+      color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 800; 
+      display: block; width: fit-content; 
+      cursor: pointer; line-height: 34px; margin-bottom: 0;
+    }
+    
+    .title { 
+      font-size: 24px; font-weight: 900; margin: 0; 
+      position: relative; display: inline-block; width: max-content;
+      line-height: 34px;
+    }
+    .title::after {
+      content: ""; position: absolute; left: 0; right: 0; bottom: 4px; height: 12px;
+      background: var(--highlighter); z-index: -1; border-radius: 4px; transform: rotate(-1deg);
+    }
+
+    .detail-card {
+      background: rgba(255,255,255,0.7); border: 2px dashed var(--accent);
+      border-radius: 12px; padding: 16px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+    }
+    
+    .detail-group { margin-bottom: 17px; }
+    .detail-group:last-child { margin-bottom: 0; }
+    
+    .d-label { font-size: 12px; color: var(--muted); font-weight: 800; border-bottom: 1px dashed var(--line); line-height: 17px; margin-bottom: 0;}
+    .d-value { font-size: 16px; font-weight: 900; color: var(--text); line-height: 34px; white-space: pre-wrap;}
+    .d-value-small { font-size: 14px; font-weight: 700; color: var(--text); line-height: 34px;}
+
+    .category-title { 
+      font-size: 16px; font-weight: 900; color: var(--text); 
+      margin: 34px 0 0 0; border-bottom: 2px solid var(--accent); 
+      height: 34px; line-height: 34px; padding-bottom: 0;
+    }
+    .item-row { display: flex; justify-content: space-between; align-items: center; height: 34px; border-bottom: 1px dashed var(--line); }
+    .item-name { font-size: 14px; font-weight: 800; color: var(--text); flex: 1; }
+    
+    .options { display: flex; gap: 8px; pointer-events: none; }
+    .opt-radio { display: none; }
+    .opt-label {
+      position: relative; display: inline-flex; justify-content: center; align-items: center;
+      width: 30px; height: 30px; font-size: 14px; font-weight: 800; color: #9ca3af;
+    }
+    .opt-radio:checked + .opt-label { color: var(--text); font-weight: 900; }
+    
+    .opt-radio:checked + .opt-label::before {
+      content: ""; position: absolute; top: 50%; left: 50%; 
+      width: 28px; height: 28px; 
+      transform: translate(-50%, -50%); 
+      border: 3px solid var(--accent); 
+      border-radius: 50%; 
+    }
+
+    .btn-print-detail {
+      display: flex; align-items: center; gap: 6px;
+      margin: 24px 0 0; padding: 0 20px; height: 44px;
+      border-radius: 999px; border: 2px solid var(--accent);
+      background: var(--paper); color: var(--accent);
+      font-size: 14px; font-weight: 800; cursor: pointer; width: 100%; justify-content: center;
+    }
+    .btn-print-detail:active { background: var(--accent); color: #fff; }
+    @media print {
+      .header, .btn-print-detail { display: none !important; }
+      body { padding: 16px !important; }
+    }
+
+    /* ユーザー点検：○/×表示スタイル */
+    .user-check-row {
+      display: flex; justify-content: space-between; align-items: center;
+      height: 40px; border-bottom: 1px dashed var(--line); padding: 0 2px;
+    }
+    .user-check-name { font-size: 14px; font-weight: 800; color: var(--text); flex: 1; }
+    .user-check-mark-ok  { font-size: 20px; font-weight: 900; color: #16a34a; }
+    .user-check-mark-ng  { font-size: 20px; font-weight: 900; color: #dc2626; }
+    .user-check-detail   { font-size: 12px; color: #b45309; font-weight: 700; padding: 4px 0 8px 4px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <a id="backBtn" class="back-link">≪戻る</a>
+      <h1 class="title">点検詳細</h1>
+    </div>
+
+    <div class="detail-card">
+      <div class="detail-group">
+        <div class="d-label">点検日 / タイトル</div>
+        <div class="d-value" id="valTitle">読込中...</div>
+      </div>
+
+      <div id="inspectionForm" style="margin-bottom: 34px;"></div>
+
+      <div class="detail-group">
+        <div class="d-label">詳細メモ</div>
+        <div class="d-value" id="valMemo">読込中...</div>
+      </div>
+
+      <div class="detail-group" style="margin-top: 34px; opacity: 0.6;">
+        <div class="d-label">システム情報</div>
+        <div class="d-value d-value-small" id="valSystem">ログID: ---<br>VIN: ---</div>
+      </div>
+    </div>
+
+    <button class="btn-print-detail" onclick="window.print()">🖨 この点検記録を印刷 / PDF出力</button>
+  </div>
+
+  <script>
+    const profile = typeof getCurrentProfile === "function" ? getCurrentProfile() : null;
+    const urlParams = new URLSearchParams(window.location.search);
+    const logId = urlParams.get('logId') || "不明";
+    const vin = urlParams.get('vin') || "不明";
+    // from=user の場合はユーザー側の履歴ページへ戻る
+    const fromUser = urlParams.get('from') === 'user';
+
+    // ユーザー点検の項目定義
+    const USER_ITEMS = [
+      { id: "u1", name: "エンジンオイル量", desc: "ゲージで確認" },
+      { id: "u2", name: "冷却水量", desc: "タンクの量" },
+      { id: "u3", name: "タイヤ空気圧", desc: "見た目で潰れてないか" },
+      { id: "u4", name: "ブレーキの効き", desc: "キーキー鳴る、踏みごたえが変など" },
+      { id: "u5", name: "灯火類", desc: "ライト・ウインカーが点くか" },
+      { id: "u6", name: "ワイパー", desc: "拭き取り具合・ゴムの劣化" },
+      { id: "u7", name: "エアコンの効き", desc: "冷えない、風が弱いなど" },
+      { id: "u8", name: "メーターの警告灯", desc: "変なマークが点灯していないか" },
+      { id: "u9", name: "異音・異常", desc: "変な音やニオイがしないか" }
+    ];
+
+    document.getElementById('backBtn').onclick = () => {
+      if (fromUser) {
+        goBackSmart('user_inspection_history.html?vin=' + encodeURIComponent(vin));
+      } else {
+        goBackSmart('daily_history.html?vin=' + encodeURIComponent(vin));
+      }
+    };
+
+    const inspectionData = [
+      { cat: "エンジン", items: [
+        { id: "e1", name: "エンジンオイル量", opts: ["良", "補", "交"] },
+        { id: "e2", name: "冷却水量", opts: ["良", "補"] },
+        { id: "e3", name: "エンジン始動状態", opts: ["良", "点"] },
+        { id: "e4", name: "異音確認", opts: ["良", "点"] },
+        { id: "e5", name: "排気の色", opts: ["良", "点"] }
+      ]},
+      { cat: "バッテリー", items: [
+        { id: "ba1", name: "バッテリー液量", opts: ["良", "補", "交"] },
+        { id: "ba2", name: "端子状態", opts: ["良", "調", "交"] }
+      ]},
+      { cat: "ベルト", items: [
+        { id: "be1", name: "ベルト張り", opts: ["良", "調", "交"] },
+        { id: "be2", name: "ベルト損傷", opts: ["良", "交", "点"] }
+      ]},
+      { cat: "タイヤ", items: [
+        { id: "t1", name: "タイヤ空気圧", opts: ["良", "補"] },
+        { id: "t2", name: "タイヤ亀裂・損傷", opts: ["良", "交", "点"] },
+        { id: "t3", name: "タイヤ摩耗状態", opts: ["良", "交", "点"] },
+        { id: "t4", name: "タイヤ溝深さ", opts: ["良", "交", "点"] }
+      ]},
+      { cat: "ブレーキ", items: [
+        { id: "b1", name: "ブレーキ液量", opts: ["良", "補"] },
+        { id: "b2", name: "ブレーキペダル踏みしろ", opts: ["良", "調", "点"] },
+        { id: "b3", name: "駐車ブレーキ引きしろ", opts: ["良", "調", "点"] }
+      ]},
+      { cat: "灯火類", items: [
+        { id: "l1", name: "前照灯", opts: ["良", "交"] },
+        { id: "l2", name: "制動灯", opts: ["良", "交"] },
+        { id: "l3", name: "方向指示器", opts: ["良", "交"] },
+        { id: "l4", name: "尾灯 / 車幅灯", opts: ["良", "交"] }
+      ]},
+      { cat: "ワイパー / 洗浄液", items: [
+        { id: "w1", name: "ワイパー状態", opts: ["良", "交"] },
+        { id: "w2", name: "ウォッシャー液", opts: ["良", "補"] }
+      ]},
+      { cat: "走行装置 / その他", items: [
+        { id: "o1", name: "エアタンク(対象車のみ)", opts: ["良", "点", "無"] },
+        { id: "o2", name: "異臭確認", opts: ["良", "点"] },
+        { id: "o3", name: "その他異常", opts: ["良", "点"] }
+      ]}
+    ];
+
+    window.addEventListener('DOMContentLoaded', () => {
+      // ログイン権限に応じたテーマカラー設定
+      if (profile) {
+        if (profile.shopType === 'factory') {
+          document.documentElement.style.setProperty('--page-bg', '#eff6ff');
+          document.documentElement.style.setProperty('--page-line', 'rgba(37, 99, 235, 0.1)');
+          document.documentElement.style.setProperty('--line', '#bfdbfe');
+          document.documentElement.style.setProperty('--accent', '#2563eb');
+          document.documentElement.style.setProperty('--muted', '#60a5fa');
+          document.documentElement.style.setProperty('--highlighter', 'rgba(37, 99, 235, 0.3)');
+        } else if (profile.shopType === 'dealer') {
+          document.documentElement.style.setProperty('--page-bg', '#fef2f2');
+          document.documentElement.style.setProperty('--page-line', 'rgba(220, 38, 38, 0.1)');
+          document.documentElement.style.setProperty('--line', '#fecaca');
+          document.documentElement.style.setProperty('--accent', '#dc2626');
+          document.documentElement.style.setProperty('--muted', '#f87171');
+          document.documentElement.style.setProperty('--highlighter', 'rgba(220, 38, 38, 0.3)');
+        }
+      }
+
+      loadLocalDetail();
+    });
+
+    /**
+     * ローカルストレージから点検情報を読み込み表示する
+     */
+    function loadLocalDetail() {
+      // 掟3：読み込み開始時にローディングを表示
+      showLoading("データ取得中", "点検記録を読み込んでいます...");
+
+      setTimeout(() => {
+        const rawData = localStorage.getItem('inspections_v1') || '[]';
+        const allLogs = JSON.parse(rawData);
+        
+        const targetLog = allLogs.find(log => log.log_id === logId || log.createdAt === logId);
+
+        if (targetLog) {
+          const dateStr = targetLog.date || "日付不明";
+          const titleStr = targetLog.title || "タイトルなし";
+          document.getElementById('valTitle').textContent = `${dateStr}\n${titleStr}`;
+          
+          document.getElementById('valMemo').textContent = targetLog.memo || "（メモなし）";
+          
+          document.getElementById('valSystem').innerHTML = `ログID: ${targetLog.log_id || logId}<br>VIN: ${vin}`;
+
+          const formContainer = document.getElementById('inspectionForm');
+          let htmlStr = "";
+
+          if (targetLog.type === 'inspection_user') {
+            // ─── ユーザー点検：○/×形式で表示 ───
+            htmlStr += `<h2 class="category-title" style="margin-top:0;">点検結果</h2>`;
+
+            // memoからNG項目の詳細メモを抽出（・項目名（詳細）形式）
+            const itemDetailMap = {};
+            if (targetLog.memo) {
+              const ngMatch = targetLog.memo.match(/【.*?気になる.*?】\n?([\s\S]*?)(?:\n\n|$)/);
+              if (ngMatch) {
+                ngMatch[1].trim().split('\n').forEach(line => {
+                  const m = line.match(/^・(.+?)(?:（(.+)）)?$/);
+                  if (m) {
+                    const foundItem = USER_ITEMS.find(i => i.name === m[1].trim());
+                    if (foundItem && m[2]) itemDetailMap[foundItem.id] = m[2].trim();
+                  }
+                });
+              }
+            }
+
+            USER_ITEMS.forEach(item => {
+              const val = targetLog.userChecks ? targetLog.userChecks[item.id] : null;
+              // userChecksがない旧データはmemoから判定
+              const isNG = val === 'NG' || (!targetLog.userChecks && targetLog.memo &&
+                targetLog.memo.includes(`・${item.name}`));
+              const markHtml = isNG
+                ? `<span class="user-check-mark-ng">×</span>`
+                : `<span class="user-check-mark-ok">○</span>`;
+              htmlStr += `<div class="user-check-row">
+                <div class="user-check-name">${item.name}</div>${markHtml}
+              </div>`;
+              if (isNG && itemDetailMap[item.id]) {
+                htmlStr += `<div class="user-check-detail">　└ ${itemDetailMap[item.id]}</div>`;
+              }
+            });
+          } else {
+            // ─── 事業者・工場点検：従来の良/補/交フォーム ───
+            inspectionData.forEach(group => {
+              htmlStr += `<h2 class="category-title" style="margin-top: ${htmlStr === '' ? '0' : '34px'}">【${group.cat}】</h2>`;
+              group.items.forEach(item => {
+                htmlStr += `<div class="item-row"><div class="item-name">${item.name}</div><div class="options">`;
+                item.opts.forEach((opt, index) => {
+                  const optId = `det_${item.id}_${index}`;
+                  const isChecked = (targetLog.checks && targetLog.checks[item.id] === opt) ? "checked" : "";
+                  htmlStr += `
+                    <input type="radio" name="det_${item.id}" id="${optId}" value="${opt}" class="opt-radio" ${isChecked}>
+                    <label for="${optId}" class="opt-label">${opt}</label>
+                  `;
+                });
+                htmlStr += `</div></div>`;
+              });
+            });
+          }
+          formContainer.innerHTML = htmlStr;
+
+        } else {
+          document.getElementById('valTitle').textContent = "データが見つかりません";
+          document.getElementById('valMemo').textContent = "該当のログは保存されていません。";
+          document.getElementById('valSystem').innerHTML = `ログID: ${logId}<br>VIN: ${vin}`;
+        }
+        
+        // 掟4：完了時にローディングを解除
+        hideLoading();
+      }, 300);
+    }
+  </script>
+</body>
+</html>

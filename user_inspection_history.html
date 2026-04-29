@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>日常点検の記録 | 車のお薬手帳</title>
+  
+  <link rel="stylesheet" href="common.css">
+  <script src="app.js"></script>
+  <script src="theme.js"></script>
+  
+  <style>
+    /* 34pxグリッド設計：全ページ共通のノート規格に統一 */
+    body {
+      margin: 0; font-family: -apple-system, sans-serif;
+      background: linear-gradient(to bottom, var(--page-line) 1px, transparent 1px) 0 0 / 100% 34px, var(--page-bg);
+      color: var(--text); padding: 34px 16px 100px; line-height: 34px;
+    }
+    .container { max-width: 600px; margin: 0 auto; }
+    
+    .header { margin-bottom: 34px; border-bottom: 2px dashed var(--accent); padding-bottom: 16px; }
+    .back-link { color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 800; display: block; cursor: pointer; height: 34px; line-height: 34px; }
+    .title { 
+      font-size: 24px; font-weight: 900; color: var(--text); margin: 0; 
+      position: relative; display: inline-block; line-height: 34px;
+    }
+    .title::after {
+      content: ""; position: absolute; left: 0; right: 0; bottom: 4px; height: 12px;
+      background: var(--highlighter); z-index: -1; border-radius: 4px; transform: rotate(-1deg);
+    }
+
+    .add-btn {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      width: 100%; padding: 16px; background: var(--accent); color: white;
+      border: none; border-radius: 16px; font-size: 18px; font-weight: 900;
+      text-decoration: none; box-shadow: var(--shadow); margin-bottom: 20px;
+      cursor: pointer; transition: transform 0.1s; line-height: 1;
+    }
+    .add-btn:active { transform: scale(0.98); }
+
+    /* ─── コントロール行（年月セレクタ＋切替） ─── */
+    .ctrl-row { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+    .sel-ym {
+      height: 34px; padding: 0 10px; border: 2px solid var(--accent);
+      border-radius: 8px; font-size: 14px; font-weight: 700;
+      color: var(--text); background: var(--paper); outline: none; cursor: pointer;
+    }
+    .sel-ym.sel-year  { flex: 1.2; }
+    .sel-ym.sel-month { flex: 0.8; }
+    .view-toggle { display: flex; border: 2px solid var(--accent); border-radius: 8px; overflow: hidden; flex-shrink: 0; }
+    .view-btn { height: 30px; padding: 0 14px; border: none; background: var(--paper); color: var(--muted); font-size: 13px; font-weight: 800; cursor: pointer; }
+    .view-btn.active { background: var(--accent); color: #fff; }
+
+    /* ─── カレンダー ─── */
+    .cal-wrap { background: rgba(255,255,255,0.7); border: 2px dashed var(--line); border-radius: 12px; overflow: hidden; }
+    .cal-head { display: grid; grid-template-columns: repeat(7,1fr); }
+    .cal-head span {
+      text-align: center; font-size: 11px; font-weight: 900; color: var(--muted);
+      height: 28px; line-height: 28px; border-bottom: 1px dashed var(--line);
+    }
+    .cal-head span:first-child { color: #ef4444; }
+    .cal-head span:last-child  { color: #3b82f6; }
+    .cal-grid { display: grid; grid-template-columns: repeat(7,1fr); }
+    .cal-cell {
+      min-height: 56px; padding: 4px 2px; border-bottom: 1px dashed var(--line);
+      border-right: 1px dashed var(--line); box-sizing: border-box;
+      display: flex; flex-direction: column; align-items: center; gap: 2px;
+    }
+    .cal-cell:nth-child(7n) { border-right: none; }
+    .cal-cell.empty { background: rgba(0,0,0,0.02); }
+    .cal-cell.today .cal-day { background: var(--accent); color: #fff; border-radius: 50%; }
+    .cal-day { font-size: 12px; font-weight: 800; width: 22px; height: 22px; line-height: 22px; text-align: center; color: var(--text); }
+    .cal-cell:nth-child(7n+1) .cal-day { color: #ef4444; }
+    .cal-cell:nth-child(7n)   .cal-day { color: #3b82f6; }
+    .cal-cell.today:nth-child(7n+1) .cal-day,
+    .cal-cell.today:nth-child(7n)   .cal-day { color: #fff; }
+    .mark {
+      font-size: 17px; font-weight: 900; line-height: 1;
+      cursor: pointer; user-select: none;
+      width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+      border-radius: 50%;
+    }
+    .mark.good { color: #16a34a; }
+    .mark.bad  { color: #dc2626; }
+    .mark.good:active { background: #dcfce7; }
+    .mark.bad:active  { background: #fee2e2; }
+    .memo-dot { font-size: 9px; color: var(--muted); font-weight: 800; line-height: 1; }
+
+    /* ─── リストビュー ─── */
+    .sort-area { margin-bottom: 12px; text-align: right; }
+    .sort-select {
+      padding: 6px 10px; border: 2px solid var(--accent); border-radius: 4px;
+      font-size: 13px; font-weight: 700; color: var(--text);
+      background: var(--paper); outline: none; cursor: pointer;
+    }
+    .list-wrap { background: rgba(255,255,255,0.7); border: 2px dashed var(--line); border-radius: 12px; overflow: hidden; }
+    .list-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 14px; border-bottom: 1px dashed var(--line);
+      text-decoration: none; color: inherit;
+    }
+    .list-row:last-child { border-bottom: none; }
+    .list-mark { font-size: 17px; font-weight: 900; width: 24px; text-align: center; flex-shrink: 0; }
+    .list-mark.good { color: #16a34a; }
+    .list-mark.bad  { color: #dc2626; }
+    .list-date { font-size: 12px; font-weight: 900; color: var(--muted); flex-shrink: 0; }
+    .list-memo { font-size: 13px; font-weight: 700; color: var(--text); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* ─── 付箋ポップアップ ─── */
+    .popup-overlay {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 9000;
+      align-items: center; justify-content: center;
+    }
+    .popup-overlay.open { display: flex; }
+    .popup-card {
+      background: #fffde7; border-radius: 4px 16px 16px 16px;
+      box-shadow: 4px 4px 16px rgba(0,0,0,0.2);
+      padding: 20px; width: 88%; max-width: 340px; position: relative;
+    }
+    .popup-card::before {
+      content: ''; position: absolute; top: 0; left: 0;
+      width: 0; height: 0;
+      border-left: 16px solid #f59e0b;
+      border-bottom: 16px solid transparent;
+      border-radius: 4px 0 0 0;
+    }
+    .popup-date { font-size: 13px; font-weight: 900; color: #92400e; margin-bottom: 10px; padding-left: 8px; }
+    .popup-item { font-size: 13px; font-weight: 800; color: #dc2626; margin-bottom: 4px; }
+    .popup-memo { font-size: 12px; font-weight: 700; color: #666; margin-top: 10px; border-top: 1px dashed #e5c44a; padding-top: 8px; }
+    .popup-actions { display: flex; gap: 8px; margin-top: 14px; }
+    .popup-btn-detail {
+      flex: 1; height: 36px; border-radius: 999px; background: var(--accent);
+      color: #fff; border: none; font-size: 13px; font-weight: 800; cursor: pointer;
+    }
+    .popup-btn-close {
+      height: 36px; padding: 0 16px; border-radius: 999px;
+      background: #fff; border: 1.5px solid #e5c44a; font-size: 13px; font-weight: 800;
+      color: #92400e; cursor: pointer;
+    }
+
+    .empty-msg { text-align: center; color: var(--muted); font-weight: 800; margin-top: 68px; line-height: 34px; }
+
+    @media print {
+      .header, .ctrl-row, .add-btn, .sort-area, .popup-overlay { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <a onclick="goBackSmart('user_home.html')" class="back-link">◁ マイカーへ戻る</a>
+      <h1 class="title">日常点検の記録</h1>
+    </div>
+
+    <!-- 新規点検ボタン -->
+    <a href="#" id="newInspectBtn" class="add-btn">
+      ＋ 新しく点検・メモを記録する
+    </a>
+
+    <!-- コントロール行：年月セレクタ＋ビュー切替 -->
+    <div class="ctrl-row">
+      <select id="selYear" class="sel-ym sel-year" onchange="onYMChange()"></select>
+      <select id="selMonth" class="sel-ym sel-month" onchange="onYMChange()"></select>
+      <div class="view-toggle">
+        <button id="btnCal" class="view-btn active" onclick="switchView('cal')">📅</button>
+        <button id="btnList" class="view-btn" onclick="switchView('list')">☰</button>
+      </div>
+    </div>
+
+    <!-- カレンダービュー -->
+    <div id="calView">
+      <div class="cal-wrap">
+        <div class="cal-head">
+          <span>日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span>
+        </div>
+        <div class="cal-grid" id="calGrid"></div>
+      </div>
+    </div>
+
+    <!-- リストビュー -->
+    <div id="listView" style="display:none">
+      <div class="sort-area">
+        <select id="sortSelect" class="sort-select" onchange="renderList()">
+          <option value="new">新しい順</option>
+          <option value="old">古い順</option>
+        </select>
+      </div>
+      <div class="list-wrap" id="listArea"></div>
+    </div>
+  </div>
+
+  <!-- 付箋ポップアップ -->
+  <div class="popup-overlay" id="popupOverlay" onclick="closePopup(event)">
+    <div class="popup-card" id="popupCard">
+      <div class="popup-date" id="popupDate"></div>
+      <div id="popupItems"></div>
+      <div class="popup-memo" id="popupMemo" style="display:none"></div>
+      <div class="popup-actions">
+        <button class="popup-btn-detail" id="popupDetailBtn">詳細を見る</button>
+        <button class="popup-btn-close" onclick="document.getElementById('popupOverlay').classList.remove('open')">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const vin = params.get("vin");
+
+    let fetchedData = [];
+    let currentView = 'cal';
+    let curYear, curMonth; // 0-indexed month
+
+    window.addEventListener('DOMContentLoaded', () => {
+      if (!vin) {
+        alert("車両データが見つかりません。");
+        location.href = "user_home.html";
+        return;
+      }
+
+      // 新規点検ボタンのリンク先を設定
+      document.getElementById("newInspectBtn").onclick = () => {
+        location.href = `inspection_user.html?vin=${encodeURIComponent(vin)}`;
+      };
+
+      showLoading("読込中", "点検の記録をめくっています...");
+      setTimeout(() => {
+        fetchLocalHistory();
+        hideLoading();
+      }, 300);
+    });
+
+    // ローカルストレージからデータを読み込む
+    function fetchLocalHistory() {
+      const allInspections = JSON.parse(localStorage.getItem('inspections_v1') || '[]');
+      // ユーザー自身が入力した点検のみ表示（inspection_user型、または型なしでuserChecksあり）
+      fetchedData = allInspections.filter(log =>
+        log.vin === vin && (log.type === 'inspection_user' || (!log.type && log.userChecks))
+      );
+
+      const now = new Date();
+      curYear  = now.getFullYear();
+      curMonth = now.getMonth();
+
+      buildYMSelectors();
+      render();
+    }
+
+    // 年月セレクタの構築
+    function buildYMSelectors() {
+      // データのある年を抽出（現在の年は必ず含む）
+      const years = [...new Set(fetchedData.map(item => {
+        const d = new Date(item.date || item.createdAt);
+        return isNaN(d) ? null : d.getFullYear();
+      }).filter(Boolean))];
+      if (!years.includes(curYear)) years.push(curYear);
+      years.sort((a, b) => b - a);
+
+      const selY = document.getElementById('selYear');
+      selY.innerHTML = years.map(y => `<option value="${y}" ${y === curYear ? 'selected' : ''}>${y}年</option>`).join('');
+
+      const selM = document.getElementById('selMonth');
+      selM.innerHTML = Array.from({length: 12}, (_, i) =>
+        `<option value="${i}" ${i === curMonth ? 'selected' : ''}>${i + 1}月</option>`).join('');
+    }
+
+    // 年月変更時の再描画
+    function onYMChange() {
+      curYear  = parseInt(document.getElementById('selYear').value);
+      curMonth = parseInt(document.getElementById('selMonth').value);
+      render();
+    }
+
+    // ビュー切替（カレンダー / 一覧）
+    function switchView(v) {
+      currentView = v;
+      document.getElementById('calView').style.display  = v === 'cal'  ? '' : 'none';
+      document.getElementById('listView').style.display = v === 'list' ? '' : 'none';
+      document.getElementById('btnCal').classList.toggle('active', v === 'cal');
+      document.getElementById('btnList').classList.toggle('active', v === 'list');
+      render();
+    }
+
+    function render() {
+      if (currentView === 'cal') renderCalendar();
+      else renderList();
+    }
+
+    // ユーザー点検の項目定義（inspection_user.html と共通）
+    const USER_ITEMS = [
+      { id: "u1", name: "エンジンオイル量" },
+      { id: "u2", name: "冷却水量" },
+      { id: "u3", name: "タイヤ空気圧" },
+      { id: "u4", name: "ブレーキの効き" },
+      { id: "u5", name: "灯火類" },
+      { id: "u6", name: "ワイパー" },
+      { id: "u7", name: "エアコンの効き" },
+      { id: "u8", name: "メーターの警告灯" },
+      { id: "u9", name: "異音・異常" }
+    ];
+
+    // ─── 良否判定 ───
+    // true = 全良好、false = 気になる項目あり
+    function checkAllGood(log) {
+      // ユーザー記録（新形式）：userChecksオブジェクトで判定
+      if (log.userChecks) {
+        return Object.values(log.userChecks).every(v => v === 'OK');
+      }
+      // ユーザー記録（旧形式）：memoに「気になる項目」があれば×
+      if (log.memo && /【.*?気になる.*?】/.test(log.memo)) {
+        return false;
+      }
+      return true;
+    }
+
+    // ×の原因項目リストを取得
+    function getBadItems(log) {
+      // ユーザー記録（新形式）：userChecksから抽出
+      if (log.userChecks) {
+        return USER_ITEMS
+          .filter(item => log.userChecks[item.id] === 'NG')
+          .map(item => item.name);
+      }
+      // ユーザー記録（旧形式）：memoから気になる項目を抽出
+      if (log.memo) {
+        const ngMatch = log.memo.match(/【.*?気になる.*?】\n?([\s\S]*?)(?:\n\n|$)/);
+        if (ngMatch) {
+          return ngMatch[1].trim().split('\n')
+            .filter(l => l.trim())
+            .map(l => l.replace(/^・/, '').trim());
+        }
+      }
+      return [];
+    }
+
+    // ─── カレンダー描画 ───
+    function renderCalendar() {
+      const grid = document.getElementById('calGrid');
+      grid.innerHTML = '';
+
+      const firstDay = new Date(curYear, curMonth, 1).getDay(); // 0=日曜
+      const daysInMonth = new Date(curYear, curMonth + 1, 0).getDate();
+      const today = new Date();
+
+      // 月内データを日付ごとにまとめる
+      const dayMap = {};
+      fetchedData.forEach(item => {
+        const d = new Date(item.date || item.createdAt);
+        if (d.getFullYear() === curYear && d.getMonth() === curMonth) {
+          const day = d.getDate();
+          if (!dayMap[day]) dayMap[day] = [];
+          dayMap[day].push(item);
+        }
+      });
+
+      // 月初前の空セル
+      for (let i = 0; i < firstDay; i++) {
+        const cell = document.createElement('div');
+        cell.className = 'cal-cell empty';
+        grid.appendChild(cell);
+      }
+
+      // 日付セル
+      for (let day = 1; day <= daysInMonth; day++) {
+        const cell = document.createElement('div');
+        cell.className = 'cal-cell';
+        const isToday = today.getFullYear() === curYear && today.getMonth() === curMonth && today.getDate() === day;
+        if (isToday) cell.classList.add('today');
+
+        const dayEl = document.createElement('div');
+        dayEl.className = 'cal-day';
+        dayEl.textContent = day;
+        cell.appendChild(dayEl);
+
+        const items = dayMap[day];
+        if (items && items.length > 0) {
+          // 複数ある場合は最初の1件を代表にする
+          const item = items[0];
+          const good = checkAllGood(item);
+
+          const mark = document.createElement('div');
+          mark.className = `mark ${good ? 'good' : 'bad'}`;
+          mark.textContent = good ? '○' : '×';
+
+          if (good) {
+            // ○タップでポップアップ（良好メッセージ）
+            mark.onclick = () => showPopup(item, day, true);
+          } else {
+            // ×タップで問題項目ポップアップ
+            mark.onclick = () => showPopup(item, day, false);
+          }
+          cell.appendChild(mark);
+
+          // メモがある場合は📝マーク
+          if (item.memo) {
+            const dot = document.createElement('div');
+            dot.className = 'memo-dot';
+            dot.textContent = '📝';
+            cell.appendChild(dot);
+          }
+        }
+
+        grid.appendChild(cell);
+      }
+    }
+
+    // リストビュー用の現在月データキャッシュ（popup参照用）
+    let listCache = [];
+
+    // ─── リスト描画 ───
+    function renderList() {
+      const area = document.getElementById('listArea');
+      const sortKey = document.getElementById('sortSelect')?.value || 'new';
+
+      listCache = fetchedData.filter(item => {
+        const d = new Date(item.date || item.createdAt);
+        return d.getFullYear() === curYear && d.getMonth() === curMonth;
+      });
+
+      // 並び替え
+      if (sortKey === 'old') {
+        listCache.sort((a, b) => new Date(a.date || a.createdAt) - new Date(b.date || b.createdAt));
+      } else {
+        listCache.sort((a, b) => new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt));
+      }
+
+      if (listCache.length === 0) {
+        area.innerHTML = `<div style="padding:16px;text-align:center;font-weight:800;color:var(--muted);">この月の記録はありません</div>`;
+        return;
+      }
+
+      area.innerHTML = listCache.map((item, idx) => {
+        const good = checkAllGood(item);
+        const markCls = good ? 'good' : 'bad';
+        const markTxt = good ? '○' : '×';
+        // リストのサマリー表示
+        let memoDisplay = item.title || '日常点検';
+        if (!good) {
+          const badList = getBadItems(item);
+          if (badList.length > 0) memoDisplay = badList.slice(0, 2).join('、');
+        } else if (item.memo) {
+          memoDisplay = item.memo.replace(/【.*?】[\s\S]*?(?=【|$)/g, '').trim().split('\n')[0] || memoDisplay;
+        }
+        const day = new Date(item.date || item.createdAt).getDate();
+        return `
+          <div class="list-row" onclick="showPopupByIdx(${idx}, ${day})">
+            <span class="list-mark ${markCls}">${markTxt}</span>
+            <span class="list-date">${item.date || '日付不明'}</span>
+            <span class="list-memo">${escapeHtml(memoDisplay)}</span>
+          </div>`;
+      }).join('');
+    }
+
+    // インデックスでポップアップ表示（リストビュー用）
+    function showPopupByIdx(idx, day) {
+      const item = listCache[idx];
+      if (!item) return;
+      showPopup(item, day, checkAllGood(item));
+    }
+
+    // ─── 付箋ポップアップ表示 ───
+    function showPopup(item, day, good) {
+      const dateStr = `${curYear}年${curMonth + 1}月${day}日`;
+      document.getElementById('popupDate').textContent = `📅 ${dateStr}`;
+
+      if (good) {
+        // 良好の場合
+        document.getElementById('popupItems').innerHTML =
+          '<div style="font-size:14px;font-weight:800;color:#16a34a;">✅ 全項目問題なし・良好</div>';
+      } else {
+        // 問題あり：気になる項目を箇条書きで表示
+        const badItems = getBadItems(item);
+        document.getElementById('popupItems').innerHTML = badItems.length
+          ? badItems.map(s => `<div class="popup-item">⚠ ${escapeHtml(s)}</div>`).join('')
+          : '<div style="font-size:13px;color:#666;">気になる項目あり（詳細データなし）</div>';
+      }
+
+      // タイトル・全体メモを表示
+      const memoEl = document.getElementById('popupMemo');
+      const title = item.title || '';
+      // memoから全体メモ部分を抽出
+      let generalMemo = '';
+      if (item.memo) {
+        const memoMatch = item.memo.match(/【全体メモ】\n?([\s\S]*)$/);
+        generalMemo = memoMatch ? memoMatch[1].trim() : (!(/【.*?気になる.*?】/.test(item.memo)) ? item.memo.trim() : '');
+      }
+      const memoText = [title, generalMemo].filter(Boolean).join(' / ');
+      if (memoText) {
+        memoEl.textContent = `📝 ${memoText}`;
+        memoEl.style.display = '';
+      } else {
+        memoEl.style.display = 'none';
+      }
+
+      // 詳細ページへのリンクを設定（log_idがあれば詳細ページへ）
+      const detailBtn = document.getElementById('popupDetailBtn');
+      if (item.log_id) {
+        detailBtn.style.display = '';
+        detailBtn.onclick = () => {
+          location.href = `daily_history_detail.html?logId=${encodeURIComponent(item.log_id)}&vin=${encodeURIComponent(vin)}&from=user`;
+        };
+      } else {
+        detailBtn.style.display = 'none';
+      }
+
+      document.getElementById('popupOverlay').classList.add('open');
+    }
+
+    // オーバーレイクリックで閉じる
+    function closePopup(e) {
+      if (e.target === document.getElementById('popupOverlay')) {
+        document.getElementById('popupOverlay').classList.remove('open');
+      }
+    }
+
+    function escapeHtml(str) {
+      if (!str) return "";
+      return String(str).replace(/[&<>"'`=\/]/g, function (s) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '/': '&#x2F;', '`': '&#x60;', '=': '&#x3D;' }[s];
+      });
+    }
+  </script>
+</body>
+</html>

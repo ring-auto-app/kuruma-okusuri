@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>かかりつけの追加・編集 | 車のお薬手帳</title>
+  <link rel="stylesheet" href="common.css">
+  <script src="app.js"></script>
+  <script src="theme.js"></script>
+  <style>
+    body { margin: 0; font-family: -apple-system, sans-serif; background: var(--page-bg); color: var(--text); padding: 34px 16px 120px; }
+    .container { max-width: 560px; margin: 0 auto; }
+    .header { margin-bottom: 20px; border-bottom: 2px dashed var(--accent); padding-bottom: 12px; }
+    .back-link { color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 800; cursor: pointer; }
+    .title { font-size: 20px; font-weight: 900; margin: 8px 0 0; }
+    .note { font-size: 12px; font-weight: 800; color: var(--muted); line-height: 1.55; margin: 12px 0 20px; }
+    .seg { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+    .seg label.seg-opt {
+      flex: 1; min-width: 120px; cursor: pointer; padding: 10px 12px; border-radius: 12px; border: 2px solid var(--line);
+      font-size: 12px; font-weight: 900; text-align: center; background: var(--paper);
+    }
+    .seg label.seg-opt input { display: none; }
+    .seg label.seg-opt:has(input:checked) { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .result-card {
+      background: var(--paper); border: 2px solid var(--line); border-radius: 14px; padding: 14px; margin-bottom: 10px;
+    }
+    .result-name { font-size: 16px; font-weight: 900; }
+    .result-meta { font-size: 12px; font-weight: 700; color: var(--muted); margin-top: 6px; line-height: 1.45; }
+    .btn-add {
+      margin-top: 10px; width: 100%; padding: 10px; border-radius: 10px; border: none; font-weight: 900; font-size: 13px;
+      background: var(--accent); color: #fff; cursor: pointer; font-family: inherit;
+    }
+    .btn-add:disabled { opacity: 0.5; cursor: not-allowed; }
+    .edit-panel { margin-top: 24px; padding-top: 20px; border-top: 2px dashed var(--line); }
+    .section-label { font-size: 13px; font-weight: 900; margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <a class="back-link" href="user_mypage.html">◁ マイページへ</a>
+      <h1 class="title" id="pageTitle">かかりつけを検索して追加</h1>
+    </div>
+
+    <p class="note" id="modeSearchNote">
+      <strong>車のお薬手帳に登録済みの工場・事業者</strong>を、サーバー上の店舗データから検索して追加できます（連絡先は公開情報として保存されている分のみ自動で入ります）。オフライン時はこの端末の店マスタ（履歴などからたまるデータ）も検索対象にします。
+    </p>
+
+    <div id="searchPanel">
+      <div class="seg">
+        <label class="seg-opt"><input type="radio" name="searchType" value="name" checked>店名・屋号</label>
+        <label class="seg-opt"><input type="radio" name="searchType" value="cert_number">認証／指定番号など</label>
+      </div>
+      <div class="field">
+        <span class="label">キーワード</span>
+        <input type="text" id="inQuery" placeholder="例：モータース / 第11234">
+      </div>
+      <button type="button" class="save-btn" id="btnSearch">検索</button>
+      <p class="note" style="margin-top:16px;">検索で見つからない場合は、お店のIDが分かれば手入力で登録できます（IDはお店側にお問い合わせください）。</p>
+      <button type="button" class="save-btn" id="btnManualNew" style="background:var(--paper);color:var(--text);border:2px solid var(--line);">手入力で新規追加</button>
+      <div id="resultArea" style="margin-top: 20px;"></div>
+    </div>
+
+    <div class="edit-panel" id="editPanel" style="display: none;">
+      <div class="section-label">登録内容の編集（この端末に保存）</div>
+      <p class="note">店名・番号は検索結果からコピーされます。連絡先だけ手直しできます。</p>
+      <input type="hidden" id="editShopId">
+      <div class="field"><span class="label">店舗ID</span><input type="text" id="editDispShopId" readonly style="background:var(--page-bg);"></div>
+      <div class="field"><span class="label">店名</span><input type="text" id="editName"></div>
+      <div class="field"><span class="label">認証・指定など</span><input type="text" id="editCert"></div>
+      <div class="field"><span class="label">住所</span><input type="text" id="editAddr"></div>
+      <div class="field"><span class="label">電話</span><input type="tel" id="editTel"></div>
+      <div class="field"><span class="label">メール</span><input type="email" id="editEmail"></div>
+      <div class="field"><span class="label">LINE URL</span><input type="url" id="editLine"></div>
+      <button type="button" class="save-btn" id="btnSaveEdit">保存する</button>
+    </div>
+  </div>
+
+  <script>
+    function esc(s) {
+      if (s == null) return '';
+      return String(s).replace(/[&<>"']/g, function (c) {
+        return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+      });
+    }
+
+    function getSearchType() {
+      var r = document.querySelector('input[name="searchType"]:checked');
+      return r ? r.value : 'name';
+    }
+
+    function searchLocalShops(query, searchType) {
+      var shops = JSON.parse(localStorage.getItem('nappy_shops_v1') || '[]');
+      var q = String(query || '').trim().toLowerCase();
+      if (!q) return [];
+      var out = [];
+      for (var i = 0; i < shops.length && out.length < 25; i++) {
+        var s = shops[i];
+        var shopId = s.shopId || '';
+        if (!shopId) continue;
+        var name = String(s.shopName || '').toLowerCase();
+        var fn = String(s.factoryNumber || s.certNumber || '').toLowerCase();
+        var ft = String(s.factoryType || '').toLowerCase();
+        var certHay = (ft + ' ' + fn).trim();
+        var match = searchType === 'cert_number'
+          ? (certHay.indexOf(q) >= 0 || fn.indexOf(q) >= 0)
+          : (name.indexOf(q) >= 0);
+        if (!match) continue;
+        var certLabel = [s.factoryType, s.factoryNumber || s.certNumber].filter(Boolean).join(' ');
+        out.push({
+          shopId: shopId,
+          shopName: s.shopName || '',
+          factoryNumber: certLabel,
+          address: s.address || '',
+          tel: s.tel || '',
+          email: s.email || '',
+          lineUrl: s.lineUrl || '',
+          _source: 'local'
+        });
+      }
+      return out;
+    }
+
+    function mergeShopResults(remoteList, localList) {
+      var seen = {};
+      var out = [];
+      function push(x) {
+        if (!x.shopId || seen[x.shopId]) return;
+        seen[x.shopId] = true;
+        out.push(x);
+      }
+      (remoteList || []).forEach(push);
+      (localList || []).forEach(push);
+      return out.slice(0, 25);
+    }
+
+    async function fetchShopInfo(shopId) {
+      try {
+        var res = await fetch(GAS_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({ action: 'get_shop_info', shopId: shopId })
+        });
+        var data = await res.json();
+        if (data.success && data.info) return data.info;
+      } catch (e) {}
+      return { address: '', tel: '', email: '', lineUrl: '' };
+    }
+
+    async function addFavFromHit(hit) {
+      var info = await fetchShopInfo(hit.shopId);
+      var row = {
+        shopId: hit.shopId,
+        shopName: hit.shopName || hit.shopId,
+        factoryNumber: hit.factoryNumber || '',
+        address: info.address || hit.address || '',
+        tel: info.tel || hit.tel || '',
+        email: info.email || hit.email || '',
+        lineUrl: info.lineUrl || hit.lineUrl || ''
+      };
+      if (row.lineUrl === '') row.lineUrl = '#';
+
+      var fav = JSON.parse(localStorage.getItem('nappy_fav_shops_v1') || '[]');
+      fav = fav.filter(function (s) { return s.shopId !== row.shopId; });
+      fav.push(row);
+      localStorage.setItem('nappy_fav_shops_v1', JSON.stringify(fav));
+      if (typeof showToast === 'function') showToast('success', 'かかりつけに追加しました');
+      else alert('追加しました');
+      location.href = 'user_fav_shops.html';
+    }
+
+    var __lastHitById = {};
+
+    function renderResults(list) {
+      var el = document.getElementById('resultArea');
+      __lastHitById = {};
+      if (!list.length) {
+        el.innerHTML = '<p class="note">該当がありません。キーワードを変えるか、マイページから手入力の編集を試してください。</p>';
+        return;
+      }
+      list.forEach(function (h) { if (h.shopId) __lastHitById[h.shopId] = h; });
+      el.innerHTML = list.map(function (h) {
+        var src = h._source === 'local' ? '（この端末）' : '（サーバー）';
+        return '<div class="result-card">' +
+          '<div class="result-name">' + esc(h.shopName) + ' <span style="font-size:11px;font-weight:800;color:var(--muted);">' + src + '</span></div>' +
+          '<div class="result-meta">' + esc(h.factoryNumber || '—') + '<br>' + esc(h.address || '') + '</div>' +
+          '<button type="button" class="btn-add" data-shop-id="' + esc(h.shopId) + '">このお店をかかりつけに追加</button></div>';
+      }).join('');
+
+      el.querySelectorAll('.btn-add').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var id = btn.getAttribute('data-shop-id');
+          var hit = __lastHitById[id];
+          if (!hit) return;
+          btn.disabled = true;
+          addFavFromHit(hit).then(function () {}).catch(function () {}).then(function () { btn.disabled = false; });
+        });
+      });
+    }
+
+    async function runSearch() {
+      var q = document.getElementById('inQuery').value.trim();
+      if (!q) {
+        if (typeof showToast === 'function') showToast('error', 'キーワードを入力してください');
+        return;
+      }
+      var st = getSearchType();
+      document.getElementById('resultArea').innerHTML = '<p class="note">検索中…</p>';
+
+      var remote = [];
+      try {
+        var res = await fetch(GAS_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({ action: 'user_search_shops', query: q, searchType: st })
+        });
+        var data = await res.json();
+        if (data.success && Array.isArray(data.shops)) {
+          data.shops.forEach(function (s) { s._source = 'remote'; });
+          remote = data.shops;
+        }
+      } catch (e) {}
+
+      var local = searchLocalShops(q, st);
+      local.forEach(function (s) { if (!s._source) s._source = 'local'; });
+      renderResults(mergeShopResults(remote, local));
+    }
+
+    function openEdit(shopId) {
+      var fav = JSON.parse(localStorage.getItem('nappy_fav_shops_v1') || '[]');
+      var s = fav.find(function (x) { return String(x.shopId) === String(shopId); });
+      if (!s) {
+        alert('見つかりませんでした');
+        location.href = 'user_mypage.html';
+        return;
+      }
+      document.getElementById('pageTitle').textContent = 'かかりつけを編集';
+      document.getElementById('searchPanel').style.display = 'none';
+      document.getElementById('modeSearchNote').style.display = 'none';
+      document.getElementById('editPanel').style.display = 'block';
+      document.getElementById('editShopId').value = s.shopId;
+      document.getElementById('editDispShopId').value = s.shopId;
+      document.getElementById('editName').value = s.shopName || '';
+      document.getElementById('editCert').value = s.factoryNumber || '';
+      document.getElementById('editAddr').value = s.address || '';
+      document.getElementById('editTel').value = s.tel || '';
+      document.getElementById('editEmail').value = s.email || '';
+      document.getElementById('editLine').value = (s.lineUrl && s.lineUrl !== '#') ? s.lineUrl : '';
+    }
+
+    function saveEdit() {
+      var shopId = document.getElementById('editShopId').value;
+      var fav = JSON.parse(localStorage.getItem('nappy_fav_shops_v1') || '[]');
+      var idx = fav.findIndex(function (x) { return String(x.shopId) === String(shopId); });
+      if (idx < 0) return;
+      fav[idx] = {
+        shopId: shopId,
+        shopName: document.getElementById('editName').value.trim() || fav[idx].shopName,
+        factoryNumber: document.getElementById('editCert').value.trim(),
+        address: document.getElementById('editAddr').value.trim(),
+        tel: document.getElementById('editTel').value.trim(),
+        email: document.getElementById('editEmail').value.trim(),
+        lineUrl: document.getElementById('editLine').value.trim() || '#'
+      };
+      localStorage.setItem('nappy_fav_shops_v1', JSON.stringify(fav));
+      if (typeof showToast === 'function') showToast('success', '保存しました');
+      location.href = 'user_fav_shops.html';
+    }
+
+    window.addEventListener('DOMContentLoaded', function () {
+      var profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+      if (!profile || (profile.shopType !== 'user' && profile.role !== 'user')) {
+        location.replace('user_login.html');
+        return;
+      }
+
+      var params = new URLSearchParams(location.search);
+      var editId = params.get('shopId');
+      if (editId) openEdit(editId);
+
+      document.getElementById('btnSearch').addEventListener('click', runSearch);
+      document.getElementById('btnSaveEdit').addEventListener('click', saveEdit);
+      document.getElementById('btnManualNew').addEventListener('click', function () {
+        var id = 'FAV-LOCAL-' + Date.now().toString(36).toUpperCase();
+        var fav = JSON.parse(localStorage.getItem('nappy_fav_shops_v1') || '[]');
+        fav.push({
+          shopId: id,
+          shopName: '',
+          factoryNumber: '',
+          address: '',
+          tel: '',
+          email: '',
+          lineUrl: '#'
+        });
+        localStorage.setItem('nappy_fav_shops_v1', JSON.stringify(fav));
+        location.href = 'user_fav_shop_edit.html?shopId=' + encodeURIComponent(id);
+      });
+    });
+  </script>
+</body>
+</html>

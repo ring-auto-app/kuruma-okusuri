@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>整備履歴一覧 | 車のお薬手帳</title>
+  
+  <link rel="stylesheet" href="common.css">
+  <script src="app.js"></script>
+  <script src="theme.js"></script>
+  
+  <style>
+    /* ページ固有のスタイル設定（34pxグリッドと付箋デザインを完全維持） */
+    :root {
+      /* 掟1：マーカー色をシステム変数に同期 */
+      --marker-color: var(--highlighter, rgba(255, 82, 82, 0.4));
+    }
+    /* 付箋カード4色は common.css の .note-0〜3 を使用 */
+
+    .vin-container { text-align: center; margin: 17px 0 34px; }
+    .vin-display-top {
+      display: inline-block; position: relative; font-size: 22px; font-weight: 900; color: #000;
+      letter-spacing: 0.05em; z-index: 1;
+      font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", "BIZ UDPGothic", Meiryo, sans-serif;
+    }
+    .vin-display-top::after {
+      content: ""; position: absolute; left: -6px; right: -6px; bottom: 2px; height: 12px;
+      background: var(--marker-color); z-index: -1; border-radius: 2px; transform: rotate(0.5deg);
+    }
+
+    .history-card {
+      display: block; position: relative; text-decoration: none; color: inherit;
+      padding: 10px 14px 10px; border-radius: 12px 12px 0 12px; margin-bottom: 34px;
+      height: calc(34px * 3 - 20px); /* 約82px：上下padding込みで3線分 */
+      overflow: hidden;
+      box-sizing: border-box;
+      box-shadow: 4px 6px 15px rgba(0,0,0,0.06); border: 1px solid rgba(0,0,0,0.03); transition: transform 0.1s;
+    }
+    .history-card:active { transform: scale(0.98); }
+    .history-card::after { 
+      content: ""; position: absolute; right: -1px; bottom: -1px; width: 0; height: 0; 
+      border-style: solid; border-width: 0 0 20px 20px; border-color: transparent transparent var(--page-bg) transparent; 
+      filter: drop-shadow(-3px -3px 4px rgba(0, 0, 0, 0.08)); 
+    }
+
+    /* 付箋カード色は common.css の .note-0〜3 を使用 */
+
+    .card-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 4px; border-bottom: 1px dashed var(--accent); padding-bottom: 4px;
+      opacity: 0.85;
+    }
+
+    /* 日付テキストにテーマカラーを適用 */
+    .header-left { font-size: 12px; font-weight: 800; color: var(--accent); white-space: nowrap; }
+    .header-right {
+      display: flex; align-items: center; justify-content: flex-end;
+      gap: 6px; font-size: 11px; font-weight: 800; color: var(--muted); overflow: hidden;
+    }
+    .header-shop { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 120px; }
+
+    .badge { font-size: 9px; font-weight: 900; color: #fff; padding: 2px 5px; border-radius: 4px; white-space: nowrap; }
+    .badge-shitei { background: #10b981; }
+    .badge-ninsyo { background: #f59e0b; }
+    .badge-other { background: #64748b; }
+
+    /* 工場別・編集状態バッジ */
+    .edit-status {
+      display: inline-flex; align-items: center; gap: 3px;
+      font-size: 10px; font-weight: 900; padding: 2px 7px; border-radius: 4px; white-space: nowrap;
+    }
+    .edit-status.editable   { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+    .edit-status.locked     { background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; }
+    .edit-status.other-shop { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+
+    .work-title { font-size: 16px; font-weight: 900; color: var(--text); margin: 4px 0 2px; line-height: 1.3; }
+    .parts-area {
+      font-size: 12px; font-weight: 700; color: var(--text); line-height: 1.3;
+      display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical;
+      overflow: hidden; opacity: 0.6;
+    }
+
+    .empty-msg { text-align: center; padding: 68px 20px; color: var(--muted); font-weight: 800; border: 2px dashed var(--line); border-radius: 18px; }
+
+    /* フィルター行 */
+    .filter-row { display: flex; gap: 8px; margin-bottom: 20px; }
+    .filter-select {
+      flex: 1; padding: 6px 10px; border: 2px solid var(--accent); border-radius: 4px;
+      font-size: 13px; font-weight: 700; color: var(--text);
+      background: var(--paper); outline: none; cursor: pointer;
+    }
+    .year-select {
+      width: 84px; flex-shrink: 0; padding: 6px 4px; border: 2px solid var(--accent);
+      border-radius: 4px; font-size: 13px; font-weight: 700; color: var(--text);
+      background: var(--paper); outline: none; cursor: pointer;
+    }
+
+    /* 部品名検索エリア */
+    .search-area { position: relative; margin-bottom: 16px; }
+    .search-wrap {
+      display: flex; align-items: center; border: 2px solid var(--accent);
+      border-radius: 10px; background: var(--paper); overflow: hidden;
+    }
+    .search-icon { padding: 0 10px; font-size: 15px; flex-shrink: 0; }
+    .search-input {
+      flex: 1; border: none; background: transparent; padding: 10px 0;
+      font-size: 14px; font-weight: 700; color: var(--text); outline: none;
+      font-family: inherit;
+    }
+    .search-input::placeholder { color: var(--muted); font-weight: 700; }
+    .search-clear {
+      padding: 0 12px; font-size: 18px; color: var(--muted); cursor: pointer;
+      border: none; background: transparent; font-weight: 900; line-height: 1;
+    }
+    .suggestion-box {
+      display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+      background: var(--paper); border: 2px solid var(--accent); border-radius: 10px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.12); z-index: 200; overflow: hidden;
+    }
+    .sugg-item {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 11px 14px; font-size: 14px; font-weight: 700; cursor: pointer;
+      border-bottom: 1px dashed var(--line);
+    }
+    .sugg-item:last-child { border-bottom: none; }
+    .sugg-item:active { background: var(--page-bg); }
+    .sugg-count {
+      font-size: 11px; color: var(--muted); font-weight: 900;
+      background: var(--page-bg); padding: 2px 7px; border-radius: 99px; flex-shrink: 0;
+    }
+    .sugg-empty { padding: 12px 14px; font-size: 13px; color: var(--muted); font-weight: 700; text-align: center; }
+    .search-active-banner {
+      font-size: 12px; font-weight: 800; color: var(--accent);
+      margin-bottom: 8px; padding: 4px 8px; background: var(--page-bg);
+      border-radius: 6px; display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <a onclick="goBackSmart('factory_search.html')" class="back-link">≪戻る</a>
+      <h1 class="title">整備履歴一覧</h1>
+    </div>
+    
+    <div class="vin-container">
+      <div class="vin-display-top" id="vinDisplay">読込中...</div>
+      <div style="margin-top:12px;">
+        <a id="vehicleInfoBtn" href="#" style="display:inline-block; padding:6px 16px; border:1.5px solid var(--accent); border-radius:999px; font-size:12px; font-weight:900; color:var(--accent); text-decoration:none; background:var(--paper);">📋 車両情報を見る・編集</a>
+      </div>
+    </div>
+
+    <div class="filter-row">
+      <select id="filterSelect" class="filter-select" onchange="applyFilter()">
+        <option value="all">新しい順（全て）</option>
+        <option value="inspection">日常点検</option>
+        <option value="factory">工場入力のみ</option>
+        <option value="dealer">事業者入力のみ</option>
+      </select>
+      <select id="yearSelect" class="year-select" onchange="applyFilter()">
+        <option value="all">全年</option>
+      </select>
+    </div>
+    <!-- 部品名検索 -->
+    <div class="search-area">
+      <div class="search-wrap">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="searchInput" class="search-input"
+               placeholder="部品名・作業内容を検索..."
+               oninput="showSuggestions()" autocomplete="off">
+        <button class="search-clear" onclick="clearSearch()">×</button>
+      </div>
+      <div class="suggestion-box" id="suggestionBox"></div>
+    </div>
+    <div class="search-active-banner" id="searchBanner"></div>
+
+    <div id="historyList"></div>
+  </div>
+
+  <script>
+    let allLogs = [];    // ページ内で保持するログデータ
+    let targetVin = '';
+    let myShopId  = '';
+
+    /* ── 検索関連 ── */
+    let currentSearchQuery = '';
+
+    function toHira(str) {
+      return str.replace(/[\u30A1-\u30F6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
+    }
+    function fuzzyScore(query, target) {
+      if (!query || !target) return 0;
+      const q = toHira(query.toLowerCase());
+      const t = toHira(target.toLowerCase());
+      if (t.includes(q)) return 2;
+      let qi = 0;
+      for (let i = 0; i < t.length && qi < q.length; i++) { if (t[i] === q[qi]) qi++; }
+      return qi === q.length ? 1 : 0;
+    }
+    function collectParts(logs) {
+      const map = new Map();
+      logs.forEach(log => {
+        const text = (log.parts || '') + ' ' + (log.title || '');
+        text.split(/[・、/／\n\s]/).forEach(p => {
+          const t = p.replace(/^[•\-]+/, '').trim();
+          if (t.length >= 2) map.set(t, (map.get(t) || 0) + 1);
+        });
+      });
+      return map;
+    }
+    function showSuggestions() {
+      const query = document.getElementById('searchInput').value.trim();
+      const box   = document.getElementById('suggestionBox');
+      currentSearchQuery = query;
+      applyFilter();
+      if (!query) { box.style.display = 'none'; return; }
+      const partsMap = collectParts(allLogs);
+      const matches  = [];
+      partsMap.forEach((cnt, name) => {
+        const score = fuzzyScore(query, name);
+        if (score > 0) matches.push({ name, cnt, score });
+      });
+      matches.sort((a, b) => b.score - a.score || b.cnt - a.cnt);
+      box.innerHTML = matches.length === 0
+        ? '<div class="sugg-empty">候補が見つかりません</div>'
+        : matches.slice(0, 8).map(m =>
+            `<div class="sugg-item" data-name="${escapeHtml(m.name)}" onclick="selectSuggestion(this.dataset.name)">
+              <span>${escapeHtml(m.name)}</span><span class="sugg-count">${m.cnt}件</span>
+            </div>`
+          ).join('');
+      box.style.display = 'block';
+    }
+    function selectSuggestion(name) {
+      document.getElementById('searchInput').value = name;
+      document.getElementById('suggestionBox').style.display = 'none';
+      currentSearchQuery = name;
+      applyFilter();
+    }
+    function clearSearch() {
+      document.getElementById('searchInput').value = '';
+      document.getElementById('suggestionBox').style.display = 'none';
+      currentSearchQuery = '';
+      applyFilter();
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      showLoading("データ取得中", "車両の履歴を検索しています...");
+
+      setTimeout(() => {
+        const urlParams = new URLSearchParams(window.location.search);
+        targetVin = urlParams.get('vin') || '';
+
+        if (!targetVin) {
+          hideLoading();
+          return location.replace("factory_search.html");
+        }
+
+        document.getElementById('vinDisplay').innerText = targetVin;
+        document.getElementById('vehicleInfoBtn').href = `vehicle_info.html?vin=${encodeURIComponent(targetVin)}&from=factory_history`;
+
+        allLogs = (typeof getLogsByVin === "function") ? getLogsByVin(targetVin) : [];
+        const listContainer = document.getElementById('historyList');
+
+        if (allLogs.length === 0) {
+          listContainer.innerHTML = `<div class="empty-msg">履歴がありません。</div>`;
+          hideLoading();
+          return;
+        }
+
+        // ログイン中の工場情報を取得
+        const currentProfile = (typeof getCurrentProfile === "function") ? getCurrentProfile() : null;
+        myShopId = currentProfile ? (currentProfile.shopId || '') : '';
+
+        // 年セレクタを構築
+        buildYearSelect(allLogs);
+        applyFilter();
+        hideLoading();
+      }, 300);
+    });
+
+    // 年セレクタを構築
+    function buildYearSelect(logs) {
+      const years = [...new Set(logs.map(log => {
+        const d = new Date(log.date); return isNaN(d) ? null : d.getFullYear();
+      }).filter(Boolean))].sort((a, b) => b - a);
+      const sel = document.getElementById('yearSelect');
+      const current = sel.value;
+      sel.innerHTML = '<option value="all">全年</option>' +
+        years.map(y => `<option value="${y}" ${y.toString() === current ? 'selected' : ''}>${y}年</option>`).join('');
+    }
+
+    // フィルター・年を適用して再描画
+    function applyFilter() {
+      const filterKey  = document.getElementById('filterSelect').value;
+      const selectedYear = document.getElementById('yearSelect').value;
+
+      // タイプフィルター
+      let logs = allLogs;
+      if (filterKey === 'inspection') {
+        logs = logs.filter(log => log.type === 'inspection' || log.type === 'inspection_user');
+      } else if (filterKey === 'factory') {
+        logs = logs.filter(log => log.shopType === 'factory');
+      } else if (filterKey === 'dealer') {
+        logs = logs.filter(log => log.shopType === 'dealer');
+      }
+
+      // 西暦フィルター
+      if (selectedYear !== 'all') {
+        logs = logs.filter(log => {
+          const d = new Date(log.date);
+          return !isNaN(d) && d.getFullYear().toString() === selectedYear;
+        });
+      }
+
+      // 常に新しい順
+      logs = [...logs].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+      // 検索フィルター（並び替え後に適用）
+      if (currentSearchQuery) {
+        logs = logs.filter(log => {
+          const text = (log.parts || '') + ' ' + (log.title || '') + ' ' + (log.memo || '');
+          return fuzzyScore(currentSearchQuery, text) > 0;
+        });
+      }
+
+      // 検索中バナー更新
+      const banner = document.getElementById('searchBanner');
+      if (currentSearchQuery) {
+        banner.textContent = `🔍「${currentSearchQuery}」で検索中 ─ ${logs.length}件`;
+        banner.style.display = 'block';
+      } else {
+        banner.style.display = 'none';
+      }
+
+      renderList(logs);
+    }
+
+    function renderList(logs) {
+      const listContainer = document.getElementById('historyList');
+      if (logs.length === 0) {
+        listContainer.innerHTML = `<div class="empty-msg">該当する履歴がありません。</div>`;
+        return;
+      }
+
+        // 日常点検の項目ID→名前マップ
+        const INSPECT_ITEM_NAMES = {
+          e1: 'エンジンオイル量', e2: '冷却水量', e3: 'エンジン始動状態', e4: '異音確認', e5: '排気の色',
+          ba1: 'バッテリー液量', ba2: '端子状態',
+          be1: 'ベルト張り', be2: 'ベルト損傷',
+          t1: 'タイヤ空気圧', t2: 'タイヤ亀裂・損傷', t3: 'タイヤ摩耗状態', t4: 'タイヤ溝深さ',
+          b1: 'ブレーキ液量', b2: 'ブレーキペダル踏みしろ', b3: '駐車ブレーキ引きしろ',
+          l1: '前照灯', l2: '制動灯', l3: '方向指示器', l4: '尾灯/車幅灯',
+          w1: 'ワイパー状態', w2: 'ウォッシャー液',
+          o1: 'エアタンク', o2: '異臭確認', o3: 'その他異常'
+        };
+
+        let html = "";
+        logs.forEach((log, index) => {
+          const colorClass = `note-${index % 4}`;
+
+          // 認証・指定バッジ
+          let bClass = "badge-other", bLabel = "一般";
+          if (log.factoryType === "指定") { bClass = "badge-shitei"; bLabel = "指定"; }
+          else if (log.factoryType === "認証") { bClass = "badge-ninsyo"; bLabel = "認証"; }
+          else if (log.shopType === 'dealer') { bLabel = "販売"; }
+
+          const mileageStr = log.mileage ? `${Number(log.mileage).toLocaleString()}km` : "";
+
+          // ===== 工場別・7日ロック判定 =====
+          const isSameShop = myShopId && log.shopId && log.shopId === myShopId;
+          const createdAt = log.createdAt || log.date;
+          const diffDays = (new Date() - new Date(createdAt)) / (1000 * 60 * 60 * 24);
+
+          let editStatusHtml = "";
+          // 一覧では工場名・スタッフ名は表示しない（詳細ページで確認）
+          if (isSameShop && diffDays < 7) {
+            const daysLeft = Math.floor(7 - diffDays);
+            editStatusHtml = `<span class="edit-status editable">✏️ 修正可（残り${daysLeft}日）</span>`;
+          } else if (isSameShop) {
+            editStatusHtml = `<span class="edit-status locked">🔒 自社記録</span>`;
+          } else if (log.shopId) {
+            editStatusHtml = `<span class="edit-status other-shop">🏢 他社記録</span>`;
+          }
+
+          html += `
+            <a href="factory_detail.html?vin=${encodeURIComponent(targetVin)}&log_id=${encodeURIComponent(log.log_id)}" class="history-card ${colorClass}">
+              <div class="card-header">
+                <div class="header-left">
+                  ${log.date} / ${mileageStr}
+                </div>
+                <div class="header-right">
+                  ${editStatusHtml}
+                  <span class="badge ${bClass}">${bLabel}</span>
+                </div>
+              </div>
+              <div class="work-title">${log.title || "一般整備"}</div>
+              <div class="parts-area">
+                ${(() => {
+                  // 日常点検ログ（checksあり）は指摘項目を名前で表示
+                  if (log.type === 'inspection' && log.checks && typeof log.checks === 'object') {
+                    const ngItems = Object.entries(log.checks)
+                      .filter(([, v]) => v !== '良' && v !== '無')
+                      .map(([k, v]) => `${INSPECT_ITEM_NAMES[k] || k}：${v}`);
+                    return ngItems.length > 0
+                      ? `<span style="color:#b45309;font-weight:900;">⚠ ${ngItems.join(' / ')}</span>`
+                      : '<span style="color:#16a34a;font-weight:900;">✅ 全項目良好</span>';
+                  }
+                  return log.parts ? log.parts : '<span style="opacity:0.3;">交換部品なし</span>';
+                })()}
+              </div>
+            </a>
+          `;
+        });
+
+      listContainer.innerHTML = html;
+    }
+  </script>
+</body>
+</html>

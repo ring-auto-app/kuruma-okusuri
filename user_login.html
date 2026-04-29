@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ユーザーログイン | 車のお薬手帳</title>
+
+  <link rel="stylesheet" href="common.css">
+  <script src="app.js"></script>
+  <script src="theme.js"></script>
+
+  <style>
+    /* login.html と同じニュートラル・ノートUI */
+    :root {
+      --paper-bg: #f7f3ea;
+      --paper-line: rgba(80, 65, 45, 0.10);
+      --text-main: #2f2a24;
+      --text-sub: #7a7167;
+      --neutral-action: #4b5563;
+      --neutral-light: rgba(75, 85, 99, 0.15);
+      --line-green: #06C755;
+    }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        linear-gradient(to bottom, var(--paper-line) 1px, transparent 1px) 0 0 / 100% 34px,
+        var(--paper-bg);
+      color: var(--text-main);
+      display: flex;
+      justify-content: center;
+      min-height: 100vh;
+      box-sizing: border-box;
+    }
+
+    .app-page {
+      width: 100%;
+      max-width: 420px;
+      display: flex;
+      flex-direction: column;
+      padding: 34px 16px 68px;
+    }
+
+    /* 戻るリンク */
+    .back-link {
+      display: block;
+      color: var(--text-sub);
+      font-size: 14px;
+      font-weight: 800;
+      text-decoration: none;
+      line-height: 34px;
+      cursor: pointer;
+      margin-bottom: 0;
+    }
+
+    /* ページタイトル */
+    .page-header {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 34px;
+    }
+
+    .page-title {
+      display: inline-block;
+      position: relative;
+      margin: 0;
+      font-size: 28px;
+      font-weight: 900;
+      letter-spacing: 0.05em;
+      z-index: 1;
+      height: 34px;
+      line-height: 34px;
+    }
+
+    .page-title::after {
+      content: "";
+      position: absolute;
+      left: -8px; right: -8px; bottom: 2px;
+      height: 12px;
+      background: rgba(0, 0, 0, 0.1);
+      border-radius: 8px;
+      z-index: -1;
+      transform: rotate(-1deg);
+    }
+
+    /* タブ切り替え */
+    .tab-bar {
+      display: flex;
+      border-radius: 12px;
+      background: var(--neutral-light);
+      padding: 4px;
+      margin-bottom: 28px;
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      background: transparent;
+      border-radius: 9px;
+      font-size: 15px;
+      font-weight: 900;
+      color: var(--text-sub);
+      cursor: pointer;
+      transition: all 0.18s;
+    }
+
+    .tab-btn.active {
+      background: white;
+      color: var(--text-main);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* LINEボタン */
+    .btn-line {
+      width: 100%;
+      padding: 16px;
+      background: var(--line-green);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 900;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      box-shadow: 0 4px 12px rgba(6, 199, 85, 0.2);
+      margin-bottom: 24px;
+      transition: transform 0.1s;
+    }
+    .btn-line:active { transform: scale(0.98); }
+
+    /* 区切り線 */
+    .divider {
+      display: flex;
+      align-items: center;
+      margin: 20px 0;
+      color: var(--text-sub);
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .divider::before, .divider::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: var(--neutral-light);
+      margin: 0 10px;
+    }
+
+    /* フォーム */
+    .field { margin-bottom: 22px; text-align: left; }
+
+    .label {
+      display: block;
+      font-size: 14px;
+      font-weight: 900;
+      margin-bottom: 8px;
+      color: var(--text-main);
+    }
+
+    .label .optional {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-sub);
+      margin-left: 4px;
+    }
+
+    .pw-wrap { position: relative; }
+
+    input[type="text"],
+    input[type="password"] {
+      width: 100%;
+      padding: 16px;
+      background: rgba(255,255,255,0.7);
+      border: 2px solid var(--neutral-light);
+      border-radius: 12px;
+      font-size: 18px;
+      font-weight: 700;
+      box-sizing: border-box;
+      text-align: center;
+      letter-spacing: 1px;
+      color: var(--text-main);
+      outline: none;
+      transition: all 0.2s;
+    }
+
+    input:focus { background: #fff; border-color: var(--neutral-action); }
+
+    .pw-toggle-btn {
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--text-sub);
+      padding: 0;
+    }
+
+    .err-msg {
+      display: none;
+      color: #dc2626;
+      font-size: 12px;
+      font-weight: 800;
+      margin-top: 5px;
+    }
+
+    /* 強度バー */
+    .strength-bar { height: 4px; border-radius: 2px; margin-top: 6px; background: var(--neutral-light); }
+    .strength-bar .fill { height: 100%; border-radius: 2px; transition: width 0.3s, background 0.3s; width: 0; }
+    .strength-label { font-size: 11px; font-weight: 800; margin-top: 3px; color: var(--text-sub); }
+
+    /* 送信ボタン */
+    .btn-submit {
+      width: 100%;
+      padding: 18px;
+      background: var(--neutral-action);
+      color: white;
+      border: none;
+      border-radius: 14px;
+      font-size: 17px;
+      font-weight: 900;
+      cursor: pointer;
+      margin-top: 10px;
+      transition: transform 0.1s, opacity 0.2s;
+    }
+    .btn-submit:active { transform: scale(0.98); }
+    .btn-submit:disabled { opacity: 0.5; }
+
+    /* 登録完了カード */
+    .result-card {
+      display: none;
+      background: #f0fdf4;
+      border: 2px solid #86efac;
+      border-radius: 16px;
+      padding: 20px;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .result-card h3 { font-size: 18px; font-weight: 900; color: #166534; margin: 0 0 12px; }
+    .result-id-box {
+      background: white;
+      border: 2px dashed #86efac;
+      border-radius: 12px;
+      padding: 14px;
+      margin: 12px 0;
+      font-size: 13px;
+      line-height: 1.8;
+      color: var(--text-main);
+      text-align: left;
+    }
+    .result-id-box strong {
+      font-size: 22px;
+      color: #166534;
+      display: block;
+      text-align: center;
+      margin: 6px 0;
+      letter-spacing: 2px;
+    }
+    .copy-hint { font-size: 11px; color: #6b7280; font-weight: 700; margin-top: 8px; display: block; text-align: center; }
+    .btn-go-login {
+      width: 100%; margin-top: 12px; padding: 14px;
+      background: var(--neutral-action); color: white;
+      border: none; border-radius: 12px;
+      font-size: 16px; font-weight: 900; cursor: pointer;
+    }
+
+    /* デモエリア */
+    .demo-area {
+      margin-top: 28px;
+      padding: 16px;
+      border: 2px dashed var(--neutral-light);
+      border-radius: 16px;
+      text-align: center;
+    }
+    .demo-title { font-size: 12px; font-weight: 900; color: var(--text-sub); margin-bottom: 12px; display: block; }
+    .demo-links { display: flex; justify-content: center; gap: 20px; }
+    .demo-links a { color: var(--text-main); font-size: 14px; font-weight: 900; text-decoration: underline; cursor: pointer; }
+
+    /* 下部リンク */
+    .register-link {
+      margin-top: 28px;
+      font-size: 13.5px;
+      font-weight: 800;
+      color: var(--text-sub);
+      text-align: center;
+    }
+    .register-link a { color: var(--text-main); font-weight: 900; text-decoration: none; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div class="app-page">
+
+    <!-- 戻るリンク -->
+    <a onclick="history.back()" class="back-link">◁ トップへ戻る</a>
+
+    <div class="page-header">
+      <h1 class="page-title">ユーザーログイン</h1>
+    </div>
+
+    <!-- タブ -->
+    <div class="tab-bar">
+      <button class="tab-btn active" id="tabLogin" onclick="switchTab('login')">ログイン</button>
+      <button class="tab-btn" id="tabRegister" onclick="switchTab('register')">新規登録</button>
+    </div>
+
+    <!-- ===== ログインタブ ===== -->
+    <div class="tab-panel active" id="panelLogin">
+
+      <button class="btn-line" onclick="doLineLogin()">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="white" style="margin-bottom:-2px;"><path d="M24 10.304c0-4.636-5.383-8.404-12-8.404s-12 3.768-12 8.404c0 4.156 4.27 7.632 10.04 8.296.39.085.92.258 1.058.59.12.285.08.733.038 1.022l-.185 1.118c-.056.34-.27 1.33 1.163.725 1.432-.605 7.732-4.554 10.545-7.796 1.01-1.202 1.34-2.03 1.34-3.955z"/></svg>
+        LINEでログイン / 登録
+      </button>
+
+      <div class="divider">またはIDでログイン</div>
+
+      <div class="field">
+        <span class="label">ログインID</span>
+        <input type="text" id="loginId" placeholder="USR-XXXX-0000" autocomplete="off"
+               oninput="clearErr('errLoginId')">
+        <div class="err-msg" id="errLoginId">⚠ ログインIDを入力してください</div>
+      </div>
+
+      <div class="field">
+        <span class="label">パスワード</span>
+        <div class="pw-wrap">
+          <input type="password" id="loginPw" placeholder="****"
+                 oninput="clearErr('errLoginPw')">
+          <button type="button" class="pw-toggle-btn" onclick="togglePw('loginPw', this)">
+            <svg id="eyeLogin" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+          </button>
+        </div>
+        <div class="err-msg" id="errLoginPw">⚠ パスワードを入力してください</div>
+      </div>
+
+      <button class="btn-submit" id="loginBtn" onclick="doUserLogin()">ログインする</button>
+
+      <div class="demo-area">
+        <span class="demo-title">【開発用デモ】</span>
+        <div class="demo-links">
+          <a onclick="doDemoUserLogin()">デモで体験する</a>
+        </div>
+      </div>
+
+      <div class="register-link">
+        アカウントをお持ちでない方は
+        <a onclick="switchTab('register')">新規登録はこちら</a>
+      </div>
+
+    </div>
+
+    <!-- ===== 新規登録タブ ===== -->
+    <div class="tab-panel" id="panelRegister">
+
+      <button class="btn-line" onclick="doLineLogin()">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="white" style="margin-bottom:-2px;"><path d="M24 10.304c0-4.636-5.383-8.404-12-8.404s-12 3.768-12 8.404c0 4.156 4.27 7.632 10.04 8.296.39.085.92.258 1.058.59.12.285.08.733.038 1.022l-.185 1.118c-.056.34-.27 1.33 1.163.725 1.432-.605 7.732-4.554 10.545-7.796 1.01-1.202 1.34-2.03 1.34-3.955z"/></svg>
+        LINEで登録する
+      </button>
+
+      <div class="divider">またはIDで登録</div>
+
+      <!-- 登録完了カード -->
+      <div class="result-card" id="resultCard">
+        <h3>✅ 登録完了！</h3>
+        <div class="result-id-box">
+          ログインIDが発行されました。<br>
+          必ずメモや写真に保存してください。
+          <strong id="resultUserId">—</strong>
+          パスワードは登録時に設定したものです。
+        </div>
+        <span class="copy-hint">※ このIDを忘れるとログインできなくなります</span>
+        <button class="btn-go-login" onclick="switchTab('login')">ログイン画面に進む</button>
+      </div>
+
+      <!-- 登録フォーム -->
+      <div id="registerForm">
+        <div class="field">
+          <span class="label">ニックネーム <span class="optional">※任意</span></span>
+          <input type="text" id="regName" placeholder="例：田中 太郎">
+        </div>
+
+        <div class="field">
+          <span class="label">パスワード</span>
+          <div class="pw-wrap">
+            <input type="password" id="regPw" placeholder="****"
+                   oninput="checkStrength(this.value); clearErr('errRegPw')">
+            <button type="button" class="pw-toggle-btn" onclick="togglePw('regPw', this)">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+            </button>
+          </div>
+          <div class="strength-bar"><div class="fill" id="strengthFill"></div></div>
+          <div class="strength-label" id="strengthLabel">強度：未入力</div>
+          <div class="err-msg" id="errRegPw">⚠ パスワードを入力してください</div>
+        </div>
+
+        <div class="field">
+          <span class="label">パスワード（確認）</span>
+          <div class="pw-wrap">
+            <input type="password" id="regPwConf" placeholder="****"
+                   oninput="clearErr('errRegPwConf')">
+            <button type="button" class="pw-toggle-btn" onclick="togglePw('regPwConf', this)">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+            </button>
+          </div>
+          <div class="err-msg" id="errRegPwConf">⚠ パスワードが一致しません</div>
+        </div>
+
+        <button class="btn-submit" id="registerBtn" onclick="doUserRegister()">IDを発行して登録する</button>
+      </div>
+
+      <div class="register-link">
+        すでにIDをお持ちの方は
+        <a onclick="switchTab('login')">ログインはこちら</a>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    /* ===== タブ切り替え ===== */
+    function switchTab(tab) {
+      const isLogin = (tab === 'login');
+      document.getElementById('tabLogin').classList.toggle('active', isLogin);
+      document.getElementById('tabRegister').classList.toggle('active', !isLogin);
+      document.getElementById('panelLogin').classList.toggle('active', isLogin);
+      document.getElementById('panelRegister').classList.toggle('active', !isLogin);
+    }
+
+    /* ===== バリデーション ===== */
+    function clearErr(id) { document.getElementById(id).style.display = 'none'; }
+    function showErr(id)  { document.getElementById(id).style.display = 'block'; }
+
+    /* ===== パスワード表示切替 ===== */
+    function togglePw(inputId, btn) {
+      const el = document.getElementById(inputId);
+      const eyeOpen  = `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>`;
+      const eyeClose = `<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line>`;
+      if (el.type === 'password') {
+        el.type = 'text';
+        btn.querySelector('svg').innerHTML = eyeClose;
+      } else {
+        el.type = 'password';
+        btn.querySelector('svg').innerHTML = eyeOpen;
+      }
+    }
+
+    /* ===== パスワード強度 ===== */
+    function checkStrength(val) {
+      const fill  = document.getElementById('strengthFill');
+      const label = document.getElementById('strengthLabel');
+      if (!val) { fill.style.width = '0'; label.textContent = '強度：未入力'; return; }
+      let score = 0;
+      if (val.length >= 8)          score++;
+      if (val.length >= 12)         score++;
+      if (/[A-Z]/.test(val))        score++;
+      if (/[0-9]/.test(val))        score++;
+      if (/[^A-Za-z0-9]/.test(val)) score++;
+      const levels = [
+        { pct: '20%', color: '#ef4444', text: '弱い' },
+        { pct: '40%', color: '#f97316', text: 'やや弱い' },
+        { pct: '60%', color: '#eab308', text: '普通' },
+        { pct: '80%', color: '#84cc16', text: '強い' },
+        { pct: '100%', color: '#10b981', text: '非常に強い' },
+      ];
+      const lv = levels[Math.min(score, 4)];
+      fill.style.width    = lv.pct;
+      fill.style.background = lv.color;
+      label.textContent   = `強度：${lv.text}`;
+      label.style.color   = lv.color;
+    }
+
+    /* ===== LINEログイン（将来実装用プレースホルダー） ===== */
+    function doLineLogin() {
+      showToast('info', 'LINE連携は近日公開予定です');
+    }
+
+    /* ===== デモログイン ===== */
+    function doDemoUserLogin() {
+      showLoading('デモ認証中', 'テスト環境を準備しています...');
+      setTimeout(() => {
+        if (typeof seedDemoEnvironment === 'function') seedDemoEnvironment('user');
+        login({
+          userId:   'U-DEMO01',
+          userName: 'デモユーザー',
+          loginId:  'USR-DEMO-0000',
+          role:     'user',
+          shopType: 'user'
+        });
+        location.replace('user_home.html');
+      }, 600);
+    }
+
+    /* ===== ユーザーログイン ===== */
+    async function doUserLogin() {
+      const id = document.getElementById('loginId').value.trim();
+      const pw = document.getElementById('loginPw').value;
+      let hasErr = false;
+      clearErr('errLoginId'); clearErr('errLoginPw');
+      if (!id) { showErr('errLoginId'); hasErr = true; }
+      if (!pw) { showErr('errLoginPw'); hasErr = true; }
+      if (hasErr) return;
+
+      const btn = document.getElementById('loginBtn');
+      btn.disabled = true;
+      showLoading('認証中', 'ログイン情報を照合しています...');
+
+      try {
+        const res  = await fetch(GAS_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({ action: 'login', loginId: id, password: pw })
+        });
+        const data = await res.json();
+
+        if (data.success && (data.profile.role === 'user' || data.profile.shopType === 'user')) {
+          login(data.profile);
+          location.replace('user_home.html');
+        } else if (data.success) {
+          hideLoading();
+          showToast('error', 'ユーザー用IDではありません。事業者ログインをご利用ください。');
+        } else {
+          hideLoading();
+          showToast('error', 'IDまたはパスワードが違います');
+        }
+      } catch (e) {
+        hideLoading();
+        showToast('error', '通信エラーが発生しました');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    /* ===== 新規登録 ===== */
+    async function doUserRegister() {
+      const name   = document.getElementById('regName').value.trim();
+      const pw     = document.getElementById('regPw').value;
+      const pwConf = document.getElementById('regPwConf').value;
+      let hasErr = false;
+      clearErr('errRegPw'); clearErr('errRegPwConf');
+      if (!pw)         { showErr('errRegPw'); hasErr = true; }
+      if (pw !== pwConf) { showErr('errRegPwConf'); hasErr = true; }
+      if (hasErr) return;
+
+      const btn = document.getElementById('registerBtn');
+      btn.disabled = true;
+      showLoading('登録中', 'ユーザーIDを発行しています...');
+
+      try {
+        const res  = await fetch(GAS_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({ action: 'user_register', userName: name, password: pw })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+          hideLoading();
+          document.getElementById('resultUserId').textContent = data.loginId;
+          document.getElementById('resultCard').style.display = 'block';
+          document.getElementById('registerForm').style.display = 'none';
+        } else {
+          hideLoading();
+          showToast('error', '登録失敗: ' + (data.error || '不明なエラー'));
+        }
+      } catch (e) {
+        hideLoading();
+        showToast('error', '通信エラーが発生しました');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    /* ===== 既にログイン済みなら user_home.html へ ===== */
+    window.addEventListener('DOMContentLoaded', () => {
+      const profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+      if (profile && (profile.shopType === 'user' || profile.role === 'user')) {
+        location.replace('user_home.html');
+      }
+    });
+  </script>
+</body>
+</html>

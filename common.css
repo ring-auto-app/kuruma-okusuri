@@ -1,0 +1,308 @@
+@charset "UTF-8";
+
+/* =========================================
+   RinG Auto 共通スタイルシート (common.css)
+========================================= */
+
+:root {
+  /* デフォルト（一般/イエロー）※theme.jsで上書きされます */
+  --page-bg: #f7f3ea;                        /* 全ロール共通ベージュ */
+  --page-line: rgba(180, 145, 10, 0.13);     /* 罫線：テーマカラー薄め */
+  --bg: #f7f3ea;                             /* 全ロール共通ベージュ */
+  --paper: #ffffff;        
+  --line: #fde047;         
+  --text: #2f2a24;         
+  --muted: #a16207;        
+  --accent: #eab308;       
+  --highlighter: rgba(234, 179, 8, 0.35); 
+  --shadow: 0 4px 10px rgba(0,0,0,0.05); 
+}
+
+body {
+  margin: 0; 
+  font-family: -apple-system, sans-serif; 
+  background: linear-gradient(to bottom, var(--page-line) 1px, transparent 1px) 0 0 / 100% 34px, var(--page-bg);
+  color: var(--text); 
+  padding: 34px 16px 68px; 
+  line-height: 34px; 
+}
+
+.container { width: 100%; max-width: 600px; margin: 0 auto; }
+
+/* =========================================
+   ヘッダー・タイトル周り
+========================================= */
+.header { margin-bottom: 34px; display: block; }
+
+.back-link {
+  color: var(--muted); 
+  text-decoration: none; 
+  font-size: 14px; 
+  font-weight: 800; 
+  display: block; 
+  width: fit-content;    
+  cursor: pointer;       
+  line-height: 34px; 
+  margin-bottom: 0;
+}
+
+.title {
+  font-size: 24px; font-weight: 900; margin: 0;
+  position: relative; display: inline-block; width: max-content; line-height: 34px;
+}
+
+.title::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 4px; height: 12px;
+  background: var(--highlighter); z-index: -1; border-radius: 4px; transform: rotate(-1deg);
+}
+
+/* =========================================
+   付箋カード 4色（ベージュ系・全ロール共通）
+   ※ note-${index % 4} で色をローテーションして使用
+========================================= */
+.note-0 { background-color: #fff2f0; } /* 淡ピンク（赤系） */
+.note-1 { background-color: #eff5ff; } /* 淡ブルー */
+.note-2 { background-color: #fffaec; } /* 淡イエロー */
+.note-3 { background-color: #f0faf4; } /* 淡グリーン */
+
+/* =========================================
+   枠・カード・ボックスのデザイン
+========================================= */
+.card, .car-info, .basic-info-card, .detail-card {
+  background: rgba(255,255,255,0.7); 
+  border: 2px dashed var(--accent);  
+  border-radius: 12px;               
+  padding: 16px;                     
+  margin-bottom: 34px;               
+  box-shadow: var(--shadow);         
+}
+
+/* =========================================
+   入力フォーム
+========================================= */
+.field { margin-bottom: 17px; }
+.label { display: block; font-size: 12px; font-weight: 800; color: var(--muted); line-height: 17px; margin-bottom: 4px; }
+
+input[type="text"], input[type="date"], input[type="password"], input[type="number"], select, textarea {
+  width: 100%; padding: 8px 12px; border: 2px solid var(--line); border-radius: 8px;
+  background: var(--paper); font-size: 16px; font-weight: 700; color: var(--text); box-sizing: border-box; outline: none;
+}
+input[type="text"]:focus, input[type="date"]:focus, input[type="password"]:focus, input[type="number"]:focus, select:focus, textarea:focus { border-color: var(--accent); }
+textarea { line-height: 24px; min-height: 72px; }
+
+/* =========================================
+   保存ボタン
+========================================= */
+.save-btn {
+  width: 100%; max-width: 400px; height: 56px; background: var(--accent); color: white; border: none;
+  border-radius: 999px; font-size: 18px; font-weight: 900; box-shadow: 0 8px 25px var(--highlighter); cursor: pointer;
+  transition: 0.2s; display: block; margin: 0 auto;
+}
+.save-btn:active { transform: scale(0.96); }
+
+/* =========================================
+   点検チェックリスト
+========================================= */
+.category-title { font-size: 16px; font-weight: 900; color: var(--text); margin: 34px 0 0 0; border-bottom: 2px solid var(--accent); height: 34px; line-height: 34px; }
+.item-row { display: flex; justify-content: space-between; align-items: center; height: 34px; border-bottom: 1px dashed var(--line); }
+.item-name { font-size: 14px; font-weight: 800; color: var(--text); flex: 1; }
+
+.options { display: flex; gap: 8px; }
+.opt-radio { display: none; }
+.opt-label { position: relative; display: inline-flex; justify-content: center; align-items: center; width: 30px; height: 30px; font-size: 14px; font-weight: 800; color: #9ca3af; cursor: pointer; user-select: none; border-radius: 50%; }
+.opt-radio:checked + .opt-label { color: var(--text); font-weight: 900; }
+.opt-radio:checked + .opt-label::before { content: ""; position: absolute; top: 50%; left: 50%; width: 28px; height: 28px; transform: translate(-50%, -50%); border: 3px solid var(--accent); border-radius: 50%; pointer-events: none; }
+
+
+/* ========================================
+  13. 読み込み / 書き込み中オーバーレイ (最高のぐるぐるアニメーション)
+======================================== */
+.loading-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  /* 背景を少し白っぽくして、すりガラス効果（blur）をかける */
+  background: rgba(250, 247, 241, 0.92);
+  backdrop-filter: blur(4px);
+  z-index: 9999; /* 画面の一番手前に持ってくる */
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  padding: 20px;
+  box-sizing: border-box;
+  text-align: center;
+}
+
+/* JSから「.show」というクラスが付けられたら画面に表示される */
+.loading-overlay.show {
+  display: flex;
+}
+
+.loading-arrows {
+  position: relative;
+  width: 90px;
+  height: 90px;
+  margin-bottom: 16px;
+}
+
+.loading-arrow {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  transform-origin: 45px 45px;
+  animation: spinAround 1.2s linear infinite;
+}
+
+.loading-arrow::before {
+  content: "➜";
+  display: block;
+  font-size: 28px;
+  line-height: 22px;
+  font-weight: 900;
+}
+
+/* 3つの役職カラー */
+.loading-arrow.arrow-blue { color: #2c7be5; }
+.loading-arrow.arrow-red { color: #d94f4f; }
+.loading-arrow.arrow-yellow { color: #d4a514; }
+
+.loading-arrow:nth-child(1) { transform: rotate(0deg) translateX(28px); animation-delay: 0s; }
+.loading-arrow:nth-child(2) { transform: rotate(120deg) translateX(28px); animation-delay: -0.4s; }
+.loading-arrow:nth-child(3) { transform: rotate(240deg) translateX(28px); animation-delay: -0.8s; }
+
+@keyframes spinAround {
+  0% { opacity: 0.25; }
+  50% { opacity: 1; }
+  100% { opacity: 0.25; }
+}
+
+.loading-title {
+  font-size: 18px;
+  font-weight: 900;
+  margin-bottom: 6px;
+}
+
+.loading-text {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted); /* RinG Autoの共通サブカラーに変更しました */
+  line-height: 1.6;
+}
+
+/* =========================================
+   トースト通知
+========================================= */
+.ring-toast {
+  position: fixed;
+  bottom: 90px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  padding: 12px 24px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 900;
+  color: #fff;
+  white-space: nowrap;
+  z-index: 10000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s, transform 0.2s;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+}
+.ring-toast--show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+.ring-toast--success { background: #16a34a; }
+.ring-toast--error   { background: #dc2626; }
+.ring-toast--info    { background: #2563eb; }
+
+/* =========================================
+   保存前確認（整備入力・車両登録共通）
+========================================= */
+.ring-save-confirm {
+  position: fixed;
+  inset: 0;
+  z-index: 11000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  box-sizing: border-box;
+}
+.ring-save-confirm__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+}
+.ring-save-confirm__card {
+  position: relative;
+  width: 100%;
+  max-width: 400px;
+  max-height: 85vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper, #fff);
+  border-radius: 16px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.2);
+  border: 2px solid var(--line);
+}
+.ring-save-confirm__title {
+  font-size: 17px;
+  font-weight: 900;
+  color: var(--accent);
+  padding: 16px 18px 8px;
+  flex-shrink: 0;
+}
+.ring-save-confirm__lead {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  margin: 0;
+  padding: 0 18px 12px;
+  line-height: 1.5;
+}
+.ring-save-confirm__body {
+  padding: 0 18px;
+  overflow-y: auto;
+  flex: 1;
+  font-size: 13px;
+}
+.ring-save-confirm__row {
+  display: grid;
+  grid-template-columns: 38% 1fr;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+  align-items: start;
+}
+.ring-save-confirm__row:last-child { border-bottom: none; }
+.ring-save-confirm__k { font-weight: 800; color: var(--muted); }
+.ring-save-confirm__v { font-weight: 700; color: var(--text); word-break: break-all; }
+.ring-save-confirm__actions {
+  display: flex;
+  gap: 10px;
+  padding: 14px 18px 16px;
+  flex-shrink: 0;
+  border-top: 1px solid var(--line);
+}
+.ring-save-confirm__btn {
+  flex: 1;
+  padding: 14px 10px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 900;
+  cursor: pointer;
+  border: none;
+}
+.ring-save-confirm__btn--secondary {
+  background: var(--page-bg);
+  color: var(--text);
+  border: 2px solid var(--line);
+}
+.ring-save-confirm__btn--primary {
+  background: var(--accent);
+  color: #fff;
+}

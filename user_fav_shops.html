@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>かかりつけの工場・お店 | 車のお薬手帳</title>
+  
+  <link rel="stylesheet" href="common.css">
+  <script src="app.js"></script>
+  <script src="theme.js"></script>
+  
+  <style>
+    /* 34pxグリッド設計：ノートの世界観に統一 */
+    body {
+      margin: 0; font-family: -apple-system, sans-serif;
+      background: linear-gradient(to bottom, var(--page-line) 1px, transparent 1px) 0 0 / 100% 34px, var(--page-bg);
+      color: var(--text); padding: 34px 16px 100px; line-height: 34px;
+    }
+    .container { max-width: 600px; margin: 0 auto; }
+    
+    .header { margin-bottom: 34px; border-bottom: 2px dashed var(--accent); padding-bottom: 16px; }
+    /* 戻る先を user_home.html に固定 */
+    .back-link { color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 800; display: block; cursor: pointer; height: 34px; line-height: 34px; }
+    
+    .title { 
+      font-size: 24px; font-weight: 900; color: var(--text); margin: 0; 
+      position: relative; display: inline-block; line-height: 34px;
+    }
+    .title::after {
+      content: ""; position: absolute; left: 0; right: 0; bottom: 4px; height: 12px;
+      background: var(--highlighter); z-index: -1; border-radius: 4px; transform: rotate(-1deg);
+    }
+    .subtitle { font-size: 12px; color: var(--muted); font-weight: 700; line-height: 1.5; margin-top: 8px; }
+
+    .shop-card {
+      background: var(--paper); border: 2px solid var(--line);
+      border-radius: 16px; padding: 20px; box-shadow: var(--shadow);
+      margin-bottom: 20px; line-height: 1.6;
+    }
+    .shop-header { margin-bottom: 16px; border-bottom: 1px dashed var(--line); padding-bottom: 12px; }
+    .shop-name { font-size: 18px; font-weight: 900; color: var(--text); margin: 0 0 4px 0; }
+    .shop-cert { font-size: 11px; font-weight: 800; color: var(--muted); background: var(--page-bg); padding: 4px 8px; border-radius: 6px; display: inline-block; border: 1px solid var(--line); }
+    
+    .shop-address { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 16px; opacity: 0.8; }
+
+    .action-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+    .btn-action {
+      flex: 1; min-width: 80px; padding: 10px 4px; text-align: center; border-radius: 10px;
+      font-size: 12px; font-weight: 900; text-decoration: none; color: white;
+      display: flex; align-items: center; justify-content: center; gap: 4px;
+      transition: transform 0.1s; box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+    .btn-action:active { transform: scale(0.95); }
+    
+    .btn-tel { background: #3b82f6; } 
+    .btn-mail { background: #64748b; } 
+    .btn-line { background: #06C755; } 
+    .btn-map { background: #f59e0b; }
+
+    .disabled-btn { background: #cbd5e1 !important; color: #94a3b8 !important; pointer-events: none; box-shadow: none; }
+
+    .remove-area { text-align: right; margin-top: 16px; }
+    .btn-remove { color: #ef4444; font-size: 12px; font-weight: 800; background: none; border: none; cursor: pointer; text-decoration: underline; padding: 4px; }
+
+    .empty-msg { text-align: center; background: var(--paper); padding: 34px 16px; border-radius: 16px; border: 2px dashed var(--line); line-height: 34px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <a onclick="goBackSmart('user_home.html')" class="back-link">◁ 戻る</a>
+      <h1 class="title">かかりつけの工場・お店</h1>
+      <div class="subtitle">車検や修理の相談、予約などを<br>いつものお店に直接連絡できます。</div>
+      <p style="margin:12px 0 0; font-size:13px; font-weight:800;">
+        <a href="user_fav_shop_edit.html" style="color:var(--accent);">＋ 検索して追加</a>
+        ・ <a href="user_mypage.html" style="color:var(--muted);">マイページ</a>
+      </p>
+    </div>
+
+    <div id="shopListArea"></div>
+  </div>
+
+  <script>
+    window.addEventListener('DOMContentLoaded', () => {
+      renderFavShops();
+    });
+
+    function renderFavShops() {
+      showLoading("照会中", "お店の情報を読み込んでいます...");
+
+      setTimeout(() => {
+        let favShops = JSON.parse(localStorage.getItem('nappy_fav_shops_v1') || '[]');
+
+        const container = document.getElementById('shopListArea');
+        let html = "";
+
+        if (favShops.length === 0) {
+          container.innerHTML = '<div class="empty-msg">まだかかりつけが登録されていません。<br><a href="user_fav_shop_edit.html" style="color:var(--accent);font-weight:900;">検索して追加</a> または <a href="user_mypage.html" style="color:var(--accent);font-weight:900;">マイページ</a> からどうぞ。</div>';
+          hideLoading();
+          return;
+        }
+
+        favShops.forEach(shop => {
+          const telBtn = shop.tel ? `<a href="tel:${shop.tel}" class="btn-action btn-tel">📞 電話</a>` : `<span class="btn-action disabled-btn">📞 なし</span>`;
+          const mailBtn = shop.email ? `<a href="mailto:${shop.email}" class="btn-action btn-mail">✉️ メール</a>` : `<span class="btn-action disabled-btn">✉️ なし</span>`;
+          const lineBtn = shop.lineUrl && shop.lineUrl !== "#" ? `<a href="${shop.lineUrl}" target="_blank" class="btn-action btn-line">💬 LINE</a>` : `<span class="btn-action disabled-btn">💬 なし</span>`;
+          
+          const mapUrl = shop.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(shop.address)}` : '#';
+          const mapBtn = shop.address ? `<a href="${mapUrl}" target="_blank" class="btn-action btn-map">📍 MAP</a>` : `<span class="btn-action disabled-btn">📍 なし</span>`;
+
+          html += `
+            <div class="shop-card" id="card-${shop.shopId}">
+              <div class="shop-header">
+                <h2 class="shop-name">${escapeHtml(shop.shopName)}</h2>
+                ${shop.factoryNumber ? `<div class="shop-cert">${escapeHtml(shop.factoryNumber)}</div>` : ''}
+              </div>
+              
+              <div class="shop-address">
+                ${shop.address ? escapeHtml(shop.address) : '住所未登録'}
+              </div>
+              
+              <div class="action-btns">
+                ${telBtn}
+                ${mailBtn}
+                ${lineBtn}
+                ${mapBtn}
+              </div>
+
+              <div class="remove-area">
+                <a href="user_fav_shop_edit.html?shopId=${encodeURIComponent(shop.shopId)}" style="font-size:12px;font-weight:800;color:var(--accent);margin-right:12px;">編集</a>
+                <button class="btn-remove" onclick="removeShop('${shop.shopId}')">登録を解除する</button>
+              </div>
+            </div>
+          `;
+        });
+        
+        container.innerHTML = html;
+        hideLoading();
+      }, 300);
+    }
+
+    function removeShop(shopId) {
+      if(confirm("このお店をお気に入りから解除しますか？")) {
+        const card = document.getElementById(`card-${shopId}`);
+        if(card) {
+          card.style.opacity = '0.5';
+          card.style.pointerEvents = 'none';
+          
+          let favShops = JSON.parse(localStorage.getItem('nappy_fav_shops_v1') || '[]');
+          favShops = favShops.filter(s => s.shopId !== shopId);
+          localStorage.setItem('nappy_fav_shops_v1', JSON.stringify(favShops));
+          
+          alert("解除しました。");
+          renderFavShops();
+        }
+      }
+    }
+
+    function escapeHtml(str) {
+      if (!str) return "";
+      return String(str).replace(/[&<>"'`=\/]/g, function (s) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '/': '&#x2F;', '`': '&#x60;', '=': '&#x3D;' }[s];
+      });
+    }
+  </script>
+</body>
+</html>

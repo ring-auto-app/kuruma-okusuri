@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>事業者ホーム | 車のお薬手帳</title>
+  
+  <link rel="stylesheet" href="common.css">
+  <link rel="stylesheet" href="ads/ring-ads.css">
+  <script src="app.js"></script>
+  <script src="theme.js"></script>
+  <script src="ads/ads.js"></script>
+  
+  <style>
+    /* 34pxグリッド設計および事業者用プレーンデザインを完全維持 */
+    body {
+      margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        linear-gradient(to bottom, var(--page-line) 1px, transparent 1px) 0 0 / 100% 34px,
+        var(--page-bg);
+      color: var(--text); display: flex; justify-content: center; min-height: 100vh;
+    }
+
+    .app-page {
+      width: 100%; max-width: 600px; display: flex; flex-direction: column;
+      padding: 34px 16px 68px 16px; 
+    }
+
+    .page-header { display: flex; flex-direction: column; align-items: flex-start; margin-bottom: 34px; }
+
+    .page-title {
+      display: inline-block; position: relative; margin: 0;
+      font-size: 28px; font-weight: 900; letter-spacing: 0.05em;
+      z-index: 1; height: 34px; line-height: 34px; 
+    }
+    .page-title::after {
+      content: ""; position: absolute; left: -8px; right: -8px; bottom: 2px;
+      height: 12px; background: var(--highlighter); border-radius: 8px;
+      z-index: -1; transform: rotate(-1deg);
+    }
+
+    .shop-info { margin: 0; color: var(--muted); font-size: 14px; font-weight: 800; height: 34px; line-height: 34px; }
+    .fac-code { margin: 0; color: var(--accent); font-size: 13px; font-weight: 900; height: 34px; line-height: 34px; }
+
+    .menu-grid { display: flex; flex-direction: column; gap: 24px; margin-top: 17px; }
+
+    .menu-card {
+      display: flex; align-items: center; background: var(--paper);
+      border: 2px solid var(--highlighter); border-radius: 16px;
+      padding: 20px 24px; text-decoration: none; color: var(--text);
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.05); transition: all 0.2s ease;
+    }
+    .menu-card:hover, .menu-card:active {
+      transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1); 
+      border-color: var(--accent); /* ホバー時にテーマカラーの枠線にする */
+    }
+
+    .menu-card.disabled { background: #f8f9fa; border-color: #cbd5e1; opacity: 0.6; cursor: not-allowed; box-shadow: none; transform: none; }
+    /* ロックバッジの色は共通の赤で固定 */
+    .badge-disabled { background: #ef4444; color: #ffffff; font-size: 11px; padding: 2px 8px; border-radius: 99px; margin-left: 8px; display: none; vertical-align: middle; }
+
+    .menu-icon {
+      font-size: 32px; background: var(--page-bg); width: 64px; height: 64px;
+      border-radius: 16px; display: flex; align-items: center; justify-content: center;
+      border: 1px solid var(--line); flex-shrink: 0; margin-right: 16px;
+    }
+
+    .menu-text { display: flex; flex-direction: column; }
+    .menu-name { font-size: 18px; font-weight: 900; color: var(--accent); margin: 0 0 4px; }
+    .menu-desc { font-size: 12px; font-weight: 700; color: var(--muted); line-height: 1.5; }
+  </style>
+</head>
+<body>
+
+  <div class="app-page">
+    <header class="page-header">
+      <h1 class="page-title">事業者ホーム</h1>
+      <div class="shop-info" id="shopName">ログイン確認中...</div>
+      <div class="fac-code" id="facCodeDisplay"></div>
+    </header>
+
+    <div class="menu-grid">
+      <a href="dealer_input.html" class="menu-card" id="btnInput">
+        <div class="menu-icon">🏢</div>
+        <div class="menu-text">
+          <h2 class="menu-name">販売・点検記録入力 <span id="badgeViewer" class="badge-disabled">ロック中</span></h2>
+          <div class="menu-desc">納車前点検や販売時の<br>記録を登録します</div>
+        </div>
+      </a>
+
+      <a href="factory_search.html" class="menu-card">
+        <div class="menu-icon">🔍</div>
+        <div class="menu-text">
+          <h2 class="menu-name">履歴検索</h2>
+          <div class="menu-desc">車台番号やQRから<br>過去の履歴を確認します</div>
+        </div>
+      </a>
+
+      <a href="vehicles.html" class="menu-card">
+        <div class="menu-icon">🚙</div>
+        <div class="menu-text">
+          <h2 class="menu-name">管理車両</h2>
+          <div class="menu-desc">在庫車や販売車両の<br>データを確認します</div>
+        </div>
+      </a>
+    </div>
+
+    <div class="ring-ad-section" aria-hidden="true" style="display:none;">
+      <div class="ring-ad-section-label">おすすめ・お知らせ</div>
+      <div class="ring-ad-list"></div>
+    </div>
+  </div>
+
+  <script>
+    window.addEventListener('DOMContentLoaded', () => {
+      showLoading("認証中", "ログイン情報を確認しています...");
+
+      setTimeout(() => {
+        const profile = typeof getCurrentProfile === "function" ? getCurrentProfile() : null;
+
+        if (!profile) {
+          hideLoading();
+          alert("ログイン情報の有効期限が切れました。再度ログインしてください。");
+          location.replace("login.html");
+          return;
+        }
+
+        document.getElementById("shopName").innerText = "ログイン中: " + profile.shopName + " (担当: " + (profile.displayName || profile.staffId) + ")";
+        document.getElementById("facCodeDisplay").innerText = "事業者ID: " + profile.shopId;
+
+        if (profile.role === 'viewer') {
+          const btnInput = document.getElementById('btnInput');
+          const badgeViewer = document.getElementById('badgeViewer');
+          
+          btnInput.classList.add('disabled');
+          btnInput.href = "javascript:void(0);";
+          badgeViewer.style.display = "inline-block";
+          
+          btnInput.onclick = function() {
+            alert("【閲覧専用】入力機能は制限されています。");
+            return false;
+          };
+        }
+        hideLoading();
+        if (typeof ringAdsInit === 'function') ringAdsInit('dealer_home');
+      }, 300);
+    });
+  </script>
+</body>
+</html>

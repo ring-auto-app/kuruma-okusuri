@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>整備カルテ詳細 | 車のお薬手帳</title>
+  
+  <link rel="stylesheet" href="common.css">
+  <script src="app.js?v=2"></script>
+  <script src="theme.js"></script>
+  
+  <style>
+    /* ========================================
+       このページ特有のレイアウト設定（34pxの罫線に完全同期）
+    ======================================== */
+    .single-row { margin: 0 16px; }
+    .row { display: flex; gap: 16px; margin: 0 16px; }
+    .col { flex: 1; min-width: 0; }
+    
+    /* 段落あけ用のクラス（1行分=34px空ける） */
+    .spaced { margin-top: 34px; }
+
+    /* 横並び項目 */
+    .field-inline {
+      display: flex; align-items: baseline; gap: 8px; min-height: 34px;
+    }
+    .field-inline .label {
+      font-size: 12px; font-weight: 900; 
+      color: #dc2626; /* ★絶対赤の掟！ */
+      margin: 0; line-height: 34px; white-space: nowrap;
+    }
+    .field-inline .value {
+      font-size: 15px; font-weight: 700; color: var(--text);
+      margin: 0; line-height: 34px; white-space: nowrap;
+      overflow: hidden; text-overflow: ellipsis;
+    }
+
+    /* 縦並び項目（長文になるもの） */
+    .field-stacked {
+      display: flex; flex-direction: column; margin: 0 16px;
+    }
+    .field-stacked .label {
+      font-size: 12px; font-weight: 900; 
+      color: #dc2626; /* ★絶対赤の掟！ */
+      line-height: 34px; margin: 0;
+    }
+    .field-stacked .value {
+      font-size: 15px; font-weight: 700; color: var(--text);
+      line-height: 34px; min-height: 34px; margin: 0;
+      white-space: pre-wrap; word-break: break-all;
+    }
+
+    #photoSection { display: none; margin: 34px 16px; }
+    .photo-preview { width: 100%; max-width: 400px; border-radius: 8px; border: 2px solid var(--line); margin-top: 10px; }
+
+    /* 編集エリア */
+    #editArea { margin: 34px 16px 0; }
+
+    .edit-btn {
+      display: block; width: 100%; padding: 16px; text-align: center;
+      background: var(--accent); color: #fff; border: none; border-radius: 14px;
+      font-size: 16px; font-weight: 900; text-decoration: none; cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1); transition: transform 0.1s;
+    }
+    .edit-btn:active { transform: scale(0.97); }
+
+  </style>
+</head>
+<body>
+  
+  <div class="container">
+    <div class="header">
+      <a id="backBtnTop" class="back-link">≪戻る</a>
+      <h1 class="title">整備詳細</h1>
+    </div>
+
+    <div class="field-inline single-row">
+      <span class="label">車台番号(VIN)</span>
+      <span class="value" id="outVin">---</span>
+    </div>
+
+    <div class="field-inline single-row">
+      <span class="label">整備項目</span>
+      <span class="value" id="outTitle">---</span>
+    </div>
+
+    <div class="row">
+      <div class="col">
+        <div class="field-inline"><span class="label">作業日</span><span class="value" id="outDate">---</span></div>
+      </div>
+      <div class="col">
+        <div class="field-inline"><span class="label">走行距離</span><span class="value" id="outMileage">---</span></div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="col">
+        <div class="field-inline"><span class="label">型式</span><span class="value" id="outModel">---</span></div>
+      </div>
+      <div class="col">
+        <div class="field-inline"><span class="label">原動機型式</span><span class="value" id="outEngine">---</span></div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="col">
+        <div class="field-inline"><span class="label">類別区分番号</span><span class="value" id="outClass">---</span></div>
+      </div>
+      <div class="col">
+        <div class="field-inline"><span class="label">型式指定番号</span><span class="value" id="outTypeDesig">---</span></div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="col">
+        <div class="field-inline"><span class="label">次回車検日</span><span class="value" id="outShaken">---</span></div>
+      </div>
+      <div class="col"></div>
+    </div>
+
+    <div class="field-stacked spaced">
+      <span class="label">交換部品・作業内容</span>
+      <div class="value" id="outParts">---</div>
+    </div>
+
+    <div class="field-stacked spaced">
+      <span class="label">整備メモ</span>
+      <div class="value" id="outMemo">---</div>
+    </div>
+
+    <div class="field-stacked spaced">
+      <span class="label">担当工場</span>
+      <div class="value" id="outFactory">---</div>
+    </div>
+
+    <div id="photoSection">
+      <span class="label" style="font-size: 12px; font-weight: 900; color: #dc2626;">添付写真（部品など）</span><br>
+      <img id="outPartsPhoto" class="photo-preview" src="">
+    </div>
+
+    <div id="editArea"></div>
+  </div>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      // ★ 開いた瞬間に最高のぐるぐるを出す
+      showLoading("カルテ展開中", "詳細情報を読み込んでいます...");
+
+      setTimeout(() => {
+        const params = new URLSearchParams(window.location.search);
+        const vinParam = params.get('vin');
+        const logIdParam = params.get('log_id');
+
+        // ★ 掟3：スマート戻るボタンの適用
+        const backUrl = vinParam ? `factory_history.html?vin=${encodeURIComponent(vinParam)}` : 'factory_search.html';
+        document.getElementById('backBtnTop').onclick = () => {
+          goBackSmart(backUrl);
+        };
+
+        if (!vinParam || !logIdParam) { 
+          alert("データが見つかりません。"); 
+          hideLoading();
+          return; 
+        }
+
+        const vehicles = JSON.parse(localStorage.getItem('nappy_vehicles_v1') || '[]');
+        const logs = JSON.parse(localStorage.getItem('nappy_logs_v1') || '[]');
+
+        const vehicle = vehicles.find(v => v.vin.toUpperCase() === vinParam.toUpperCase());
+        const log = logs.find(l => l.log_id === logIdParam);
+
+        if (log) {
+            document.getElementById('outTitle').innerText = log.title || "一般整備";
+            document.getElementById('outDate').innerText = log.date || "---";
+            document.getElementById('outVin').innerText = log.vin.toUpperCase();
+            
+            if(vehicle) {
+              document.getElementById('outModel').innerText      = vehicle.vehicleModel || vehicle.model || log.vehicleModel || "---";
+              document.getElementById('outEngine').innerText     = vehicle.engine || log.engine || "---";
+              document.getElementById('outClass').innerText      = vehicle.classification || vehicle.category || log.classification || "---";
+              document.getElementById('outTypeDesig').innerText  = vehicle.typeDesignation || log.typeDesignation || "---";
+              document.getElementById('outShaken').innerText     = vehicle.nextShaken || log.nextShaken || "---";
+            } else {
+              // 車両レコードがない場合はログの情報で補完
+              document.getElementById('outModel').innerText      = log.vehicleModel   || "---";
+              document.getElementById('outEngine').innerText     = log.engine         || "---";
+              document.getElementById('outClass').innerText      = log.classification  || "---";
+              document.getElementById('outTypeDesig').innerText  = log.typeDesignation || "---";
+              document.getElementById('outShaken').innerText     = log.nextShaken     || "---";
+            }
+            
+            document.getElementById('outMileage').innerText = log.mileage ? `${Number(log.mileage).toLocaleString()} km` : "---";
+            
+            // 工場名に認証・指定番号を追加
+            let factoryText = log.shopName || "不明";
+            let factorySuffix = "";
+            
+            if (log.factoryType && log.factoryNumber) {
+                factorySuffix = `(${log.factoryType} ${log.factoryNumber})`;
+            } else if (log.factoryNumber) {
+                factorySuffix = `(${log.factoryNumber})`;
+            } else if (log.factoryType) {
+                factorySuffix = `(${log.factoryType})`;
+            }
+
+            if (factorySuffix) {
+                factoryText += ` ${factorySuffix}`;
+            }
+            
+            document.getElementById('outFactory').innerText = factoryText;
+            
+            document.getElementById('outParts').innerText = log.parts || "なし";
+            document.getElementById('outMemo').innerText = log.memo || "なし";
+
+            if (log.partsPhoto) {
+              document.getElementById('outPartsPhoto').src = log.partsPhoto;
+              document.getElementById('photoSection').style.display = 'block';
+            }
+
+            // ===== 7日ロック判定 =====
+            const editArea = document.getElementById('editArea');
+            const createdAt = log.createdAt || log.date;
+            const diffDays = (new Date() - new Date(createdAt)) / (1000 * 60 * 60 * 24);
+            const currentProfile = typeof getCurrentProfile === "function" ? getCurrentProfile() : null;
+            const isSameShop = currentProfile && log.shopId && log.shopId === currentProfile.shopId;
+
+            if (diffDays < 7 && isSameShop) {
+              // 7日以内かつ同じ工場 → 編集ボタン表示
+              editArea.innerHTML = `
+                <a href="factory_edit_detail.html?log_id=${encodeURIComponent(logIdParam)}&vin=${encodeURIComponent(vinParam)}" class="edit-btn">
+                  ✏️ この記録を修正する（残り ${Math.floor(7 - diffDays)} 日）
+                </a>
+              `;
+            } else {
+              // 7日超 or 他工場 → 何も表示しない
+              editArea.innerHTML = "";
+            }
+
+        } else {
+            alert("履歴データが見つかりません。");
+            location.href = backUrl;
+        }
+        
+        hideLoading(); // ★ 読み込み完了でぐるぐるを消す
+      }, 300);
+    });
+  </script>
+</body>
+</html>

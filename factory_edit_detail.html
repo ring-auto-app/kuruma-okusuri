@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>整備記録の修正 | 車のお薬手帳</title>
+  
+  <link rel="stylesheet" href="common.css">
+  <script src="app.js"></script>
+  <script src="theme.js"></script>
+  
+  <style>
+    /* ページ固有のデザイン：オーナーの設計数値を1px単位で維持 */
+    .warning-banner {
+      background: #fef3c7; border: 1px solid #fde68a; color: #d97706;
+      padding: 12px; border-radius: 12px; font-size: 13px; font-weight: 800;
+      margin-bottom: 20px; display: flex; align-items: center; gap: 8px;
+    }
+
+    .readonly-text { 
+      font-size: 16px; font-weight: 900; color: var(--text); 
+      background: #f1f5f9; padding: 14px; border-radius: 8px; border: 1px solid #e2e8f0; 
+    }
+    
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    .photo-btn {
+      display: inline-flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--line);
+      padding: 10px 16px; border-radius: 8px; font-size: 13px; font-weight: 800; color: var(--muted); cursor: pointer; margin-bottom: 8px;
+    }
+    .photo-preview { width: 100px; height: 100px; border-radius: 8px; object-fit: cover; display: none; border: 1px solid var(--line); }
+
+    .save-area {
+      position: fixed; bottom: 0; left: 0; width: 100%; background: rgba(255,255,255,0.95);
+      backdrop-filter: blur(8px); padding: 16px 20px 24px; border-top: 1px solid var(--line);
+      display: flex; flex-direction: column; align-items: center; z-index: 100; box-sizing: border-box;
+    }
+    .save-btn { 
+      width: 100%; max-width: 400px; padding: 16px; 
+      /* 掟1：テーマカラー変数化 */
+      background: var(--accent); color: white; border: none; 
+      border-radius: 999px; font-size: 18px; font-weight: 900; 
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1); cursor: pointer;
+    }
+    
+    .field .label { color: #dc2626; } /* 絶対赤の掟を適用 */
+  </style>
+</head>
+<body>
+  <div class="container" style="padding-bottom: 100px;">
+    <div class="header">
+      <a onclick="goBackSmart('factory_edit_list.html')" class="back-link">≪戻る</a>
+      <h1 class="title">整備記録の修正</h1>
+    </div>
+
+    <div class="warning-banner">
+      <span>⚠️</span>
+      <span>内容を修正できます。※登録から7日経過すると自動ロックされます。</span>
+    </div>
+
+    <div class="card">
+      <div class="field">
+        <span class="label">車台番号 (VIN) ※変更不可</span>
+        <div class="readonly-text" id="dispVin">---</div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <span class="label">作業日 ※変更不可</span>
+          <div class="readonly-text" id="dispDate">---</div>
+          <input type="hidden" id="inDate">
+        </div>
+        <div class="field">
+          <span class="label">走行距離 (km)</span>
+          <input id="inMileage" type="number">
+        </div>
+      </div>
+      <div class="field">
+        <span class="label">整備区分</span>
+        <input id="inTitle" type="text" placeholder="例：車検、点検、修理">
+      </div>
+      <div class="field">
+        <span class="label">交換部品</span>
+        <textarea id="inParts" rows="3"></textarea>
+      </div>
+      <div class="field">
+        <span class="label">整備メモ</span>
+        <textarea id="inMemo" rows="3"></textarea>
+      </div>
+      <div class="field" style="margin-bottom: 0;">
+        <span class="label">交換した部品の写真（変更・追加）</span>
+        <div class="photo-btn" onclick="document.getElementById('partsPhotoInput').click()">📷 写真を変更する</div>
+        <input type="file" id="partsPhotoInput" accept="image/*" hidden>
+        <img id="partsPhotoPreview" class="photo-preview" src="">
+        <input type="hidden" id="inPartsPhotoBase64">
+      </div>
+    </div>
+  </div>
+
+  <div class="save-area">
+    <button class="save-btn" id="saveLogBtn">修正内容を上書き保存する</button>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const vin = params.get("vin");
+    const logId = params.get("log_id");
+    let originalCreatedAt = null;
+
+    window.addEventListener('DOMContentLoaded', () => {
+      // 掟3：読込開始時にローディングを表示
+      showLoading("データ取得中", "対象の記録を読み込んでいます...");
+      setTimeout(() => {
+        init();
+        hideLoading();
+      }, 300);
+    });
+
+    function init() {
+      if (!vin || !logId) {
+        alert("データが見つかりません。");
+        location.replace("factory_edit_list.html");
+        return;
+      }
+
+      const logs = JSON.parse(localStorage.getItem("nappy_logs_v1") || "[]");
+      const targetLog = logs.find(l => l.log_id === logId && _normalize(l.vin) === _normalize(vin));
+
+      if (!targetLog) {
+        alert("該当する履歴がありません。");
+        location.replace("factory_edit_list.html");
+        return;
+      }
+
+      originalCreatedAt = targetLog.createdAt || targetLog.date;
+      const diffDays = (new Date() - new Date(originalCreatedAt)) / (1000 * 60 * 60 * 24);
+      if (diffDays >= 7) {
+        alert("【エラー】この記録は登録から7日以上経過しているため、ロック（確定）されています。");
+        location.replace("factory_edit_list.html");
+        return;
+      }
+
+      document.getElementById("dispVin").innerText = targetLog.vin;
+      const dateVal = targetLog.date || "";
+      document.getElementById("inDate").value = dateVal;
+      document.getElementById("dispDate").textContent = dateVal || "---";
+      document.getElementById("inMileage").value = targetLog.mileage || "";
+      document.getElementById("inTitle").value = targetLog.title || "";
+      document.getElementById("inParts").value = targetLog.parts || "";
+      document.getElementById("inMemo").value = targetLog.memo || "";
+
+      if (targetLog.partsPhoto) {
+        document.getElementById("partsPhotoPreview").src = targetLog.partsPhoto;
+        document.getElementById("partsPhotoPreview").style.display = "block";
+        document.getElementById("inPartsPhotoBase64").value = targetLog.partsPhoto;
+      }
+    }
+
+    document.getElementById('partsPhotoInput').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if(!file) return;
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        const img = new Image();
+        img.onload = function() {
+          const canvas = document.createElement('canvas');
+          let width = img.width; let height = img.height;
+          if (width > 800) { height *= 800 / width; width = 800; }
+          canvas.width = width; canvas.height = height;
+          canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+          const base64 = canvas.toDataURL('image/jpeg', 0.6);
+          document.getElementById('partsPhotoPreview').src = base64;
+          document.getElementById('partsPhotoPreview').style.display = 'block';
+          document.getElementById('inPartsPhotoBase64').value = base64;
+        }
+        img.src = event.target.result;
+      }
+      reader.readAsDataURL(file);
+    });
+
+    document.getElementById("saveLogBtn").addEventListener("click", () => {
+      const date = document.getElementById('inDate').value;
+
+      // 掟4：保存開始時にローディングを表示
+      showLoading("保存中", "修正内容を上書き保存しています...");
+
+      setTimeout(() => {
+        const logs = JSON.parse(localStorage.getItem("nappy_logs_v1") || "[]");
+        const logIndex = logs.findIndex(l => l.log_id === logId);
+
+        if (logIndex === -1) {
+          hideLoading();
+          return showToast('error', '保存エラー：データが見つかりません。');
+        }
+
+        logs[logIndex] = {
+          ...logs[logIndex],
+          date: date,
+          mileage: document.getElementById('inMileage').value,
+          title: document.getElementById('inTitle').value,
+          parts: document.getElementById('inParts').value,
+          memo: document.getElementById('inMemo').value,
+          partsPhoto: document.getElementById('inPartsPhotoBase64').value,
+          createdAt: originalCreatedAt
+        };
+
+        localStorage.setItem("nappy_logs_v1", JSON.stringify(logs));
+
+        hideLoading();
+        showToast('success', '正常に登録されました');
+        setTimeout(() => location.replace(`factory_detail.html?vin=${encodeURIComponent(vin)}&log_id=${logId}`), 1200);
+      }, 500);
+    });
+  </script>
+</body>
+</html>

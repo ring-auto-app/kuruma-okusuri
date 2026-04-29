@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>車のお薬手帳 | ホーム</title>
+  
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="common.css">
+  <script src="app.js"></script>
+  <script src="theme.js"></script>
+  
+  <style>
+    :root {
+      --marker-green: rgba(34, 197, 94, 0.5); 
+    }
+
+    body {
+      margin: 0;
+      color: var(--text-main);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        linear-gradient(to bottom, var(--page-line) 1px, transparent 1px) 0 0 / 100% 34px,
+        var(--page-bg);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+    }
+
+    .app-page {
+      width: 100%;
+      max-width: 480px; 
+      margin: 0 auto;
+      padding: 40px 16px 110px; 
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .logo-img {
+      width: 90px; height: 90px; border-radius: 20px;
+      box-shadow: 0 6px 15px rgba(0,0,0,0.08);
+      margin-bottom: 20px; mix-blend-mode: multiply; 
+    }
+
+    .page-title {
+      display: inline-block; position: relative;
+      margin: 0 0 34px; font-size: 24px; font-weight: 900; z-index: 1;
+    }
+
+    .page-title::after {
+      content: ""; position: absolute;
+      left: -8px; right: -8px; bottom: 2px;
+      height: 12px; background: var(--marker-green); 
+      border-radius: 6px; z-index: -1; transform: rotate(-1.5deg);
+    }
+
+    .menu-list { 
+      display: flex; 
+      flex-direction: column; 
+      gap: 24px; 
+      width: 100%; 
+      align-items: center; 
+    }
+
+    .note-card {
+      position: relative;
+      background: var(--paper-card);
+      border-radius: 18px 18px 0 18px;
+      padding: 18px 24px;
+      width: 100%;
+      max-width: 340px;
+      box-shadow: 6px 10px 20px rgba(50, 40, 28, 0.12);
+      border: 1px solid rgba(50, 40, 28, 0.05);
+      text-decoration: none;
+      color: inherit;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px; 
+      transition: all 0.15s ease;
+      cursor: pointer;
+      transform: translateY(-2px);
+      box-sizing: border-box;
+    }
+
+    /* ★ここにカーソル合わせ（ホバー）時の浮かび上がる演出を追加 */
+    .note-card:hover {
+      transform: translateY(-8px); /* 初期値-2pxからさらに浮かす */
+      box-shadow: 10px 16px 30px rgba(50, 40, 28, 0.18); /* 影を大きく、深く */
+    }
+
+    /* タップ時（沈む）は元のまま維持 */
+    .note-card:active {
+      transform: translateY(1px);
+      box-shadow: 2px 4px 10px rgba(50, 40, 28, 0.1);
+    }
+
+    .note-card::after {
+      content: ""; position: absolute;
+      right: -1px; bottom: -1px; width: 0; height: 0;
+      border-style: solid; border-width: 0 0 28px 28px;
+      border-color: transparent transparent var(--page-bg) transparent;
+      filter: drop-shadow(-3px -3px 4px rgba(50, 40, 28, 0.1));
+    }
+
+    .sticky-blue { background: #edf5ff; } 
+    .sticky-pink { background: #fbecef; }  
+    .sticky-yellow { background: #fbf6de; } 
+
+    .menu-icon {
+      width: 50px; height: 50px; border-radius: 12px;
+      display: grid; place-items: center; font-size: 24px;
+      background: rgba(255,255,255,0.75);
+      border: 1px solid rgba(0,0,0,0.07); flex-shrink: 0;
+    }
+
+    .menu-body { min-width: 0; text-align: center; }
+    .menu-title { font-size: 16px; font-weight: 900; margin: 0 0 2px; }
+    .menu-desc { font-size: 11px; color: var(--text-sub); font-weight: 700; line-height: 1.4; }
+
+    .pwa-hint { margin-top: 34px; font-size: 13px; color: var(--text-sub); font-weight: 800; }
+
+    /* トップの公開デモ（登録前のお試し） */
+    .demo-public {
+      margin-top: 28px;
+      width: 100%;
+      max-width: 340px;
+      padding-top: 22px;
+      border-top: 1px dashed rgba(47, 42, 36, 0.15);
+    }
+    .demo-public-title {
+      font-size: 14px;
+      font-weight: 900;
+      color: var(--text);
+      margin: 0 0 8px;
+      text-align: center;
+    }
+    .demo-public-note {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--muted);
+      margin: 0 0 14px;
+      text-align: center;
+      line-height: 1.55;
+    }
+    .demo-btn-row {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      width: 100%;
+    }
+    .demo-btn {
+      width: 100%;
+      padding: 14px 16px;
+      border-radius: 12px;
+      border: 2px dashed var(--accent);
+      background: var(--paper);
+      font-size: 15px;
+      font-weight: 900;
+      color: var(--text);
+      cursor: pointer;
+      box-sizing: border-box;
+      min-height: 48px;
+      font-family: inherit;
+    }
+    .demo-btn:active { transform: scale(0.98); }
+
+    .demo-preview-link-wrap { margin: 0 0 14px; text-align: center; }
+    .demo-preview-link {
+      display: inline-block;
+      font-size: 13px;
+      font-weight: 900;
+      color: var(--text);
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+    .demo-preview-link:active { opacity: 0.85; }
+  </style>
+</head>
+
+<body>
+  <div class="app-page" id="mainMenu" style="display: none;">
+    <img src="icons/icon-192.png" alt="RinG Auto" class="logo-img">
+    <h1 class="page-title">車のお薬手帳</h1>
+
+    <div class="menu-list">
+      <a href="login.html" class="note-card sticky-blue">
+        <div class="menu-icon">🏭</div>
+        <div class="menu-body">
+          <div class="menu-title">指定・認証工場の方</div>
+          <div class="menu-desc">点検・整備記録の入力</div>
+        </div>
+      </a>
+
+      <a href="login.html" class="note-card sticky-pink">
+        <div class="menu-icon">🏢</div>
+        <div class="menu-body">
+          <div class="menu-title">事業者の方はこちら</div>
+          <div class="menu-desc">その他業者様・整備入力</div>
+        </div>
+      </a>
+
+      <a href="user_login.html" class="note-card sticky-yellow">
+        <div class="menu-icon">👤</div>
+        <div class="menu-body">
+          <div class="menu-title">ユーザーとして使う</div>
+          <div class="menu-desc">マイカーの履歴確認・管理</div>
+        </div>
+      </a>
+    </div>
+
+    <div class="pwa-hint">PWA対応：ホーム画面に追加できます</div>
+
+    <div class="demo-public" id="demoPublicBlock">
+      <p class="demo-public-title">まず試してみる（デモ）</p>
+      <p class="demo-public-note">登録なしで画面の流れを体験できます。サンプルの車両・履歴が表示されます。</p>
+      <p class="demo-preview-link-wrap">
+        <a href="demo_preview.html" class="demo-preview-link">📋 保存なし・サンプル一覧を見るだけ</a>
+      </p>
+      <div class="demo-btn-row">
+        <button type="button" class="demo-btn" onclick="startIndexDemo('factory')">工場デモで体験</button>
+        <button type="button" class="demo-btn" onclick="startIndexDemo('dealer')">事業者デモで体験</button>
+        <button type="button" class="demo-btn" onclick="startIndexDemo('user')">ユーザーデモで体験</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /**
+     * トップページから公開デモへ入る（login.html のデモと同じデータ・遷移）
+     */
+    function startIndexDemo(role) {
+      if (typeof showLoading === "function") {
+        showLoading("デモ準備中", "サンプルデータを読み込んでいます...");
+      }
+      setTimeout(function () {
+        var demoShopId = role === "factory" ? "SHOP-DEMO-F" : (role === "dealer" ? "SHOP-DEMO-D" : "");
+        var demoRole = (role === "factory" || role === "dealer") ? "master" : role;
+        var dummyProfile = {
+          userId: role === "factory" ? "F-DEMO01" : (role === "dealer" ? "D-DEMO01" : "U-DEMO01"),
+          userName: role === "user" ? "デモユーザー" : "デモ太郎",
+          shopName: role === "factory" ? "RinG Auto 整備工場" : (role === "dealer" ? "T.G販売店" : ""),
+          shopType: role,
+          role: demoRole,
+          shopId: demoShopId
+        };
+        if (role === "user") {
+          dummyProfile.loginId = "USR-DEMO-0000";
+        }
+        if (role === "factory") {
+          dummyProfile.factoryType = "指定工場";
+          dummyProfile.factoryNumber = "第11234号";
+        } else if (role === "dealer") {
+          dummyProfile.factoryType = "認証";
+          dummyProfile.factoryNumber = "第55678号";
+        }
+        if (typeof seedDemoEnvironment === "function") seedDemoEnvironment(role);
+        if (typeof login === "function") login(dummyProfile);
+        var target = "user_home.html";
+        if (role === "factory") target = "factory_home.html";
+        if (role === "dealer") target = "dealer_home.html";
+        location.replace(target);
+      }, 450);
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+      const profile = typeof getCurrentProfile === "function" ? getCurrentProfile() : null;
+
+      // ログイン済みは各ホームへ自動スキップ
+      if (profile) {
+        showLoading("自動ログイン中", "前回のログイン情報を確認しています...");
+        setTimeout(() => {
+          if (profile.shopType === 'factory') {
+            location.replace("factory_home.html");
+          } else if (profile.shopType === 'dealer') {
+            location.replace("dealer_home.html");
+          } else {
+            location.replace("user_home.html");
+          }
+        }, 500);
+        return;
+      }
+
+      // スプラッシュ未表示なら splash.html へ（セッション内で1回だけ）
+      if (!sessionStorage.getItem('splashShown')) {
+        location.replace('splash.html');
+        return;
+      }
+
+      document.getElementById('mainMenu').style.display = 'flex';
+    });
+
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/service-worker.js")
+        .then(() => console.log("SW registered"));
+    }
+  </script>
+</body>
+</html>

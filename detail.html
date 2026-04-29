@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>整備詳細 | 車のお薬手帳</title>
+  <link rel="stylesheet" href="common.css">
+  <script src="app.js"></script>
+  <script src="theme.js"></script>
+  <style>
+    body {
+      margin: 0; font-family: -apple-system, sans-serif;
+      background: linear-gradient(to bottom, var(--line) 1px, transparent 1px) 0 0 / 100% 34px, var(--page-bg);
+      color: var(--text); padding: 34px 16px 100px; line-height: 34px;
+    }
+    .app { width: 100%; max-width: 600px; margin: 0 auto; }
+
+    /* ヘッダー — 描画線なし、高さを34px単位で揃える */
+    .back-link    { color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 800; display: block; line-height: 34px; cursor: pointer; }
+    .title        { font-size: 24px; color: var(--accent); margin: 0; font-weight: 900; line-height: 34px; position: relative; display: inline-block; }
+    .title::after { content: ""; position: absolute; left: 0; right: 0; bottom: 4px; height: 12px; background: var(--highlighter); z-index: -1; border-radius: 4px; transform: rotate(-1deg); }
+    .record-title { font-size: 20px; color: var(--text); margin: 0; font-weight: 900; line-height: 34px; }
+    .record-date  { font-size: 14px; color: var(--muted); font-weight: 800; line-height: 34px; margin-bottom: 34px; }
+
+    /* セクション — ラベル1行＋値1行以上、描画線なし */
+    .section { margin-bottom: 34px; }
+    .label {
+      font-size: 12px; color: var(--muted); font-weight: 800;
+      line-height: 34px; display: block;
+    }
+    .value {
+      font-size: 16px; font-weight: 700; color: var(--text);
+      line-height: 34px;
+    }
+    .value.muted { color: var(--muted); }
+
+    /* 作業内容サマリー（件数テキスト）*/
+    .check-summary {
+      font-size: 13px; font-weight: 800; color: var(--muted);
+      line-height: 34px;
+    }
+
+    /* カード — 白背景＋影のみ。ノート線の上に浮く要素として扱う */
+    .check-card {
+      background: rgba(255,255,255,0.92);
+      border-radius: 12px;
+      padding: 0 16px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+      margin-bottom: 34px;
+    }
+    .check-row {
+      display: flex; justify-content: space-between; align-items: center;
+      height: 44px;
+      font-size: 14px; font-weight: 800;
+    }
+    .check-item-name { color: var(--text); }
+    .check-val {
+      font-weight: 900; font-size: 12px; padding: 4px 12px;
+      border-radius: 999px; white-space: nowrap; flex-shrink: 0;
+    }
+    .check-val.v-ten { color: #dc2626; background: #fee2e2; }
+    .check-val.v-ho  { color: #2563eb; background: #dbeafe; }
+    .check-val.v-ko  { color: #d97706; background: #fef3c7; }
+    .check-val.v-cho { color: #7c3aed; background: #ede9fe; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="header">
+      <a id="backBtn" class="back-link">≪戻る</a>
+      <h1 class="title">整備詳細</h1>
+      <div class="record-title" id="logTitle">---</div>
+      <div class="record-date" id="logDate">---</div>
+    </div>
+
+    <div class="section">
+      <span class="label">走行距離</span>
+      <div class="value" id="logMileage">---</div>
+    </div>
+
+    <div class="section" id="vehicleInfoSection" style="display:none;">
+      <span class="label">車両情報</span>
+      <div class="value" id="logVehicleInfo" style="font-size:13px; line-height:26px;"></div>
+    </div>
+
+    <div class="section">
+      <span class="label">交換部品・作業内容</span>
+      <div class="check-summary" id="logParts"></div>
+      <div id="checkDetail"></div>
+    </div>
+
+    <div class="section">
+      <span class="label">整備メモ</span>
+      <div class="value" id="logMemo">---</div>
+    </div>
+
+    <!-- 担当工場情報（inspection_user の場合は JS で非表示） -->
+    <div class="section" id="shopSection" style="display:none;">
+      <span class="label">担当工場・事業者</span>
+      <div class="value" id="logShopName" style="font-size:15px;"></div>
+      <span class="label" style="margin-top:8px;">陸運支局</span>
+      <div class="value" id="logBureau" style="font-size:15px;"></div>
+      <span class="label" id="logCertTypeLabel" style="margin-top:8px;">指定/認証番号</span>
+      <div class="value" id="logCertNumber" style="font-size:15px;"></div>
+    </div>
+  </div>
+
+  <script>
+    // 点検項目定義（日常点検の結果表示用）
+    const inspectionItems = {};
+    [
+      { id:"e1",  name:"エンジンオイル量" }, { id:"e2",  name:"冷却水量" },
+      { id:"e3",  name:"エンジン始動状態"}, { id:"e4",  name:"異音確認" },
+      { id:"e5",  name:"排気の色" },
+      { id:"ba1", name:"バッテリー液量"  }, { id:"ba2", name:"端子状態" },
+      { id:"be1", name:"ベルト張り"      }, { id:"be2", name:"ベルト損傷" },
+      { id:"t1",  name:"タイヤ空気圧"   }, { id:"t2",  name:"タイヤ亀裂・損傷" },
+      { id:"t3",  name:"タイヤ摩耗状態" }, { id:"t4",  name:"タイヤ溝深さ" },
+      { id:"b1",  name:"ブレーキ液量"   }, { id:"b2",  name:"ブレーキペダル踏みしろ" },
+      { id:"b3",  name:"駐車ブレーキ引きしろ" },
+      { id:"l1",  name:"前照灯"         }, { id:"l2",  name:"制動灯" },
+      { id:"l3",  name:"方向指示器"     }, { id:"l4",  name:"尾灯 / 車幅灯" },
+      { id:"w1",  name:"ワイパー状態"   }, { id:"w2",  name:"ウォッシャー液" },
+      { id:"o1",  name:"エアタンク"     }, { id:"o2",  name:"異臭確認" },
+      { id:"o3",  name:"その他異常"     }
+    ].forEach(it => { inspectionItems[it.id] = it.name; });
+
+    // 値 → スタイルクラスのマップ
+    function valClass(v) {
+      if (v === '点') return 'v-ten';
+      if (v === '補') return 'v-ho';
+      if (v === '交') return 'v-ko';
+      if (v === '調') return 'v-cho';
+      return '';
+    }
+    // 値 → 日本語ラベル
+    function valLabel(v) {
+      return { '点':'要点検', '補':'補充', '交':'交換', '調':'調整', '無':'対象外' }[v] || v;
+    }
+
+    const params = new URLSearchParams(location.search);
+    const vin   = params.get("vin");
+    const logId = params.get("log_id");
+
+    function init() {
+      if (!vin || !logId) { alert("データが見つかりません。"); location.href = "index.html"; return; }
+
+      document.getElementById("backBtn").onclick = () => goBackSmart("history.html?vin=" + encodeURIComponent(vin));
+      showLoading("データ照会中", "整備内容を読み込んでいます...");
+
+      setTimeout(() => {
+        const logs = getLogsByVin(vin);
+        const log  = logs.find(l => l.log_id === logId);
+
+        if (!log) {
+          hideLoading();
+          alert("指定された履歴が見つかりません。");
+          location.href = "history.html?vin=" + encodeURIComponent(vin);
+          return;
+        }
+
+        const isInspection = (log.type && log.type.startsWith('inspection')) || log.title === '日常点検';
+        const normalizedTitle = isInspection ? '日常点検' : ((log.title === 'クイック整備') ? '一般整備' : (log.title || '整備記録'));
+
+        document.getElementById("logTitle").textContent  = (isInspection ? '🔍 ' : '🛠 ') + normalizedTitle;
+        document.getElementById("logDate").textContent   = '作業日: ' + (log.date || '---');
+        document.getElementById("logMileage").textContent = log.mileage ? log.mileage + ' km' : '未記入';
+
+        // 車両情報（nappy_vehicles_v1 から VIN で引き当て）
+        const vehicles = JSON.parse(localStorage.getItem('nappy_vehicles_v1') || '[]');
+        const vRec = vehicles.find(v => v.vin === vin || v.vin === log.vin);
+        if (vRec && (vRec.vehicleModel || vRec.engine || vRec.category || vRec.classification || vRec.typeDesignation)) {
+          const lines = [];
+          if (vRec.vehicleModel) lines.push('型式：' + vRec.vehicleModel);
+          if (vRec.engine)       lines.push('原動機型式：' + vRec.engine);
+          const cat = vRec.classification || vRec.category;
+          if (cat)                     lines.push('類別区分番号：' + cat);
+          if (vRec.typeDesignation)    lines.push('型式指定番号：' + vRec.typeDesignation);
+          document.getElementById('logVehicleInfo').textContent = lines.join('　／　');
+          document.getElementById('vehicleInfoSection').style.display = '';
+        }
+
+        // 交換部品・作業内容
+        const partsEl  = document.getElementById("logParts");
+        const checkDiv = document.getElementById("checkDetail");
+
+        if (isInspection && log.checks && Object.keys(log.checks).length > 0) {
+          // 日常点検：checks オブジェクトから良/無以外を抽出してカード表示
+          const flagged = Object.entries(log.checks).filter(([, v]) => v !== '良' && v !== '無');
+          if (flagged.length === 0) {
+            partsEl.textContent = '全項目 良好';
+            checkDiv.innerHTML = '';
+          } else {
+            partsEl.textContent = `${flagged.length}件の指摘・対応あり`;
+            const rows = flagged.map(([id, v]) => {
+              const name = inspectionItems[id] || id;
+              const cls  = valClass(v);
+              const lbl  = valLabel(v);
+              return `<div class="check-row">
+                <span class="check-item-name">${name}</span>
+                <span class="check-val ${cls}">${lbl}</span>
+              </div>`;
+            }).join('');
+            checkDiv.innerHTML = `<div class="check-card">${rows}</div>`;
+          }
+        } else if (log.parts && log.parts.trim()) {
+          // 整備記録：parts テキストを区切り文字で分割して同じカード形式で表示
+          const items = log.parts.split(/[・、／\n]/).map(s => s.replace(/^[•\-\s]+/, '').trim()).filter(Boolean);
+          if (items.length > 0) {
+            partsEl.textContent = `${items.length}件の作業内容`;
+            const rows = items.map(item =>
+              `<div class="check-row">
+                <span class="check-item-name">${item}</span>
+              </div>`
+            ).join('');
+            checkDiv.innerHTML = `<div class="check-card">${rows}</div>`;
+          } else {
+            partsEl.textContent = log.parts;
+            checkDiv.innerHTML = '';
+          }
+        } else {
+          partsEl.textContent = '特になし';
+          checkDiv.innerHTML = '';
+        }
+
+        // 整備メモ
+        const memoEl = document.getElementById("logMemo");
+        memoEl.textContent = log.memo || '特になし';
+
+        // 担当工場情報（ユーザー日常点検は非表示）
+        const isUserInspect = log.type === 'inspection_user' || log.shopType === 'user';
+        if (!isUserInspect && (log.shopName || log.shopId)) {
+          const shops       = JSON.parse(localStorage.getItem('nappy_shops_v1') || '[]');
+          const shop        = shops.find(s => s.shopId === log.shopId) || {};
+          const shopName    = log.shopName  || shop.shopName  || '-';
+          const bureau      = log.transportBureau || shop.transportBureau || shop.riku_un || '-';
+          const certNum     = log.factoryNumber   || shop.factoryNumber   || '-';
+          const certType    = log.factoryType     || '';
+          document.getElementById('logShopName').textContent       = shopName;
+          document.getElementById('logBureau').textContent         = bureau;
+          document.getElementById('logCertNumber').textContent     = certNum;
+          document.getElementById('logCertTypeLabel').textContent  = certType ? `${certType}番号` : '指定/認証番号';
+          document.getElementById('shopSection').style.display     = '';
+        }
+
+        hideLoading();
+      }, 300);
+    }
+
+    init();
+  </script>
+</body>
+</html>

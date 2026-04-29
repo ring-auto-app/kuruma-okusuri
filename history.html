@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>整備履歴 | 車のお薬手帳</title>
+  
+  <link rel="stylesheet" href="common.css">
+  <script src="app.js"></script>
+  <script src="theme.js"></script>
+  
+  <style>
+    /* ページ固有のスタイル：オーナーの設計（12px角丸・16px余白等）を完全維持 */
+    .nickname { display: none; }
+    .car-info {
+      background: none !important; border: none !important; box-shadow: none !important;
+      padding: 0 !important; margin: 0 0 24px !important; text-align: center;
+    }
+    .vin {
+      display: inline-block; position: relative; z-index: 1;
+      font-size: 20px; font-weight: 900; letter-spacing: 0.08em;
+      font-family: "Helvetica Neue", "SF Mono", monospace;
+      color: var(--text); margin-top: 0;
+    }
+    .vin::after {
+      content: ""; position: absolute; left: -4px; right: -4px; bottom: 1px;
+      height: 11px; background: rgba(16, 185, 129, 0.35); z-index: -1;
+      border-radius: 2px; transform: rotate(-0.5deg);
+    }
+
+    /* 付箋カード色は common.css の .note-0〜3 を使用 */
+
+    .history-list { display: flex; flex-direction: column; gap: 0; margin-top: 24px; }
+
+    /* 付箋カード：ノート3行分ちょっと（34px × 3 = 102px） */
+    .history-item {
+      display: block; position: relative;
+      padding: 10px 16px 10px 14px;
+      height: 102px; /* 34px × 3 */
+      box-sizing: border-box; overflow: hidden;
+      border-radius: 12px 12px 0 12px; margin-bottom: 6px;
+      box-shadow: 4px 6px 15px rgba(0,0,0,0.06);
+      border: 1px solid rgba(0,0,0,0.04);
+      cursor: pointer; transition: transform 0.1s;
+    }
+    .history-item:active { transform: scale(0.98); }
+
+    /* 付箋の折り返し角 */
+    .history-item::after {
+      content: ""; position: absolute; right: -1px; bottom: -1px;
+      width: 0; height: 0; border-style: solid;
+      border-width: 0 0 18px 18px;
+      border-color: transparent transparent var(--page-bg) transparent;
+      filter: drop-shadow(-2px -2px 3px rgba(0,0,0,0.08));
+    }
+
+    /* 付箋カード色は common.css の .note-0〜3 を使用 */
+
+    /* カード内レイアウト */
+    .card-header {
+      display: flex; justify-content: space-between; align-items: center;
+      border-bottom: 1px dashed var(--accent); padding-bottom: 5px; margin-bottom: 5px;
+      opacity: 0.9;
+    }
+    .log-date  { font-size: 13px; color: var(--accent); font-weight: 900; }
+    .log-km    { font-size: 12px; color: var(--muted); font-weight: 700; }
+    .log-title { font-size: 17px; font-weight: 900; margin: 0 0 2px; line-height: 1.25; color: var(--text); }
+    .log-meta  { font-size: 12px; color: var(--muted); font-weight: 700; line-height: 1.2;
+                 white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .editable-mark {
+      font-size: 10px; font-weight: 900; background: #dcfce7; color: #166534;
+      padding: 2px 6px; border-radius: 4px; border: 1px solid #86efac; white-space: nowrap;
+    }
+    
+    .empty-history { padding: 60px 20px; text-align: center; color: var(--muted); font-size: 14px; line-height: 1.6; }
+    
+    .footer-nav { padding: 34px 0; text-align: center; }
+    .btn-close {
+      display: inline-block; padding: 14px 40px; background: var(--paper);
+      border: 2px solid var(--line); border-radius: 999px;
+      text-decoration: none; color: var(--text); font-weight: 800; font-size: 15px;
+      box-shadow: var(--shadow);
+    }
+
+    /* フィルター行 */
+    .filter-row { display: flex; gap: 8px; margin-bottom: 16px; }
+    .filter-select {
+      flex: 1; padding: 6px 10px; border: 2px solid var(--accent); border-radius: 4px;
+      font-size: 13px; font-weight: 700; color: var(--text);
+      background: var(--paper); outline: none; cursor: pointer;
+    }
+    .year-select {
+      width: 84px; flex-shrink: 0; padding: 6px 4px; border: 2px solid var(--accent);
+      border-radius: 4px; font-size: 13px; font-weight: 700; color: var(--text);
+      background: var(--paper); outline: none; cursor: pointer;
+    }
+    /* 点検OK表示 */
+    .meta-ok  { color: #16a34a; font-weight: 900; }
+    /* 点検NG表示 */
+    .meta-ng  { color: #b45309; font-weight: 900; }
+
+    /* 部品名検索エリア */
+    .search-area { position: relative; margin-bottom: 16px; }
+    .search-wrap {
+      display: flex; align-items: center; border: 2px solid var(--accent);
+      border-radius: 10px; background: var(--paper); overflow: hidden;
+    }
+    .search-icon { padding: 0 10px; font-size: 15px; flex-shrink: 0; }
+    .search-input {
+      flex: 1; border: none; background: transparent; padding: 10px 0;
+      font-size: 14px; font-weight: 700; color: var(--text); outline: none;
+      font-family: inherit;
+    }
+    .search-input::placeholder { color: var(--muted); font-weight: 700; }
+    .search-clear {
+      padding: 0 12px; font-size: 18px; color: var(--muted); cursor: pointer;
+      border: none; background: transparent; font-weight: 900; line-height: 1;
+    }
+    .suggestion-box {
+      display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+      background: var(--paper); border: 2px solid var(--accent); border-radius: 10px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.12); z-index: 200; overflow: hidden;
+    }
+    .sugg-item {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 11px 14px; font-size: 14px; font-weight: 700; cursor: pointer;
+      border-bottom: 1px dashed var(--line);
+    }
+    .sugg-item:last-child { border-bottom: none; }
+    .sugg-item:active { background: var(--page-bg); }
+    .sugg-count {
+      font-size: 11px; color: var(--muted); font-weight: 900;
+      background: var(--page-bg); padding: 2px 7px; border-radius: 99px; flex-shrink: 0;
+    }
+    .sugg-empty { padding: 12px 14px; font-size: 13px; color: var(--muted); font-weight: 700; text-align: center; }
+    .search-active-banner {
+      font-size: 12px; font-weight: 800; color: var(--accent);
+      margin-bottom: 8px; padding: 4px 8px; background: var(--page-bg);
+      border-radius: 6px; display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <a onclick="goBackSmart('index.html')" class="back-link">≪戻る</a>
+      <h1 class="title">整備履歴</h1>
+    </header>
+
+    <div class="car-info">
+      <div id="carNickname" class="nickname">車両を読み込み中...</div>
+      <div id="carVin" class="vin">---</div>
+      <div style="margin-top:12px;">
+        <a id="vehicleInfoBtn" href="#" style="display:inline-block; padding:6px 16px; border:1.5px solid var(--accent); border-radius:999px; font-size:12px; font-weight:900; color:var(--accent); text-decoration:none; background:var(--paper);">📋 車両情報を見る・編集</a>
+      </div>
+    </div>
+    
+    <div class="filter-row">
+      <select id="filterSelect" class="filter-select" onchange="renderHistory()">
+        <option value="all">新しい順（全て）</option>
+        <option value="inspection">日常点検</option>
+        <option value="factory">工場入力のみ</option>
+        <option value="dealer">事業者入力のみ</option>
+      </select>
+      <select id="yearSelect" class="year-select" onchange="renderHistory()">
+        <option value="all">全年</option>
+      </select>
+    </div>
+    <!-- 部品名検索 -->
+    <div class="search-area">
+      <div class="search-wrap">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="searchInput" class="search-input"
+               placeholder="部品名・作業内容を検索..."
+               oninput="showSuggestions()" autocomplete="off">
+        <button class="search-clear" onclick="clearSearch()">×</button>
+      </div>
+      <div class="suggestion-box" id="suggestionBox"></div>
+    </div>
+    <div class="search-active-banner" id="searchBanner"></div>
+
+    <div id="historyList" class="history-list"></div>
+    
+    <footer class="footer-nav">
+      <a onclick="goBackSmart('index.html')" class="btn-close">手帳を閉じる</a>
+    </footer>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const vin = params.get("vin");
+
+    /* ── 検索関連 ── */
+    let currentSearchQuery = '';
+    let baseLogsCache = [];
+
+    function toHira(str) {
+      return str.replace(/[\u30A1-\u30F6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
+    }
+    function fuzzyScore(query, target) {
+      if (!query || !target) return 0;
+      const q = toHira(query.toLowerCase());
+      const t = toHira(target.toLowerCase());
+      if (t.includes(q)) return 2;
+      let qi = 0;
+      for (let i = 0; i < t.length && qi < q.length; i++) { if (t[i] === q[qi]) qi++; }
+      return qi === q.length ? 1 : 0;
+    }
+    function collectParts(logs) {
+      const map = new Map();
+      logs.forEach(log => {
+        const text = (log.parts || '') + ' ' + (log.title || '');
+        text.split(/[・、/／\n\s]/).forEach(p => {
+          const t = p.replace(/^[•\-]+/, '').trim();
+          if (t.length >= 2) map.set(t, (map.get(t) || 0) + 1);
+        });
+      });
+      return map;
+    }
+    function showSuggestions() {
+      const query = document.getElementById('searchInput').value.trim();
+      const box   = document.getElementById('suggestionBox');
+      currentSearchQuery = query;
+      renderHistory();
+      if (!query) { box.style.display = 'none'; return; }
+      const partsMap = collectParts(baseLogsCache);
+      const matches  = [];
+      partsMap.forEach((cnt, name) => {
+        const score = fuzzyScore(query, name);
+        if (score > 0) matches.push({ name, cnt, score });
+      });
+      matches.sort((a, b) => b.score - a.score || b.cnt - a.cnt);
+      box.innerHTML = matches.length === 0
+        ? '<div class="sugg-empty">候補が見つかりません</div>'
+        : matches.slice(0, 8).map(m =>
+            `<div class="sugg-item" data-name="${escapeHtml(m.name)}" onclick="selectSuggestion(this.dataset.name)">
+              <span>${escapeHtml(m.name)}</span><span class="sugg-count">${m.cnt}件</span>
+            </div>`
+          ).join('');
+      box.style.display = 'block';
+    }
+    function selectSuggestion(name) {
+      document.getElementById('searchInput').value = name;
+      document.getElementById('suggestionBox').style.display = 'none';
+      currentSearchQuery = name;
+      renderHistory();
+    }
+    function clearSearch() {
+      document.getElementById('searchInput').value = '';
+      document.getElementById('suggestionBox').style.display = 'none';
+      currentSearchQuery = '';
+      renderHistory();
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      // 掟3：読込開始時にローディングを表示
+      showLoading("履歴照会中", "お薬手帳のデータを取得しています...");
+      
+      setTimeout(() => {
+        init();
+        hideLoading();
+      }, 300);
+    });
+
+    function init() {
+      if (!vin) { location.replace("index.html"); return; }
+      
+      const vehicles = loadVehicles();
+      const car = vehicles.find(v => v.vin === vin);
+      if (car) {
+        document.getElementById("carNickname").innerText = car.nickname || "マイカー";
+        document.getElementById("carVin").innerText = car.vin;
+      } else {
+        document.getElementById("carNickname").innerText = "";
+        document.getElementById("carVin").innerText = vin;
+      }
+      document.getElementById("vehicleInfoBtn").href = `vehicle_info.html?vin=${encodeURIComponent(vin)}&from=history`;
+
+      renderHistory();
+    }
+
+    // 日常点検の項目ID→名前マップ
+    const INSPECT_ITEM_NAMES = {
+      e1:'エンジンオイル量', e2:'冷却水量', e3:'エンジン始動状態', e4:'異音確認', e5:'排気の色',
+      ba1:'バッテリー液量', ba2:'端子状態',
+      be1:'ベルト張り', be2:'ベルト損傷',
+      t1:'タイヤ空気圧', t2:'タイヤ亀裂・損傷', t3:'タイヤ摩耗状態', t4:'タイヤ溝深さ',
+      b1:'ブレーキ液量', b2:'ブレーキペダル踏みしろ', b3:'駐車ブレーキ引きしろ',
+      l1:'前照灯', l2:'制動灯', l3:'方向指示器', l4:'尾灯/車幅灯',
+      w1:'ワイパー状態', w2:'ウォッシャー液',
+      o1:'エアタンク', o2:'異臭確認', o3:'その他異常'
+    };
+
+    /**
+     * 履歴リストの描画処理（フィルター・西暦対応）
+     */
+    function renderHistory() {
+      const listEl = document.getElementById("historyList");
+      const filterKey   = document.getElementById('filterSelect')?.value || 'all';
+      const allBaseLogs = getLogsByVin(vin);
+      baseLogsCache = allBaseLogs; // サジェスト用にキャッシュ
+
+      // 年セレクタを構築（データのある年を自動収集）
+      const allYears = [...new Set(allBaseLogs.map(log => {
+        const d = new Date(log.date); return isNaN(d) ? null : d.getFullYear();
+      }).filter(Boolean))].sort((a, b) => b - a);
+      const yearSel = document.getElementById('yearSelect');
+      const selectedYear = yearSel.value;
+      yearSel.innerHTML = '<option value="all">全年</option>' +
+        allYears.map(y => `<option value="${y}" ${y.toString() === selectedYear ? 'selected' : ''}>${y}年</option>`).join('');
+
+      // タイプフィルター
+      let logs = allBaseLogs;
+      if (filterKey === 'inspection') {
+        logs = logs.filter(log => log.type === 'inspection' || log.type === 'inspection_user');
+      } else if (filterKey === 'factory') {
+        logs = logs.filter(log => log.shopType === 'factory');
+      } else if (filterKey === 'dealer') {
+        logs = logs.filter(log => log.shopType === 'dealer');
+      }
+
+      // 西暦フィルター
+      if (selectedYear !== 'all') {
+        logs = logs.filter(log => {
+          const d = new Date(log.date);
+          return !isNaN(d) && d.getFullYear().toString() === selectedYear;
+        });
+      }
+
+      // 常に新しい順
+      logs = [...logs].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+      // 検索フィルター（並び替え後に適用）
+      if (currentSearchQuery) {
+        logs = logs.filter(log => {
+          const text = (log.parts || '') + ' ' + (log.title || '') + ' ' + (log.memo || '');
+          return fuzzyScore(currentSearchQuery, text) > 0;
+        });
+      }
+
+      // 検索中バナー更新
+      const banner = document.getElementById('searchBanner');
+      if (currentSearchQuery) {
+        banner.textContent = `🔍「${currentSearchQuery}」で検索中 ─ ${logs.length}件`;
+        banner.style.display = 'block';
+      } else {
+        banner.style.display = 'none';
+      }
+
+      if (logs.length === 0) {
+        listEl.innerHTML = `
+          <div class="empty-history">
+            ${currentSearchQuery ? `「${escapeHtml(currentSearchQuery)}」の記録が見つかりません。` : '該当する記録がありません。'}
+          </div>
+        `;
+        return;
+      }
+
+      const now = new Date();
+
+      listEl.innerHTML = logs.map((log, i) => {
+        const lockDate = log.lock_at ? new Date(log.lock_at) : null;
+        const isEditable = lockDate && lockDate > now;
+        const editableHtml = isEditable ? `<span class="editable-mark">✏️ 修正可</span>` : '';
+        const kmStr = log.mileage ? `${Number(log.mileage).toLocaleString()} km` : '';
+        const colorClass = `note-${i % 4}`;
+
+        // 日常点検ログは指摘項目をmeta欄に表示。工場名・スタッフ名は一覧では非表示
+        let metaHtml = '';
+        if (log.type === 'inspection_user') {
+          // ユーザー日常点検：入力者は表示しない
+          metaHtml = `<div class="log-meta">日常点検（ユーザー）</div>`;
+        } else if (log.type === 'inspection' && log.checks && typeof log.checks === 'object') {
+          const ngItems = Object.entries(log.checks)
+            .filter(([, v]) => v !== '良' && v !== '無')
+            .map(([k, v]) => `${INSPECT_ITEM_NAMES[k] || k}：${v}`);
+          if (ngItems.length > 0) {
+            metaHtml = `<div class="log-meta meta-ng">⚠ ${escapeHtml(ngItems.join(' / '))}</div>`;
+          } else {
+            metaHtml = `<div class="log-meta meta-ok">✅ 全項目良好</div>`;
+          }
+        } else {
+          // 通常整備：工場名は表示しない（詳細ページで確認）
+          const typeLabel = log.shopType === 'factory' ? '工場入力' : log.shopType === 'dealer' ? '事業者入力' : '';
+          metaHtml = typeLabel ? `<div class="log-meta">${typeLabel}</div>` : '';
+        }
+
+        return `
+          <div class="history-item ${colorClass}" onclick="location.href='detail.html?vin=${encodeURIComponent(vin)}&log_id=${log.log_id}'">
+            <div class="card-header">
+              <div class="log-date">${escapeHtml(log.date)}</div>
+              <div style="display:flex;align-items:center;gap:6px;">
+                ${editableHtml}
+                <span class="log-km">${kmStr}</span>
+              </div>
+            </div>
+            <div class="log-title">${escapeHtml(log.title || '整備記録')}</div>
+            ${metaHtml}
+          </div>
+        `;
+      }).join("");
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>履歴詳細 | 車のお薬手帳</title>
+  
+  <link rel="stylesheet" href="common.css">
+  <script src="app.js"></script>
+  <script src="theme.js"></script>
+
+  <style>
+    /* ページ固有のスタイル：オーナーの設計（999pxの丸ボタン等）を完全維持 */
+    .edit-btn {
+      display: block; width: 100%; text-align: center; padding: 14px;
+      border-radius: 999px; background: var(--accent); color: #fff;
+      text-decoration: none; font-weight: 900; margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <a onclick="goBackSmart('vehicle_detail.html')" class="back-link">◁ 戻る</a>
+    <br>
+    <h1 class="title">整備履歴</h1>
+  </div>
+
+  <div id="content"></div>
+</div>
+
+<script>
+  const params = new URLSearchParams(location.search);
+  const vin = params.get("vin");
+  const logId = params.get("log_id");
+
+  /**
+   * ストレージから新旧のログを取得して統合
+   */
+  function getLogs() {
+    const a = JSON.parse(localStorage.getItem("logs_v1") || "[]");
+    const b = JSON.parse(localStorage.getItem("nappy_logs_v1") || "[]");
+    return [...a, ...b];
+  }
+
+  /**
+   * 詳細データの描画処理
+   */
+  function render() {
+    // 掟3：読込開始時にローディングを表示
+    showLoading("読込中", "詳細データを取得しています...");
+
+    setTimeout(() => {
+      const logs = getLogs();
+      const log = logs.find(l => l.log_id == logId);
+
+      if (!log) {
+        document.getElementById("content").innerHTML = `
+          <div class="card" style="text-align:center; color:var(--muted); font-weight:800;">
+            データが見つかりませんでした。
+          </div>`;
+        hideLoading();
+        return;
+      }
+
+      document.getElementById("content").innerHTML = `
+        <div class="card">
+          <div class="field">
+            <span class="label">日付</span>
+            <div class="value">${log.date || "-"}</div>
+          </div>
+
+          <div class="field">
+            <span class="label">走行距離</span>
+            <div class="value">${log.mileage || "-"} km</div>
+          </div>
+
+          <div class="field">
+            <span class="label">整備区分</span>
+            <div class="value">${log.title || "-"}</div>
+          </div>
+
+          <div class="field">
+            <span class="label">交換部品</span>
+            <div class="value">${log.parts || "-"}</div>
+          </div>
+
+          <div class="field">
+            <span class="label">メモ</span>
+            <div class="value">${log.memo || "-"}</div>
+          </div>
+
+          <a href="factory_edit_detail.html?vin=${vin}&log_id=${logId}" class="edit-btn">
+            この内容を編集する
+          </a>
+        </div>
+      `;
+      // 掟4：完了時にローディングを解除
+      hideLoading();
+    }, 300);
+  }
+
+  window.addEventListener('DOMContentLoaded', render);
+</script>
+
+</body>
+</html>

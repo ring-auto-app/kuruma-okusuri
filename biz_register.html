@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>業者アカウント登録 | 車のお薬手帳</title>
+  
+  <link rel="stylesheet" href="common.css">
+  <script src="app.js"></script>
+  <script src="theme.js"></script>
+  
+  <style>
+    /* ページ固有のデザイン設定：34pxルールおよびレイアウトを維持 */
+    #factoryArea { display: none; margin-top: 16px; padding-top: 16px; border-top: 2px dashed var(--line); }
+    .required { color: #ef4444; font-size: 11px; margin-left: 6px; }
+    .login-link { text-align: center; margin-top: 24px; font-size: 14px; font-weight: 800; }
+    .login-link a { color: var(--accent); text-decoration: none; border-bottom: 2px solid var(--accent); }
+    .pw-wrap { position: relative; }
+    .pw-wrap input { padding-right: 48px; }
+    .pw-eye { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; font-size: 18px; color: var(--muted); padding: 0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    
+    <div class="header">
+      <a class="back-link" onclick="goBackSmart('index.html')">◁ 戻る</a>
+    </div>
+
+    <h1 class="title" style="margin-bottom: 34px;">🏢 業者アカウント登録</h1>
+    
+    <div class="card">
+      <div class="field">
+        <span class="label">会社名 / 屋号 <span class="required">必須</span></span>
+        <input type="text" id="inShopName" placeholder="例：Aモータース">
+      </div>
+      
+      <div class="field">
+        <span class="label">業態 <span class="required">必須</span></span>
+        <select id="inShopType" onchange="document.getElementById('factoryArea').style.display = this.value === 'factory' ? 'block' : 'none'">
+          <optgroup label="整備・修理">
+            <option value="factory">整備工場（分解整備を行う）</option>
+          </optgroup>
+          <optgroup label="販売・流通">
+            <option value="dealer" selected>自動車販売店・買取業</option>
+            <option value="dealer">ガソリンスタンド（GS）</option>
+            <option value="dealer">レンタカー・カーリース</option>
+          </optgroup>
+          <optgroup label="運輸・物流">
+            <option value="dealer">運送業（トラック・宅配）</option>
+            <option value="dealer">バス・タクシー会社</option>
+            <option value="dealer">自動車学校</option>
+          </optgroup>
+          <optgroup label="その他">
+            <option value="dealer">農業・建設業（特殊車両）</option>
+            <option value="dealer">その他事業者</option>
+          </optgroup>
+        </select>
+      </div>
+      
+      <div id="factoryArea">
+        <div class="field">
+          <span class="label">工場種別</span>
+          <select id="inFactoryType">
+            <option value="認証">認証工場（黄色バッジ）</option>
+            <option value="指定">指定工場（青色バッジ）</option>
+          </select>
+        </div>
+        
+        <div class="field">
+          <span class="label">管轄の運輸局・支局 <span class="required">必須</span></span>
+          <select id="inTransportBureau">
+            <option value="" disabled selected>選択してください</option>
+            <optgroup label="北海道運輸局">
+              <option value="北海道運輸局 札幌">札幌</option>
+              <option value="北海道運輸局 函館">函館</option>
+              <option value="北海道運輸局 旭川">旭川</option>
+              <option value="北海道運輸局 室蘭">室蘭</option>
+              <option value="北海道運輸局 釧路">釧路</option>
+              <option value="北海道運輸局 帯広">帯広</option>
+              <option value="北海道運輸局 北見">北見</option>
+            </optgroup>
+            <optgroup label="東北運輸局">
+              <option value="東北運輸局 青森">青森</option>
+              <option value="東北運輸局 岩手">岩手</option>
+              <option value="東北運輸局 宮城">宮城</option>
+              <option value="東北運輸局 秋田">秋田</option>
+              <option value="東北運輸局 山形">山形</option>
+              <option value="東北運輸局 福島">福島</option>
+            </optgroup>
+            <optgroup label="関東運輸局">
+              <option value="関東運輸局 茨城">茨城</option>
+              <option value="関東運輸局 栃木">栃木</option>
+              <option value="関東運輸局 群馬">群馬</option>
+              <option value="関東運輸局 埼玉">埼玉</option>
+              <option value="関東運輸局 千葉">千葉</option>
+              <option value="関東運輸局 東京">東京</option>
+              <option value="関東運輸局 神奈川">神奈川</option>
+              <option value="関東運輸局 山梨">山梨</option>
+            </optgroup>
+            <optgroup label="北陸信越運輸局">
+              <option value="北陸信越運輸局 新潟">新潟</option>
+              <option value="北陸信越運輸局 長野">長野</option>
+              <option value="北陸信越運輸局 富山">富山</option>
+              <option value="北陸信越運輸局 石川">石川</option>
+            </optgroup>
+            <optgroup label="中部運輸局">
+              <option value="中部運輸局 福井">福井</option>
+              <option value="中部運輸局 岐阜">岐阜</option>
+              <option value="中部運輸局 静岡">静岡</option>
+              <option value="中部運輸局 愛知">愛知</option>
+              <option value="中部運輸局 三重">三重</option>
+            </optgroup>
+            <optgroup label="近畿運輸局">
+              <option value="近畿運輸局 滋賀">滋賀</option>
+              <option value="近畿運輸局 京都">京都</option>
+              <option value="近畿運輸局 大阪">大阪</option>
+              <option value="近畿運輸局 兵庫">兵庫</option>
+              <option value="近畿運輸局 奈良">奈良</option>
+              <option value="近畿運輸局 和歌山">和歌山</option>
+            </optgroup>
+            <optgroup label="中国運輸局">
+              <option value="中国運輸局 鳥取">鳥取</option>
+              <option value="中国運輸局 島根">島根</option>
+              <option value="中国運輸局 岡山">岡山</option>
+              <option value="中国運輸局 広島">広島</option>
+              <option value="中国運輸局 山口">山口</option>
+            </optgroup>
+            <optgroup label="四国運輸局">
+              <option value="四国運輸局 徳島">徳島</option>
+              <option value="四国運輸局 香川">香川</option>
+              <option value="四国運輸局 愛媛">愛媛</option>
+              <option value="四国運輸局 高知">高知</option>
+            </optgroup>
+            <optgroup label="九州運輸局">
+              <option value="九州運輸局 福岡">福岡</option>
+              <option value="九州運輸局 佐賀">佐賀</option>
+              <option value="九州運輸局 長崎">長崎</option>
+              <option value="九州運輸局 熊本">熊本</option>
+              <option value="九州運輸局 大分">大分</option>
+              <option value="九州運輸局 宮崎">宮崎</option>
+              <option value="九州運輸局 鹿児島">鹿児島</option>
+            </optgroup>
+            <optgroup label="沖縄総合事務局">
+              <option value="沖縄総合事務局 沖縄">沖縄</option>
+            </optgroup>
+          </select>
+        </div>
+
+        <div class="field">
+          <span class="label">認証・指定番号 <span class="required">必須</span></span>
+          <input type="text" id="inFactoryNumber" placeholder="例：第12345号">
+        </div>
+      </div>
+      
+      <div class="field">
+        <span class="label">会社共通パスワード <span class="required">必須</span></span>
+        <div class="pw-wrap">
+          <input type="password" id="inPassword" placeholder="スタッフ全員で使うパスワード">
+          <button type="button" class="pw-eye" onclick="const i=document.getElementById('inPassword'); i.type=i.type==='password'?'text':'password'; this.textContent=i.type==='password'?'👁':'🙈';">👁</button>
+        </div>
+      </div>
+      
+      <button class="save-btn" onclick="registerShop()">この内容で登録する</button>
+    </div>
+    
+    <div class="login-link">すでに登録済みの方は <a href="login.html">こちらからログイン</a></div>
+  </div>
+
+  <script>
+    /**
+     * アカウント登録処理：GASとの通信およびプロフィールの保存
+     */
+    async function registerShop() {
+      const shopName = document.getElementById('inShopName').value.trim();
+      const shopType = document.getElementById('inShopType').value;
+      const password = document.getElementById('inPassword').value.trim();
+      
+      let factoryType = "";
+      let fullFactoryNumber = "";
+
+      if (!shopName || !password) return alert("会社名とパスワードは必須です！");
+
+      if (shopType === 'factory') {
+        factoryType = document.getElementById('inFactoryType').value;
+        const bureau = document.getElementById('inTransportBureau').value;
+        const fNum = document.getElementById('inFactoryNumber').value.trim();
+        
+        if (!bureau || !fNum) return alert("管轄の運輸局を選択し、番号を入力してください！");
+        
+        fullFactoryNumber = bureau + " " + fNum; 
+      }
+
+      const randomStr = Math.random().toString(36).substr(2, 4).toUpperCase();
+      const shopId = "FAC-" + randomStr;
+      const masterLoginId = shopId + "-0000";
+
+      const profile = { 
+        shopId: shopId, 
+        shopName: shopName, 
+        shopType: shopType, 
+        factoryType: factoryType, 
+        factoryNumber: fullFactoryNumber,
+        staffId: "0000", 
+        staffName: masterLoginId, 
+        displayName: "マスター", 
+        role: "master" 
+      };
+      
+      showLoading("登録処理中", "サーバーと通信しています...");
+
+      try {
+        const res = await fetch(GAS_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({
+            action:        'register_shop',
+            shopId:        shopId,
+            shopName:      shopName,
+            shopType:      shopType,
+            factoryType:   factoryType,
+            factoryNumber: fullFactoryNumber,
+            password:      password
+          })
+        });
+        const result = await res.json();
+
+        if (result.success) {
+          // GAS が発行した正式な shopId と masterLoginId を使う
+          const finalShopId    = result.shopId        || shopId;
+          const finalMasterId  = result.masterLoginId || (finalShopId + '-0000');
+
+          const profile = {
+            shopId:      finalShopId,
+            shopName:    shopName,
+            shopType:    shopType,
+            factoryType: factoryType,
+            staffId:     finalMasterId,
+            staffName:   'マスター',
+            displayName: 'マスター',
+            role:        'master'
+          };
+          login(profile);
+          hideLoading();
+
+          document.body.innerHTML = `
+            <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f0fdf4;padding:24px;box-sizing:border-box;">
+              <div style="background:#fff;border:3px solid #16a34a;border-radius:20px;padding:32px 24px;max-width:380px;width:100%;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,0.1);">
+                <div style="font-size:40px;margin-bottom:12px;">✅</div>
+                <div style="font-size:20px;font-weight:900;color:#15803d;margin-bottom:20px;">登録完了しました！</div>
+                <div style="background:#f0fdf4;border:2px solid #86efac;border-radius:12px;padding:16px;margin-bottom:12px;">
+                  <div style="font-size:12px;font-weight:800;color:#166534;margin-bottom:8px;">⚠ 必ずメモしてください</div>
+                  <div style="font-size:13px;font-weight:800;color:#374151;margin-bottom:4px;">マスターログインID</div>
+                  <div style="font-size:22px;font-weight:900;color:#15803d;letter-spacing:0.08em;word-break:break-all;">${finalMasterId}</div>
+                </div>
+                <div style="background:#eff6ff;border:2px solid #bfdbfe;border-radius:12px;padding:12px;margin-bottom:20px;">
+                  <div style="font-size:12px;font-weight:800;color:#1e40af;margin-bottom:4px;">パスワード</div>
+                  <div style="font-size:15px;font-weight:900;color:#1d4ed8;">登録時に設定したパスワード</div>
+                </div>
+                <div style="font-size:12px;color:#6b7280;font-weight:700;margin-bottom:24px;">このIDを紛失するとログインできなくなります。<br>スクリーンショットを撮っておいてください。</div>
+                <button onclick="location.replace('${shopType === 'factory' ? 'factory_home.html' : 'dealer_home.html'}')"
+                  style="width:100%;padding:16px;background:#16a34a;color:#fff;border:none;border-radius:12px;font-size:16px;font-weight:900;cursor:pointer;">
+                  ホームへ進む →
+                </button>
+              </div>
+            </div>`;
+        } else {
+          hideLoading();
+          showToast('error', '登録エラー: ' + result.error);
+        }
+      } catch (e) {
+        hideLoading();
+        showToast('error', 'サーバーへの接続に失敗しました。GAS URLを確認してください。');
+        console.error(e);
+      }
+    }
+  </script>
+</body>
+</html>

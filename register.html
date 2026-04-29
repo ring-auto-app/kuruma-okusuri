@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>初回登録 | 車のお薬手帳</title>
+  
+  <link rel="stylesheet" href="common.css">
+  <script src="app.js"></script>
+  <script src="theme.js"></script>
+  
+  <style>
+    /* 初回登録固有のデザイン数値を完全維持 */
+    :root {
+      --bg: #f8fafc; --paper: #ffffff; --line: #e2e8f0; 
+      --text: #1e293b; --muted: #64748b; --accent: #3b82f6; 
+      --factory: #2c7be5; --dealer: #f97316; --user: #10b981;
+      --shadow: 0 8px 25px rgba(0,0,0,0.05);
+    }
+    body {
+      margin: 0; font-family: -apple-system, sans-serif;
+      background: var(--bg); color: var(--text); padding: 40px 20px;
+      display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+    }
+    .container { width: 100%; max-width: 400px; }
+    
+    .logo-area { text-align: center; margin-bottom: 40px; }
+    .logo-icon { font-size: 48px; margin-bottom: 12px; }
+    .app-title { font-size: 24px; font-weight: 900; margin: 0; color: #0f172a; }
+    .app-desc { font-size: 14px; color: var(--muted); font-weight: 700; margin-top: 8px; }
+
+    .card { background: var(--paper); border-radius: 20px; padding: 24px; box-shadow: var(--shadow); margin-bottom: 24px; border: 1px solid var(--line); }
+    
+    .step-title { font-size: 16px; font-weight: 900; margin-bottom: 16px; color: var(--text); text-align: center; }
+
+    .role-grid { display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px; }
+    .role-btn {
+      padding: 16px; border-radius: 12px; border: 2px solid var(--line);
+      background: #fff; cursor: pointer; transition: all 0.2s; text-align: left;
+      display: flex; align-items: center; gap: 12px;
+    }
+    .role-btn.active[data-role="factory"] { border-color: var(--factory); background: #eff6ff; }
+    .role-btn.active[data-role="dealer"] { border-color: var(--dealer); background: #fff7ed; }
+    .role-btn.active[data-role="user"] { border-color: var(--user); background: #ecfdf5; }
+    
+    .role-icon { font-size: 24px; }
+    .role-text-main { font-size: 16px; font-weight: 900; color: var(--text); display: block; }
+    .role-text-sub { font-size: 12px; color: var(--muted); font-weight: 700; }
+
+    .form-group { display: none; animation: fadeIn 0.3s ease-out; }
+    .form-group.show { display: block; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+
+    .field { margin-bottom: 16px; }
+    .label { display: block; font-size: 13px; font-weight: 800; color: var(--muted); margin-bottom: 6px; }
+    input[type="text"] { 
+      width: 100%; padding: 14px; border: 1px solid #cbd5e1; border-radius: 8px;
+      background: #f8fafc; font-size: 16px; font-weight: 700; color: var(--text); box-sizing: border-box;
+      outline: none;
+    }
+    input:focus { border-color: var(--accent); background: #fff; }
+
+    .code-row { display: flex; gap: 12px; align-items: center; }
+    .code-input-short { width: 80px !important; text-align: center; }
+    .code-divider { font-weight: 900; color: var(--muted); }
+
+    .radio-group { display: flex; gap: 16px; margin-bottom: 12px; }
+    .radio-label { font-size: 14px; font-weight: 800; color: var(--text); display: flex; align-items: center; gap: 4px; cursor: pointer; }
+
+    .submit-btn {
+      width: 100%; padding: 16px; background: var(--text); color: white; border: none; 
+      border-radius: 999px; font-size: 16px; font-weight: 900; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+      display: none; transition: transform 0.1s;
+    }
+    .submit-btn:active { transform: scale(0.98); }
+    .submit-btn.show { display: block; }
+    
+    .auth-notice { font-size: 11px; color: #ef4444; font-weight: 800; margin-top: 8px; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo-area">
+      <div class="logo-icon">🚙 🩺</div>
+      <h1 class="app-title">車のお薬手帳</h1>
+      <p class="app-desc">愛車のカルテを、みんなで繋ごう。</p>
+    </div>
+
+    <div class="card">
+      <div class="step-title">あなたのご利用目的を教えてください</div>
+      
+      <div class="role-grid">
+        <div class="role-btn" data-role="factory">
+          <div class="role-icon"></div>
+          <div><span class="role-text-main">整備工場</span><span class="role-text-sub">車検・分解整備・カルテの作成</span></div>
+        </div>
+        <div class="role-btn" data-role="dealer">
+          <div class="role-icon"></div>
+          <div><span class="role-text-main">事業者</span><span class="role-text-sub">用品取付・オイル交換・簡易入力</span></div>
+        </div>
+        <div class="role-btn" data-role="user">
+          <div class="role-icon"></div>
+          <div><span class="role-text-main">一般ユーザー</span><span class="role-text-sub">愛車の履歴確認・日常点検</span></div>
+        </div>
+      </div>
+
+      <div id="bizForm" class="form-group">
+        <div class="field">
+          <span class="label">会社名 / 工場名</span>
+          <input type="text" id="bizName" placeholder="例：株式会社○○モータース">
+        </div>
+        
+        <div class="field" id="factoryCodeArea" style="display:none; background: #f1f5f9; padding: 16px; border-radius: 12px; border: 1px dashed #cbd5e1;">
+          <span class="label" style="color:#0f172a;">【必須】整備工場コード（実在確認・地域仕分け用）</span>
+          <div class="radio-group">
+            <label class="radio-label"><input type="radio" name="facType" value="認証" checked> 認証工場</label>
+            <label class="radio-label"><input type="radio" name="facType" value="指定"> 指定工場</label>
+          </div>
+          <div class="code-row">
+            <input type="text" id="facBranch" class="code-input-short" placeholder="例: 99" maxlength="2" pattern="\d{2}">
+            <span class="code-divider">ー</span>
+            <input type="text" id="facNumber" placeholder="一連番号 (数字のみ)" pattern="\d+">
+          </div>
+          <div class="auth-notice">※不正利用防止のため、正しいコード形式のみ登録可能です。</div>
+        </div>
+      </div>
+
+      <div id="userForm" class="form-group">
+        <div class="field">
+          <span class="label">お名前（ニックネーム可）</span>
+          <input type="text" id="userName" placeholder="例：なっぴー">
+        </div>
+      </div>
+
+      <button id="submitBtn" class="submit-btn">この内容で利用を開始する</button>
+    </div>
+  </div>
+
+  <script>
+    let selectedRole = "";
+
+    /**
+     * ロール（役割）選択処理
+     */
+    document.querySelectorAll('.role-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.role-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        selectedRole = btn.getAttribute('data-role');
+
+        document.getElementById('bizForm').classList.remove('show');
+        document.getElementById('userForm').classList.remove('show');
+        document.getElementById('submitBtn').classList.add('show');
+
+        if (selectedRole === 'factory' || selectedRole === 'dealer') {
+          document.getElementById('bizForm').classList.add('show');
+          if (selectedRole === 'factory') {
+            document.getElementById('factoryCodeArea').style.display = 'block';
+          } else {
+            document.getElementById('factoryCodeArea').style.display = 'none';
+          }
+        } else if (selectedRole === 'user') {
+          document.getElementById('userForm').classList.add('show');
+        }
+      });
+    });
+
+    /**
+     * 登録実行処理
+     */
+    document.getElementById('submitBtn').addEventListener('click', () => {
+      if (selectedRole === 'factory') {
+        const name = document.getElementById('bizName').value.trim();
+        const branch = document.getElementById('facBranch').value.trim();
+        const number = document.getElementById('facNumber').value.trim();
+        const facType = document.querySelector('input[name="facType"]:checked').value;
+
+        if (!name) return alert("会社名/工場名を入力してください。");
+        
+        if (!/^\d{2}$/.test(branch)) {
+          return alert("運輸支局コードは「半角数字2桁」で入力してください。\n（例：沖縄なら99、品川なら13など）");
+        }
+        if (!/^\d+$/.test(number)) {
+          return alert("一連番号は「半角数字」で入力してください。");
+        }
+
+        showLoading("登録中", "工場アカウントを作成しています...");
+
+        setTimeout(() => {
+          localStorage.setItem('userRole', 'factory');
+          localStorage.setItem('userName', name);
+          localStorage.setItem('facType', facType);
+          localStorage.setItem('facBranch', branch);
+          localStorage.setItem('facNumber', number);
+          const fullCode = `${facType}-${branch}-${number}`;
+          localStorage.setItem('factoryCode', fullCode);
+
+          hideLoading();
+          alert(`整備工場コード [${fullCode}] の形式を確認しました。\nようこそ、${name} さん！`);
+          location.href = "factory_home.html"; 
+        }, 500);
+
+      } else if (selectedRole === 'dealer') {
+        const name = document.getElementById('bizName').value.trim();
+        if (!name) return alert("会社名を入力してください。");
+        
+        showLoading("登録中", "事業者アカウントを作成しています...");
+
+        setTimeout(() => {
+          localStorage.setItem('userRole', 'dealer');
+          localStorage.setItem('userName', name);
+          hideLoading();
+          location.href = "dealer_home.html"; 
+        }, 500);
+
+      } else if (selectedRole === 'user') {
+        const name = document.getElementById('userName').value.trim();
+        if (!name) return alert("お名前を入力してください。");
+
+        showLoading("準備中", "マイカー手帳を作成しています...");
+
+        setTimeout(() => {
+          localStorage.setItem('userRole', 'user');
+          localStorage.setItem('userName', name);
+          hideLoading();
+          location.href = "user_home.html"; 
+        }, 500);
+      }
+    });
+  </script>
+</body>
+</html>

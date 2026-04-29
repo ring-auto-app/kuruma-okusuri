@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>整備入力 | 車のお薬手帳</title>
+  
+  <link rel="stylesheet" href="common.css">
+  <script src="app.js"></script>
+  <script src="theme.js"></script>
+  
+  <style>
+    /* ページ固有のデザイン設定：スキャン、アコーディオン、写真の数値を維持 */
+    .edit-link {
+      display: block; color: var(--muted); font-size: 13.5px; font-weight: 800;
+      text-decoration: underline; text-underline-offset: 4px; height: 34px; line-height: 34px;
+    }
+    
+    .scan-btn { 
+      background: var(--paper); border: 2px dashed var(--accent); border-radius: 12px; 
+      padding: 16px; text-align: center; cursor: pointer; font-weight: 900; font-size: 15px;
+      color: var(--accent); margin-bottom: 20px; transition: background 0.2s; box-shadow: var(--shadow);
+    }
+    .scan-btn:active { transform: scale(0.98); }
+    .doc-preview-area {
+      display: none; margin-bottom: 20px; border: 2px solid var(--line); border-radius: 12px;
+      overflow: hidden; background: #fff; position: relative; opacity: 0.8;
+    }
+    .doc-preview-area img { width: 100%; display: block; filter: grayscale(50%); }
+    .doc-preview-label {
+      position: absolute; top: 0; left: 0; background: var(--muted);
+      color: #fff; font-size: 11px; font-weight: 800; padding: 6px 12px; border-bottom-right-radius: 8px;
+    }
+    .discard-notice { font-size: 12px; color: var(--accent); font-weight: 800; text-align: center; margin-bottom: 20px; }
+
+    .parent-btn {
+      width: 100%; background: var(--paper); border: 2px solid var(--line); border-radius: 12px;
+      padding: 16px; text-align: left; font-size: 16px; font-weight: 900; color: var(--text);
+      cursor: pointer; margin-top: 12px; display: flex; justify-content: space-between; align-items: center;
+      box-shadow: var(--shadow); box-sizing: border-box;
+    }
+    .parent-btn.active { border-color: var(--accent); color: var(--accent); }
+    .parent-btn::after { content: "▼"; font-size: 12px; color: var(--muted); transition: 0.2s; }
+    .parent-btn.active::after { transform: rotate(180deg); color: var(--accent); }
+
+    .sub-menu { 
+      display: none; grid-template-columns: 1fr 1fr; gap: 12px; padding: 16px; 
+      background: rgba(255,255,255,0.6); border: 1px solid var(--line); border-top: none; 
+      border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; margin-bottom: 8px;
+    }
+    .sub-menu.show { display: grid; animation: fadeIn 0.2s ease-out; }
+    
+    .toggle-wrap { position: relative; width: 100%; }
+    .toggle-btn {
+      background: var(--paper); border: 1.5px solid var(--line); border-radius: 8px;
+      padding: 12px 8px; text-align: center; font-size: 13px; font-weight: 800; color: var(--muted);
+      cursor: pointer; position: relative; user-select: none; box-sizing: border-box;
+    }
+    
+    /* 赤丸の絶対掟：指定色 #e53e3e を維持 */
+    .toggle-btn.active { border-color: #e53e3e; color: #e53e3e; box-shadow: inset 0 0 0 1px #e53e3e; }
+    .toggle-btn.active::before {
+      content: "○"; position: absolute; top: -12px; left: -6px;
+      font-size: 32px; font-weight: 900; color: #e53e3e; z-index: 10;
+    }
+
+    .detail-input { display: none; width: 100%; margin-top: 6px; border: 2px dashed #e53e3e !important; background: #fff !important; }
+    .detail-input.show { display: block; }
+
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
+
+    .footer-card { margin-top: 24px; padding-bottom: 20px; }
+    .photo-btn {
+      display: flex; align-items: center; justify-content: center; gap: 8px; background: var(--paper); border: 2px dashed var(--line);
+      padding: 16px; border-radius: 12px; font-weight: 900; color: var(--muted); cursor: pointer; width: 100%; box-sizing: border-box;
+    }
+    .photo-preview { width: 100%; max-height: 200px; border-radius: 8px; object-fit: contain; display: none; border: 1px solid var(--line); margin-top: 12px; }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <div class="header">
+      <a onclick="goBackSmart('dealer_home.html')" class="back-link">◁ 戻る</a>
+      <h1 class="title">整備記録の入力</h1>
+      <a href="factory_edit_list.html" class="edit-link">✏️ 過去7日間の入力履歴を編集する</a>
+    </div>
+
+    <div class="scan-btn" onclick="document.getElementById('docInput').click()">
+      📷 車検証・メーターから文字をスキャン
+    </div>
+    <input type="file" id="docInput" accept="image/*" hidden>
+
+    <div class="doc-preview-area" id="docPreviewArea">
+      <div class="doc-preview-label">文字抽出用の一時画像</div>
+      <img id="docPreviewImg" src="">
+    </div>
+    <div class="discard-notice" id="discardNotice" style="display:none;">
+      ※情報漏洩防止のため、この書類画像は保存されず破棄されます。
+    </div>
+    
+    <div class="basic-info-card">
+      <div class="field">
+        <span class="label">車台番号 (VIN) ※必須</span>
+        <input id="inVin" type="text" placeholder="車台番号を入力">
+        <div id="errVin" style="display:none; color:#dc2626; font-size:12px; font-weight:800; margin-top:4px;">⚠ 車体番号を入力してください</div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <span class="label">作業日 ※必須</span>
+          <input id="inDate" type="date">
+          <div id="errDate" style="display:none; color:#dc2626; font-size:12px; font-weight:800; margin-top:4px;">⚠ 作業日を選択してください</div>
+        </div>
+        <div class="field">
+          <span class="label">車検満了日 ※必須</span>
+          <input id="inShaken" type="date">
+          <div id="errShaken" style="display:none; color:#dc2626; font-size:12px; font-weight:800; margin-top:4px;">⚠ 車検満了日を入力してください</div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <span class="label">整備区分</span>
+          <input id="inTitle" type="text" placeholder="例：車検、修理、納車点検">
+        </div>
+        <div class="field"><span class="label">走行距離 (km)</span><input id="inMileage" type="number" min="0"></div>
+      </div>
+    </div>
+
+    <div class="parent-btn" data-target="sub-oil">🛢 油脂類・フィルター</div>
+    <div id="sub-oil" class="sub-menu">
+      <div class="toggle-wrap"><div class="toggle-btn" data-detail="oil-e">エンジンオイル</div><input type="text" id="oil-e" class="detail-input" placeholder="銘柄・粘度"></div>
+      <div class="toggle-wrap"><div class="toggle-btn">オイルフィルター</div></div>
+      <div class="toggle-wrap"><div class="toggle-btn" data-detail="oil-a">ATF / CVTF</div><input type="text" id="oil-a" class="detail-input" placeholder="銘柄など"></div>
+      <div class="toggle-wrap"><div class="toggle-btn" data-detail="oil-d">デフオイル</div><input type="text" id="oil-d" class="detail-input" placeholder="銘柄など"></div>
+      <div class="toggle-wrap"><div class="toggle-btn" data-detail="oil-p">パワステオイル</div><input type="text" id="oil-p" class="detail-input" placeholder="銘柄など"></div>
+    </div>
+    
+    <div class="parent-btn" data-target="sub-belt">⚙️ ベルト類</div>
+    <div id="sub-belt" class="sub-menu">
+      <div class="toggle-wrap"><div class="toggle-btn">ファンベルト</div></div>
+      <div class="toggle-wrap"><div class="toggle-btn">クーラーベルト</div></div>
+      <div class="toggle-wrap"><div class="toggle-btn">パワステベルト</div></div>
+    </div>
+    
+    <div class="parent-btn" data-target="sub-batt">🔋 バッテリー</div>
+    <div id="sub-batt" class="sub-menu">
+      <div class="toggle-wrap"><div class="toggle-btn" data-detail="batt">バッテリー交換</div><input type="text" id="batt" class="detail-input" placeholder="型式 (55B24Lなど)"></div>
+    </div>
+
+    <div class="parent-btn" data-target="sub-tire">🛞 タイヤ</div>
+    <div id="sub-tire" class="sub-menu">
+      <div class="toggle-wrap"><div class="toggle-btn" data-detail="tire">タイヤ交換</div><input type="text" id="tire" class="detail-input" placeholder="サイズ (155/65R14など)"></div>
+      <div class="toggle-wrap"><div class="toggle-btn">タイヤローテーション</div></div>
+    </div>
+
+    <div class="parent-btn" data-target="sub-light">💡 灯火類</div>
+    <div id="sub-light" class="sub-menu">
+      <div class="toggle-wrap"><div class="toggle-btn">ヘッドライト球</div></div>
+      <div class="toggle-wrap"><div class="toggle-btn">スモール/車幅灯</div></div>
+      <div class="toggle-wrap"><div class="toggle-btn">ウインカー球</div></div>
+      <div class="toggle-wrap"><div class="toggle-btn">ブレーキ/テール球</div></div>
+    </div>
+
+    <div class="parent-btn" data-target="sub-items">📦 用品取付</div>
+    <div id="sub-items" class="sub-menu">
+      <div class="toggle-wrap"><div class="toggle-btn">ETC</div></div>
+      <div class="toggle-wrap"><div class="toggle-btn">スピーカー</div></div>
+      <div class="toggle-wrap"><div class="toggle-btn">バックカメラ</div></div>
+      <div class="toggle-wrap"><div class="toggle-btn">ドライブレコーダー</div></div>
+      <div class="toggle-wrap"><div class="toggle-btn">ナビ / オーディオ</div></div>
+    </div>
+
+    <div class="footer-card">
+      <div class="field"><span class="label">作業メモ</span><textarea id="inMemo" rows="2" placeholder="その他作業、交換部品などがあれば入力"></textarea></div>
+      <div class="photo-btn" onclick="document.getElementById('partsPhotoInput').click()">📷 交換部品・用品の写真を追加</div>
+      <input type="file" id="partsPhotoInput" accept="image/*" hidden>
+      <img id="partsPhotoPreview" class="photo-preview">
+      <input type="hidden" id="inPartsPhotoBase64">
+    </div>
+
+    <div style="margin-top: 32px;">
+      <button class="save-btn" id="saveBtn">確定して保存</button>
+    </div>
+
+  </div> 
+
+  <script>
+    // currentProfile をグローバルで取得（保存時にも参照できるよう宣言）
+    const currentProfile = (typeof getCurrentProfile === 'function')
+      ? getCurrentProfile()
+      : JSON.parse(localStorage.getItem('nappy_current_user') || localStorage.getItem('nappy_profile_v1') || 'null');
+
+    // inspector（日常点検のみ）・viewer（閲覧のみ）は整備入力不可
+    (function() {
+      if (currentProfile && (currentProfile.role === 'inspector' || currentProfile.role === 'viewer')) {
+        alert('整備記録の入力権限がありません。\nオーナーに権限設定をご確認ください。');
+        history.back();
+      }
+    })();
+
+    // 日付制限：今日の2週間前〜今日のみ選択可
+    (function() {
+      const today = new Date();
+      const offset = today.getTimezoneOffset() * 60000;
+      const localToday = new Date(today.getTime() - offset);
+      const todayStr = localToday.toISOString().split('T')[0];
+
+      const limitDate = new Date(localToday.getTime());
+      limitDate.setDate(limitDate.getDate() - 14);
+      const limitStr = limitDate.toISOString().split('T')[0];
+
+      const dateEl = document.getElementById('inDate');
+      dateEl.value = todayStr;
+      dateEl.min = limitStr;
+      dateEl.max = todayStr;
+    })();
+
+    // VINのURLパラメータ処理
+    const urlParams = new URLSearchParams(window.location.search);
+    const targetVin = urlParams.get('vin');
+    if (targetVin) {
+      const vinInput = document.getElementById('inVin');
+      vinInput.value = targetVin;
+      vinInput.readOnly = true; 
+    }
+
+    // OCR解析処理
+    document.getElementById('docInput').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if(!file) return;
+      
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        document.getElementById('docPreviewImg').src = event.target.result;
+        document.getElementById('docPreviewArea').style.display = 'block';
+        document.getElementById('discardNotice').style.display = 'block';
+      };
+      reader.readAsDataURL(file);
+
+      showLoading("AI解析中", "車検証・メーターの文字を抽出しています...");
+      
+      try {
+        const res = await analyzeDocument([file]);
+        if (res) {
+          if(res.vin && !document.getElementById('inVin').readOnly) document.getElementById('inVin').value = res.vin;
+          if(res.mileage) document.getElementById('inMileage').value = res.mileage;
+          if(res.shaken)  document.getElementById('inShaken').value  = res.shaken;
+        }
+      } catch (err) { 
+        console.error(err); 
+      } finally { 
+        hideLoading(); 
+      }
+    });
+
+    // アコーディオンの開閉制御
+    document.querySelectorAll('.parent-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const targetId = btn.getAttribute('data-target');
+        const subMenu = document.getElementById(targetId);
+        subMenu.classList.toggle('show');
+        btn.classList.toggle('active');
+      });
+    });
+
+    // 整備項目のトグル制御
+    document.querySelectorAll('.toggle-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        btn.classList.toggle('active');
+        const dId = btn.getAttribute('data-detail');
+        if (dId) {
+          const input = document.getElementById(dId);
+          if (btn.classList.contains('active')) { input.classList.add('show'); input.focus(); }
+          else { input.classList.remove('show'); input.value = ""; }
+        }
+      });
+    });
+
+    // 写真プレビュー処理
+    document.getElementById('partsPhotoInput').addEventListener('change', (e) => {
+      const file = e.target.files[0]; if(!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        document.getElementById('partsPhotoPreview').src = ev.target.result;
+        document.getElementById('partsPhotoPreview').style.display = 'block';
+        document.getElementById('inPartsPhotoBase64').value = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // 保存実行処理
+    document.getElementById("saveBtn").addEventListener("click", () => {
+      const vinEl   = document.getElementById('inVin');
+      const dateEl  = document.getElementById('inDate');
+      const errVin  = document.getElementById('errVin');
+      const errDate = document.getElementById('errDate');
+
+      const vin  = vinEl.value.trim();
+      const date = dateEl.value;
+      const shaken = document.getElementById('inShaken').value;
+
+      // リセット
+      errVin.style.display  = 'none';
+      errDate.style.display = 'none';
+      document.getElementById('errShaken').style.display = 'none';
+
+      let hasErr = false;
+      if (!vin)    { errVin.style.display   = 'block'; hasErr = true; }
+      if (!date)   { errDate.style.display  = 'block'; hasErr = true; }
+      if (!shaken) { document.getElementById('errShaken').style.display = 'block'; hasErr = true; }
+      if (hasErr) return;
+      
+      let parts = [];
+      document.querySelectorAll('.toggle-btn.active').forEach(b => {
+        let name = b.innerText;
+        const dId = b.getAttribute('data-detail');
+        if(dId && document.getElementById(dId).value) name += `(${document.getElementById(dId).value})`;
+        parts.push(`・${name}`);
+      });
+      
+      const inputTitle = document.getElementById('inTitle').value.trim();
+      const logData = { 
+        vin: vin, 
+        date: date, 
+        mileage: document.getElementById('inMileage').value, 
+        nextShaken: shaken,
+        title: inputTitle || "一般整備",
+        parts: parts.join('\n'), 
+        memo: document.getElementById('inMemo').value, 
+        partsPhoto: document.getElementById('inPartsPhotoBase64').value, 
+        shopId: currentProfile ? currentProfile.shopId || '' : '',
+        shopName: currentProfile ? currentProfile.shopName || '' : '',
+        shopType: currentProfile ? currentProfile.shopType || 'dealer' : 'dealer',
+        factoryType: currentProfile ? currentProfile.factoryType || '' : '',
+        staffId: currentProfile ? currentProfile.staffId || currentProfile.loginId || '' : '',
+        staffName: currentProfile ? currentProfile.displayName || currentProfile.realName || '' : '',
+        createdAt: new Date().toISOString() 
+      };
+      
+      showLoading("保存中", "整備記録を保存しています...");
+
+      setTimeout(() => {
+        const logId = saveLog(logData); 
+        hideLoading();
+        showToast('success', '正常に登録されました');
+        setTimeout(() => location.replace(`factory_edit_list.html?vin=${encodeURIComponent(vin)}&log_id=${logId}`), 1200);
+      }, 600);
+    });
+  </script>
+</body>
+</html>

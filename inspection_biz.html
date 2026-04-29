@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>日常点検 | 車のお薬手帳</title>
+  <link rel="stylesheet" href="common.css">
+  <script src="app.js"></script>
+  <script src="theme.js"></script>
+  <style>
+    :root {
+      --page-bg: #f7f3ea; --page-line: rgba(80, 65, 45, 0.10);
+      --bg: #fefce8; --paper: #ffffff; --line: #fde047; 
+      --text: #2f2a24; --muted: #a16207; --accent: #eab308;
+      --highlighter: rgba(234, 179, 8, 0.4);
+      --shadow: 0 4px 10px rgba(0,0,0,0.05);
+    }
+    
+    body {
+      margin: 0; font-family: -apple-system, sans-serif;
+      background: linear-gradient(to bottom, var(--page-line) 1px, transparent 1px) 0 0 / 100% 34px, var(--page-bg);
+      color: var(--text); 
+      padding: 34px 16px 68px; 
+      line-height: 34px; 
+    }
+    
+    .container { max-width: 600px; margin: 0 auto; }
+    
+    .header { margin-bottom: 34px; }
+    .back-link { color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 800; display: inline-block; line-height: 34px; cursor: pointer; }
+    
+    .title { 
+      font-size: 24px; font-weight: 900; margin: 0; 
+      position: relative; display: inline-block; width: max-content;
+      line-height: 34px;
+    }
+    .title::after {
+      content: ""; position: absolute; left: 0; right: 0; bottom: 4px; height: 12px;
+      background: var(--highlighter); z-index: -1; border-radius: 4px; transform: rotate(-1deg);
+    }
+    .sub-title { font-size: 12px; color: var(--muted); font-weight: 800; margin: 0; line-height: 34px; }
+
+    .basic-info-card { 
+      background: rgba(255,255,255,0.6); border: 2px dashed var(--accent); 
+      border-radius: 12px; padding: 16px; margin-bottom: 34px; 
+    }
+    .field { margin-bottom: 17px; }
+    .label { display: block; font-size: 12px; font-weight: 800; color: var(--muted); line-height: 17px; margin-bottom: 4px; }
+    
+    input[type="text"], input[type="date"], textarea { 
+      width: 100%; padding: 8px 12px; border: 2px solid var(--line); border-radius: 8px;
+      background: var(--paper); font-size: 16px; font-weight: 700; color: var(--text); box-sizing: border-box;
+      outline: none;
+    }
+    input[type="text"]:focus, input[type="date"]:focus, textarea:focus { border-color: var(--accent); }
+    input[readonly] { background: transparent; border-color: transparent; padding-left: 0; font-size: 18px; font-weight: 900;}
+
+    .all-good-btn {
+      width: 100%; background: var(--paper); border: 2px solid var(--accent); border-radius: 12px;
+      padding: 0; height: 50px; line-height: 46px; text-align: center; font-size: 16px; font-weight: 900; 
+      color: var(--accent); cursor: pointer; margin-bottom: 34px; box-shadow: var(--shadow); transition: 0.1s;
+    }
+    .all-good-btn:active { transform: scale(0.98); background: var(--accent); color: white; }
+
+    .category-title { 
+      font-size: 16px; font-weight: 900; color: var(--text); 
+      margin: 34px 0 0 0; border-bottom: 2px solid var(--accent); 
+      height: 34px; line-height: 34px;
+    }
+    .item-row { 
+      display: flex; justify-content: space-between; align-items: center; 
+      height: 34px; border-bottom: 1px dashed var(--line); 
+    }
+    .item-name { font-size: 14px; font-weight: 800; color: var(--text); flex: 1; }
+    
+    .options { display: flex; gap: 8px; }
+    .opt-radio { display: none; }
+    .opt-label {
+      position: relative; display: inline-flex; justify-content: center; align-items: center;
+      width: 30px; height: 30px; font-size: 14px; font-weight: 800; color: #9ca3af; 
+      cursor: pointer; user-select: none; border-radius: 50%;
+    }
+    
+    .opt-radio:checked + .opt-label { color: var(--text); font-weight: 900; }
+    
+    .opt-radio:checked + .opt-label::before {
+      content: ""; position: absolute; top: 50%; left: 50%; 
+      width: 28px; height: 28px; 
+      transform: translate(-50%, -50%); 
+      border: 3px solid var(--accent); 
+      border-radius: 50%; 
+      pointer-events: none; animation: stamp 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+    
+    @keyframes stamp {
+      0% { transform: translate(-50%, -50%) scale(1.5); opacity: 0; }
+      100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+    }
+
+    .memo-section { margin-top: 34px; }
+    textarea { line-height: 24px; min-height: 72px; }
+
+    .save-area { margin-top: 34px; display: flex; flex-direction: column; align-items: center; width: 100%; }
+    .save-btn { 
+      width: 100%; max-width: 400px; height: 56px; background: var(--accent); color: white; border: none; 
+      border-radius: 999px; font-size: 18px; font-weight: 900; box-shadow: 0 8px 25px var(--highlighter); cursor: pointer;
+      transition: 0.2s;
+    }
+    .save-btn:active { transform: scale(0.96); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <a onclick="goBackSmart('vehicles.html')" class="back-link">◁ 管理車両一覧へ戻る</a>
+      <div>
+        <h1 class="title">日常点検</h1>
+        <p class="sub-title" id="profileSubTitle">整備記録</p>
+      </div>
+    </div>
+
+    <div class="basic-info-card">
+      <div class="field">
+        <span class="label">対象車両 (VIN)</span>
+        <input id="inVin" type="text" placeholder="読み込み中...">
+      </div>
+      <div class="field">
+        <span class="label">点検日</span>
+        <input id="inDate" type="date">
+      </div>
+      <div class="field" style="margin-bottom:0;">
+        <span class="label">走行距離（km）</span>
+        <input id="inMileage" type="number" min="0" placeholder="例：125000" oninput="checkMileage()">
+        <div id="mileageWarn" style="display:none; color:#d97706; font-size:12px; font-weight:800; margin-top:4px;">
+          ⚠ 前回より走行距離が少ないです（前回：<span id="prevMileageVal"></span> km）
+        </div>
+      </div>
+    </div>
+
+    <button class="all-good-btn" id="allGoodBtn">一括で「良」にする</button>
+
+    <div id="inspectionForm"></div>
+
+    <div class="memo-section field">
+      <span class="label">点検メモ（気になった点など）</span>
+      <textarea id="inMemo" placeholder="メモを入力..."></textarea>
+    </div>
+
+    <div class="save-area"><button class="save-btn" id="saveBtn">点検結果を保存する</button></div>
+  </div>
+
+  <script>
+    const profile = typeof getCurrentProfile === "function" ? getCurrentProfile() : null;
+
+    // 前回走行距離を取得（同VINの inspections_v1 から mileage が入っている最新レコード）
+    function getPrevMileage(vin) {
+      const all = JSON.parse(localStorage.getItem('inspections_v1') || '[]');
+      const withMileage = all
+        .filter(l => l.vin === vin && l.mileage != null && !isNaN(l.mileage))
+        .sort((a, b) => new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date));
+      return withMileage.length > 0 ? withMileage[0].mileage : null;
+    }
+
+    // 走行距離入力時の警告チェック
+    function checkMileage() {
+      const vin = document.getElementById('inVin').value.trim();
+      const val = parseInt(document.getElementById('inMileage').value, 10);
+      const warn = document.getElementById('mileageWarn');
+      if (!vin || isNaN(val)) { warn.style.display = 'none'; return; }
+      const prev = getPrevMileage(vin);
+      if (prev !== null && val < prev) {
+        document.getElementById('prevMileageVal').textContent = prev.toLocaleString();
+        warn.style.display = 'block';
+      } else {
+        warn.style.display = 'none';
+      }
+    }
+
+    // viewer（閲覧のみ）は日常点検入力も不可
+    if (profile && profile.role === 'viewer') {
+      alert('入力権限がありません。\nオーナーに権限設定をご確認ください。');
+      history.back();
+    }
+    
+    window.addEventListener('DOMContentLoaded', () => {
+      const subTitleEl = document.getElementById('profileSubTitle');
+      
+      if (profile) {
+        if (profile.shopType === 'factory') {
+          subTitleEl.textContent = "整備工場・事業者用 (標準版)";
+        } else if (profile.shopType === 'dealer') {
+          subTitleEl.textContent = "販売店・業者用 (標準版)";
+        }
+      }
+
+      // 日付制限：今日の2週間前〜今日のみ選択可
+      (function() {
+        const today = new Date();
+        const offset = today.getTimezoneOffset() * 60000;
+        const localToday = new Date(today.getTime() - offset);
+        const todayStr = localToday.toISOString().split('T')[0];
+        const limitDate = new Date(localToday.getTime());
+        limitDate.setDate(limitDate.getDate() - 14);
+        const limitStr = limitDate.toISOString().split('T')[0];
+        const dateEl = document.getElementById('inDate');
+        dateEl.value = todayStr;
+        dateEl.min = limitStr;
+        dateEl.max = todayStr;
+      })();
+
+      const urlParams = new URLSearchParams(window.location.search);
+      const targetVin = urlParams.get('vin');
+      if (targetVin) {
+        const vinInput = document.getElementById('inVin');
+        vinInput.value = targetVin;
+        vinInput.readOnly = true; 
+      }
+    });
+
+    const inspectionData = [
+      { cat: "エンジン", items: [
+        { id: "e1", name: "エンジンオイル量", opts: ["良", "補", "交"] },
+        { id: "e2", name: "冷却水量", opts: ["良", "補"] },
+        { id: "e3", name: "エンジン始動状態", opts: ["良", "点"] },
+        { id: "e4", name: "異音確認", opts: ["良", "点"] },
+        { id: "e5", name: "排気の色", opts: ["良", "点"] }
+      ]},
+      { cat: "バッテリー", items: [
+        { id: "ba1", name: "バッテリー液量", opts: ["良", "補", "交"] },
+        { id: "ba2", name: "端子状態", opts: ["良", "調", "交"] }
+      ]},
+      { cat: "ベルト", items: [
+        { id: "be1", name: "ベルト張り", opts: ["良", "調", "交"] },
+        { id: "be2", name: "ベルト損傷", opts: ["良", "交", "点"] }
+      ]},
+      { cat: "タイヤ", items: [
+        { id: "t1", name: "タイヤ空気圧", opts: ["良", "補"] },
+        { id: "t2", name: "タイヤ亀裂・損傷", opts: ["良", "交", "点"] },
+        { id: "t3", name: "タイヤ摩耗状態", opts: ["良", "交", "点"] },
+        { id: "t4", name: "タイヤ溝深さ", opts: ["良", "交", "点"] }
+      ]},
+      { cat: "ブレーキ", items: [
+        { id: "b1", name: "ブレーキ液量", opts: ["良", "補"] },
+        { id: "b2", name: "ブレーキペダル踏みしろ", opts: ["良", "調", "点"] },
+        { id: "b3", name: "駐車ブレーキ引きしろ", opts: ["良", "調", "点"] }
+      ]},
+      { cat: "灯火類", items: [
+        { id: "l1", name: "前照灯", opts: ["良", "交"] },
+        { id: "l2", name: "制動灯", opts: ["良", "交"] },
+        { id: "l3", name: "方向指示器", opts: ["良", "交"] },
+        { id: "l4", name: "尾灯 / 車幅灯", opts: ["良", "交"] }
+      ]},
+      { cat: "ワイパー / 洗浄液", items: [
+        { id: "w1", name: "ワイパー状態", opts: ["良", "交"] },
+        { id: "w2", name: "ウォッシャー液", opts: ["良", "補"] }
+      ]},
+      { cat: "走行装置 / その他", items: [
+        { id: "o1", name: "エアタンク(対象車のみ)", opts: ["良", "点", "無"] },
+        { id: "o2", name: "異臭確認", opts: ["良", "点"] },
+        { id: "o3", name: "その他異常", opts: ["良", "点"] }
+      ]}
+    ];
+
+    const formContainer = document.getElementById('inspectionForm');
+    let htmlStr = "";
+    inspectionData.forEach(group => {
+      htmlStr += `<h2 class="category-title">【${group.cat}】</h2>`;
+      group.items.forEach(item => {
+        htmlStr += `<div class="item-row"><div class="item-name">${item.name}</div><div class="options">`;
+        item.opts.forEach((opt, index) => {
+          const optId = `${item.id}_${index}`;
+          htmlStr += `
+            <input type="radio" name="${item.id}" id="${optId}" value="${opt}" class="opt-radio">
+            <label for="${optId}" class="opt-label">${opt}</label>
+          `;
+        });
+        htmlStr += `</div></div>`;
+      });
+    });
+    formContainer.innerHTML = htmlStr;
+
+    document.getElementById('allGoodBtn').addEventListener('click', () => {
+      document.querySelectorAll('.opt-radio').forEach(radio => {
+        if (radio.value === '良') radio.checked = true;
+      });
+    });
+
+    document.getElementById('saveBtn').addEventListener('click', () => {
+      const vin = document.getElementById('inVin').value.trim();
+      if (!vin) return alert("車台番号(VIN)がありません。");
+
+      const memo = document.getElementById('inMemo').value.trim();
+      let hasIssue = false; 
+      let unselectedCount = 0; 
+      
+      let checks = {}; 
+
+      inspectionData.forEach(group => {
+        group.items.forEach(item => {
+          const checkedOpt = document.querySelector(`input[name="${item.id}"]:checked`);
+          if (!checkedOpt) {
+            unselectedCount++;
+          } else {
+            checks[item.id] = checkedOpt.value; 
+            if (checkedOpt.value !== '良' && checkedOpt.value !== '無') hasIssue = true;
+          }
+        });
+      });
+
+      if (unselectedCount > 0) {
+        if (!confirm(`未選択の項目が ${unselectedCount} 件あります。このまま保存しますか？`)) return;
+      }
+      if (memo !== "") hasIssue = true;
+
+      setTimeout(() => {
+        const generatedLogId = "LOG_" + Date.now();
+        const mileageRaw = document.getElementById('inMileage').value.trim();
+        const mileage = mileageRaw ? parseInt(mileageRaw, 10) : null;
+        const logData = { 
+          log_id: generatedLogId,
+          vin: vin, 
+          date: document.getElementById('inDate').value, 
+          title: "日常点検", 
+          memo: memo, 
+          type: "inspection", 
+          checks: checks,
+          mileage: mileage,
+          createdAt: new Date().toISOString() 
+        };
+        
+        const inspections = JSON.parse(localStorage.getItem('inspections_v1') || '[]');
+        inspections.push(logData);
+        localStorage.setItem('inspections_v1', JSON.stringify(inspections));
+
+        if (hasIssue) {
+          // checks オブジェクトから項目名マップを生成して非良/無の項目を文字列化
+          const itemMap = {};
+          inspectionData.forEach(g => g.items.forEach(i => { itemMap[i.id] = i.name; }));
+          const ngItems = Object.entries(checks)
+            .filter(([, v]) => v !== '良' && v !== '無')
+            .map(([k, v]) => `${itemMap[k] || k}：${v}`);
+          logData.parts = ngItems.length > 0 ? ngItems.join(' / ') : "日常点検（指摘事項あり）";
+          if (typeof saveLog === "function") saveLog(logData); 
+          showToast('success', '点検を保存しました（整備履歴にも追加）');
+        } else {
+          showToast('success', '正常に登録されました');
+        }
+        
+        setTimeout(() => location.replace("vehicles.html"), 1200);
+      }, 500);
+    });
+  </script>
+</body>
+</html>

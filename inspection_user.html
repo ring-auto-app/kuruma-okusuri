@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>日常点検 (マイカー用) | 車のお薬手帳</title>
+  <link rel="stylesheet" href="common.css">
+  <script src="app.js"></script>
+  <script src="theme.js"></script>
+  <style>
+    /* 掟1適用：緑の直書きを撤廃し、ログイン状態（theme.js）で色が切り替わるように修正 */
+    :root {
+      /* 点検特有のOK/NG色のみ固定で残す */
+      --ok-color: #10b981; 
+      --ng-color: #ef4444; 
+    }
+    body {
+      margin: 0; font-family: -apple-system, sans-serif;
+      background: linear-gradient(to bottom, var(--page-line) 1px, transparent 1px) 0 0 / 100% 34px, var(--page-bg);
+      color: var(--text); padding: 34px 16px 100px; line-height: 34px;
+    }
+    .container { max-width: 600px; margin: 0 auto; }
+    
+    .header { margin-bottom: 34px; border-bottom: 2px dashed var(--accent); padding-bottom: 16px; }
+    .back-link { color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 800; display: block; cursor: pointer; height: 34px; line-height: 34px; }
+    .title {
+      font-size: 24px; font-weight: 900; color: var(--text); margin: 0;
+      position: relative; display: inline-block; line-height: 34px;
+    }
+    .title::after {
+      content: ""; position: absolute; left: 0; right: 0; bottom: 4px; height: 12px;
+      background: var(--highlighter); z-index: -1; border-radius: 4px; transform: rotate(-1deg);
+    }
+    .sub-title { font-size: 13px; color: var(--muted); font-weight: 700; margin-top: 8px; line-height: 1.5; }
+
+    .basic-info-card { background: var(--paper); border: 2px solid var(--line); border-radius: 16px; padding: 16px; margin-bottom: 34px; box-shadow: var(--shadow); line-height: 1.5; }
+    .field { margin-bottom: 12px; }
+    .field:last-child { margin-bottom: 0; }
+    .label { display: block; font-size: 12px; font-weight: 800; color: var(--muted); margin-bottom: 6px; }
+    input[type="text"], input[type="date"], textarea { 
+      width: 100%; padding: 12px; border: 2px solid var(--line); border-radius: 8px;
+      background: var(--paper); font-size: 16px; font-weight: 700; color: var(--text); box-sizing: border-box; font-family: inherit;
+    }
+    input:focus, textarea:focus { outline: none; border-color: var(--accent); background: var(--paper); }
+    input[readonly] { background: transparent; color: var(--text); border-color: transparent; padding-left: 0; font-size: 18px; font-weight: 900; }
+
+    .item-card {
+      background: var(--paper); border: 2px solid var(--line); border-radius: 16px;
+      padding: 16px; margin-bottom: 16px; box-shadow: var(--shadow); transition: border-color 0.2s;
+    }
+    
+    .item-header { margin-bottom: 12px; }
+    .item-name { font-size: 16px; font-weight: 900; color: var(--text); }
+    .item-desc { font-size: 12px; color: var(--muted); font-weight: 700; margin-top: 4px; }
+
+    .btn-group { display: flex; gap: 10px; flex-wrap: wrap;}
+    .hidden-radio { display: none; }
+    
+    .btn-label {
+      flex: 1; padding: 12px 0; text-align: center; font-size: 15px; font-weight: 900;
+      border-radius: 10px; cursor: pointer; border: 2px solid var(--line); color: var(--muted);
+      background: var(--page-bg); transition: all 0.15s; user-select: none;
+    }
+    
+    .ok-radio:checked + .btn-label { background: #ecfdf5; border-color: var(--ok-color); color: var(--ok-color); }
+    .ng-radio:checked + .btn-label { background: #fef2f2; border-color: var(--ng-color); color: var(--ng-color); }
+
+    .detail-memo { display: none; margin-top: 12px; border: 2px dashed var(--ng-color) !important; background: var(--paper) !important; width: 100%;}
+    .ng-radio:checked ~ .detail-memo { display: block; animation: slideDown 0.2s ease-out; }
+    @keyframes slideDown { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
+
+    .memo-section { margin-top: 32px; background: var(--page-bg); border: 2px dashed var(--accent); border-radius: 16px; padding: 16px; }
+
+    .save-area { margin-top: 40px; display: flex; flex-direction: column; align-items: center; width: 100%; }
+    .save-btn { 
+      width: 100%; max-width: 400px; padding: 16px; background: var(--accent); color: white; border: none; 
+      border-radius: 999px; font-size: 18px; font-weight: 900; box-shadow: 0 8px 25px var(--highlighter); cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <a id="backBtn" class="back-link">◁ 履歴へ戻る</a>
+      <h1 class="title">日常点検</h1>
+      <p class="sub-title">気になるところがあれば「×」を選んでメモを残しましょう。次回の点検時に役立ちます！</p>
+    </div>
+
+    <div class="basic-info-card">
+      <div class="field"><span class="label">対象車両 (VIN)</span><input id="inVin" type="text" placeholder="読み込み中..."></div>
+      <div class="field"><span class="label">チェック日</span><input id="inDate" type="date"></div>
+      <div class="field" style="margin-bottom:0;">
+        <span class="label">走行距離（km）</span>
+        <input id="inMileage" type="number" min="0" placeholder="例：45000" oninput="checkMileage()">
+        <div id="mileageWarn" style="display:none; color:#d97706; font-size:12px; font-weight:800; margin-top:4px;">
+          ⚠ 前回より走行距離が少ないです（前回：<span id="prevMileageVal"></span> km）
+        </div>
+      </div>
+    </div>
+
+    <div id="userInspectionForm"></div>
+
+    <div class="memo-section">
+      <span class="label" style="color: var(--text);">📝 全体の気になること・相談メモ</span>
+      <textarea id="inMemo" rows="3" placeholder="「いつ、どんな時に異変感じたか…」など、自由に書いてください！"></textarea>
+    </div>
+
+    <div class="save-area"><button class="save-btn" id="saveBtn">手帳に記録する</button></div>
+
+  </div> 
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const targetVin = urlParams.get('vin');
+
+    // 前回走行距離を取得
+    function getPrevMileage(vin) {
+      const all = JSON.parse(localStorage.getItem('inspections_v1') || '[]');
+      const withMileage = all
+        .filter(l => l.vin === vin && l.mileage != null && !isNaN(l.mileage))
+        .sort((a, b) => new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date));
+      return withMileage.length > 0 ? withMileage[0].mileage : null;
+    }
+
+    function checkMileage() {
+      const vin = document.getElementById('inVin').value.trim();
+      const val = parseInt(document.getElementById('inMileage').value, 10);
+      const warn = document.getElementById('mileageWarn');
+      if (!vin || isNaN(val)) { warn.style.display = 'none'; return; }
+      const prev = getPrevMileage(vin);
+      if (prev !== null && val < prev) {
+        document.getElementById('prevMileageVal').textContent = prev.toLocaleString();
+        warn.style.display = 'block';
+      } else {
+        warn.style.display = 'none';
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      // 日付制限：今日の2週間前〜今日のみ選択可
+      (function() {
+        const today = new Date();
+        const offset = today.getTimezoneOffset() * 60000;
+        const localToday = new Date(today.getTime() - offset);
+        const todayStr = localToday.toISOString().split('T')[0];
+        const limitDate = new Date(localToday.getTime());
+        limitDate.setDate(limitDate.getDate() - 14);
+        const limitStr = limitDate.toISOString().split('T')[0];
+        const dateEl = document.getElementById('inDate');
+        dateEl.value = todayStr;
+        dateEl.min = limitStr;
+        dateEl.max = todayStr;
+      })();
+
+      if (targetVin) {
+        const vinInput = document.getElementById('inVin');
+        vinInput.value = targetVin;
+        vinInput.readOnly = true; 
+      } else {
+        alert("車両データが見つかりません。");
+        location.replace("user_home.html");
+      }
+
+      // 戻るボタンの制御
+      document.getElementById('backBtn').onclick = () => {
+        goBackSmart(targetVin ? `user_inspection_history.html?vin=${encodeURIComponent(targetVin)}` : 'user_home.html');
+      };
+    });
+
+    const userItems = [
+      { id: "u1", name: "エンジンオイル量", desc: "ゲージで確認" },
+      { id: "u2", name: "冷却水量", desc: "タンクの量" },
+      { id: "u3", name: "タイヤ空気圧", desc: "見た目で潰れてないか" },
+      { id: "u4", name: "ブレーキの効き", desc: "キーキー鳴る、踏みごたえが変など" },
+      { id: "u5", name: "灯火類", desc: "ライト・ウインカーが点くか" },
+      { id: "u6", name: "ワイパー", desc: "拭き取り具合・ゴムの劣化" },
+      { id: "u7", name: "エアコンの効き", desc: "冷えない、風が弱いなど" },
+      { id: "u8", name: "メーターの警告灯", desc: "変なマークが点灯していないか" },
+      { id: "u9", name: "異音・異常", desc: "変な音やニオイがしないか" }
+    ];
+
+    const formContainer = document.getElementById('userInspectionForm');
+    let htmlStr = "";
+    userItems.forEach(item => {
+      htmlStr += `
+        <div class="item-card">
+          <div class="item-header">
+            <div class="item-name">${item.name}</div>
+            <div class="item-desc">${item.desc}</div>
+          </div>
+          <div class="btn-group">
+            <input type="radio" name="${item.id}" id="${item.id}-ok" value="OK" class="hidden-radio ok-radio" checked>
+            <label for="${item.id}-ok" class="btn-label">○ OK</label>
+            
+            <input type="radio" name="${item.id}" id="${item.id}-ng" value="NG" class="hidden-radio ng-radio">
+            <label for="${item.id}-ng" class="btn-label">× 気になる</label>
+            
+            <textarea id="${item.id}-memo" class="detail-memo" rows="2" placeholder="どんな感じですか？ "></textarea>
+          </div>
+        </div>
+      `;
+    });
+    formContainer.innerHTML = htmlStr;
+
+    // 保存処理
+    document.getElementById('saveBtn').addEventListener('click', () => {
+      const vin = document.getElementById('inVin').value.trim();
+      const date = document.getElementById('inDate').value;
+      let memo = document.getElementById('inMemo').value.trim();
+
+      if (!vin) return alert("車台番号(VIN)がありません。");
+
+      let hasIssue = false;
+      const issues = [];
+      // 全項目の○/×をオブジェクトとして収集
+      const userChecks = {};
+
+      userItems.forEach(item => {
+        const checkedOpt = document.querySelector(`input[name="${item.id}"]:checked`);
+        const val = checkedOpt ? checkedOpt.value : 'OK';
+        userChecks[item.id] = val;
+        if (val === 'NG') {
+          hasIssue = true;
+          const detailMemo = document.getElementById(`${item.id}-memo`).value.trim();
+          issues.push(`・${item.name}${detailMemo ? `（${detailMemo}）` : ""}`);
+        }
+      });
+
+      if (issues.length > 0) {
+        let issueText = "【⚠️ 気になる項目】\n" + issues.join("\n");
+        memo = memo ? issueText + "\n\n【全体メモ】\n" + memo : issueText;
+      }
+
+      showLoading("保存中", "手帳に記録しています...");
+
+      setTimeout(() => {
+        const mileageRaw = document.getElementById('inMileage').value.trim();
+        const mileage = mileageRaw ? parseInt(mileageRaw, 10) : null;
+        const newLogId = `INS-${Date.now()}`;
+        const createdAt = new Date().toISOString();
+
+        // inspections_v1 に保存（type・userChecks を含める）
+        const inspections = JSON.parse(localStorage.getItem('inspections_v1') || '[]');
+        inspections.push({
+          logId: newLogId,
+          log_id: newLogId,
+          vin: vin,
+          date: date,
+          title: "日常点検",
+          memo: memo,
+          mileage: mileage,
+          type: "inspection_user",
+          userChecks: userChecks,
+          photoUrl: "",
+          createdAt: createdAt
+        });
+        localStorage.setItem('inspections_v1', JSON.stringify(inspections));
+
+        // ×がある場合は整備履歴（nappy_logs_v1）にも反映
+        if (hasIssue) {
+          const ngNames = issues.map(s => s.replace(/^・/, '').trim());
+          const logs = JSON.parse(localStorage.getItem('nappy_logs_v1') || '[]');
+          logs.push({
+            log_id: `LOG-${Date.now()}`,
+            vin: vin,
+            date: date,
+            title: "【日常点検】気になる項目あり",
+            parts: ngNames.join(' / '),
+            memo: memo,
+            mileage: mileage,
+            type: "inspection_user",
+            shopType: "user",
+            createdAt: createdAt
+          });
+          localStorage.setItem('nappy_logs_v1', JSON.stringify(logs));
+        }
+
+        hideLoading();
+        showToast('success', hasIssue ? '記録しました（整備履歴にも追加）' : '正常に登録されました');
+        setTimeout(() => {
+          location.replace(targetVin ? `user_inspection_history.html?vin=${encodeURIComponent(targetVin)}` : "user_home.html");
+        }, 1200);
+      }, 500);
+    });
+  </script>
+</body>
+</html>

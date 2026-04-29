@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>操作マニュアル | 車のお薬手帳</title>
+  <link rel="stylesheet" href="common.css">
+  <script src="app.js"></script>
+  <script src="theme.js"></script>
+  <style>
+    .tab-bar {
+      display: flex; gap: 6px; margin-bottom: 24px; overflow-x: auto;
+      padding-bottom: 4px; scrollbar-width: none;
+    }
+    .tab-bar::-webkit-scrollbar { display: none; }
+    .tab-btn {
+      flex-shrink: 0; padding: 8px 18px; border-radius: 999px;
+      font-size: 13px; font-weight: 900; border: 2px solid var(--line);
+      background: var(--paper); color: var(--muted); cursor: pointer; transition: 0.15s;
+    }
+    .tab-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    .section {
+      background: var(--paper); border: 1px solid var(--line); border-radius: 16px;
+      padding: 20px; margin-bottom: 20px; box-shadow: var(--shadow);
+    }
+    .section-title {
+      font-size: 16px; font-weight: 900; color: var(--text);
+      margin: 0 0 14px; display: flex; align-items: center; gap: 8px;
+    }
+    .step {
+      display: flex; gap: 12px; margin-bottom: 14px; align-items: flex-start;
+    }
+    .step:last-child { margin-bottom: 0; }
+    .step-num {
+      flex-shrink: 0; width: 24px; height: 24px; border-radius: 50%;
+      background: var(--accent); color: #fff; font-size: 12px; font-weight: 900;
+      display: flex; align-items: center; justify-content: center; margin-top: 2px;
+    }
+    .step-body { flex: 1; }
+    .step-label { font-size: 14px; font-weight: 900; color: var(--text); margin-bottom: 3px; }
+    .step-desc  { font-size: 12px; font-weight: 700; color: var(--muted); line-height: 1.6; }
+
+    .tip-box {
+      background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px;
+      padding: 12px 14px; margin-top: 14px; font-size: 12px; font-weight: 700;
+      color: #92400e; line-height: 1.6;
+    }
+    .warn-box {
+      background: #fff1f2; border: 1px solid #fda4af; border-radius: 10px;
+      padding: 12px 14px; margin-top: 14px; font-size: 12px; font-weight: 700;
+      color: #9f1239; line-height: 1.6;
+    }
+    .badge-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .badge-item {
+      font-size: 11px; font-weight: 900; padding: 4px 10px; border-radius: 6px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <a onclick="history.back()" class="back-link">≪戻る</a>
+      <h1 class="title">操作マニュアル</h1>
+    </div>
+
+    <div class="tab-bar">
+      <button class="tab-btn active" onclick="switchTab('user', this)">👤 ユーザー</button>
+      <button class="tab-btn" onclick="switchTab('factory', this)">🔧 整備工場</button>
+      <button class="tab-btn" onclick="switchTab('dealer', this)">🚗 事業者</button>
+    </div>
+
+    <!-- ユーザー向け -->
+    <div id="tab-user" class="tab-panel active">
+
+      <div class="section">
+        <div class="section-title">📖 はじめに</div>
+        <p style="font-size:13px; font-weight:700; color:var(--muted); line-height:1.8; margin:0;">
+          「車のお薬手帳」は、愛車の整備履歴を一冊の手帳としてまとめるアプリです。
+          工場が入力した整備記録を車台番号（VIN）で管理し、売却・買取時の資産価値向上にも役立ちます。
+        </p>
+      </div>
+
+      <div class="section">
+        <div class="section-title">🚙 マイカーを登録する</div>
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <div class="step-label">ホーム画面から「マイカー管理」を開く</div>
+            <div class="step-desc">ホームの「マイカー管理」ボタンをタップします。</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <div class="step-label">「＋ 車両を追加」をタップ</div>
+            <div class="step-desc">車両一覧画面の右上または下部ボタンから追加できます。</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <div class="step-label">車台番号（VIN）と車検満了日を入力</div>
+            <div class="step-desc">車台番号は車検証に記載されています。全角・半角どちらでも入力可能です。自動で大文字に変換されます。</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-body">
+            <div class="step-label">「この車両を登録する」をタップ</div>
+            <div class="step-desc">登録が完了するとマイカー一覧に表示されます。</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">📋 整備履歴を確認する</div>
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <div class="step-label">マイカー一覧から車両をタップ</div>
+            <div class="step-desc">登録した車両をタップすると整備履歴の一覧が表示されます。</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <div class="step-label">付箋カードをタップして詳細を確認</div>
+            <div class="step-desc">作業日・整備内容・交換部品・走行距離などが確認できます。</div>
+          </div>
+        </div>
+        <div class="tip-box">
+          💡 整備履歴は工場・事業者が入力します。ユーザー自身は閲覧のみ可能です。
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">✅ 日常点検を記録する</div>
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <div class="step-label">ホームの「日常点検を入力」をタップ</div>
+            <div class="step-desc">対象車両のVINを選択して点検画面を開きます。</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <div class="step-label">各項目を「○ OK」または「× 気になる」で選択</div>
+            <div class="step-desc">「× 気になる」を選ぶとメモ欄が表示されます。気になる点を自由に記入してください。</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <div class="step-label">「手帳に記録する」をタップ</div>
+            <div class="step-desc">点検結果が保存されます。チェック日は今日から2週間前まで選択できます。</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">🏥 かかりつけ工場を登録する</div>
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <div class="step-label">しおり（⚙）から「かかりつけ」をタップ</div>
+            <div class="step-desc">お気に入り工場の一覧が表示されます。</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <div class="step-label">工場のQRコードを読み取る</div>
+            <div class="step-desc">工場のQRコードをスキャンすると自動で登録されます。</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 整備工場向け -->
+    <div id="tab-factory" class="tab-panel">
+
+      <div class="section">
+        <div class="section-title">📖 はじめに</div>
+        <p style="font-size:13px; font-weight:700; color:var(--muted); line-height:1.8; margin:0;">
+          整備工場アカウントでは、入庫車両の整備記録の入力・検索・スタッフ管理ができます。
+          入力した記録は7日間のみ修正可能で、以降は自動的に確定保存されます。
+        </p>
+      </div>
+
+      <div class="section">
+        <div class="section-title">🛠 整備記録を入力する</div>
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <div class="step-label">ホームの「整備履歴入力」をタップ</div>
+            <div class="step-desc">整備入力画面が開きます。</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <div class="step-label">車台番号（VIN）と作業日を入力</div>
+            <div class="step-desc">VINは自動で半角大文字に変換されます。作業日は今日から2週間前まで選択可能です。</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <div class="step-label">交換・点検した部品・油脂類を選択</div>
+            <div class="step-desc">カテゴリごとにトグルで選択。詳細情報（銘柄・数値など）も入力できます。</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-body">
+            <div class="step-label">「確定して保存」をタップ</div>
+            <div class="step-desc">保存後、7日以内であれば「入力履歴一覧」から修正できます。</div>
+          </div>
+        </div>
+        <div class="warn-box">
+          ⚠ 入力から7日が経過すると自動的にロックされ、修正・削除はできません。
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">🔍 整備履歴を検索する</div>
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <div class="step-label">ホームの「整備履歴検索」をタップ</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <div class="step-label">車台番号（VIN）を入力して検索</div>
+            <div class="step-desc">自社・他社問わず、全工場が入力した履歴が表示されます。</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <div class="step-label">付箋カードをタップして詳細確認</div>
+            <div class="step-desc">自社入力かつ7日以内の記録には「✏ 修正可」バッジが表示されます。</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">👑 スタッフを管理する（オーナー専用）</div>
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <div class="step-label">⚙ しおり →「スタッフ管理」を開く</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <div class="step-label">表示名・スタッフネームを入力して追加</div>
+            <div class="step-desc">4桁のログインIDが自動発行されます。パスワードは店舗共通です。</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <div class="step-label">入力許可をON/OFFで切り替える</div>
+            <div class="step-desc">OFFにすると「閲覧のみ」スタッフになり、整備記録の入力ができなくなります。</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 事業者向け -->
+    <div id="tab-dealer" class="tab-panel">
+
+      <div class="section">
+        <div class="section-title">📖 はじめに</div>
+        <p style="font-size:13px; font-weight:700; color:var(--muted); line-height:1.8; margin:0;">
+          事業者アカウントでは、在庫車両の管理・整備記録の入力・スタッフ管理が利用できます。
+          仕入れ・販売時の履歴確認にも活用できます。
+        </p>
+      </div>
+
+      <div class="section">
+        <div class="section-title">🚙 管理車両を登録する</div>
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <div class="step-label">ホームの「管理車両」をタップ</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <div class="step-label">「＋ 車両を追加」をタップ</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <div class="step-label">車台番号・車検満了日・種別を入力</div>
+            <div class="step-desc">自動車の種別は軽自動車・小型・普通・大型特殊・小型特殊から選択できます。</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">📝 整備記録を入力する</div>
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <div class="step-label">ホームの「整備履歴入力」をタップ</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <div class="step-label">VIN・作業日・整備区分を入力</div>
+            <div class="step-desc">作業日は今日から2週間前まで選択可能。未来日は入力できません。</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <div class="step-label">作業内容を選択して「確定して保存」</div>
+            <div class="step-desc">保存後7日以内は「入力履歴一覧」から修正できます。</div>
+          </div>
+        </div>
+        <div class="warn-box">
+          ⚠ 入力から7日が経過すると自動的にロックされます。
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">👑 スタッフを管理する（オーナー専用）</div>
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <div class="step-label">⚙ しおり →「スタッフ管理」を開く</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <div class="step-label">表示名・スタッフネームを入力して追加</div>
+            <div class="step-desc">ログインIDが自動発行されます。</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <div class="step-label">入力許可をON/OFFで切り替える</div>
+            <div class="step-desc">OFFにすると整備記録の入力ができなくなります。</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    function switchTab(id, btn) {
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById('tab-' + id).classList.add('active');
+      btn.classList.add('active');
+    }
+
+    // ログインロールに合わせて初期タブを自動選択
+    window.addEventListener('DOMContentLoaded', () => {
+      const profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+      if (!profile) return; // 未ログインはデフォルト（ユーザータブ）のまま
+
+      let targetId = 'user';
+      if (profile.shopType === 'factory') targetId = 'factory';
+      else if (profile.shopType === 'dealer') targetId = 'dealer';
+
+      const btn = document.querySelector(`.tab-btn[onclick*="'${targetId}'"]`);
+      if (btn) switchTab(targetId, btn);
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>履歴詳細 | 車のお薬手帳</title>
+  
+  <link rel="stylesheet" href="common.css">
+  <script src="app.js"></script>
+  <script src="theme.js"></script>
+  
+  <style>
+    body {
+      margin: 0; font-family: -apple-system, sans-serif;
+      background: linear-gradient(to bottom, var(--page-line) 1px, transparent 1px) 0 0 / 100% 34px, var(--page-bg);
+      color: var(--text); padding: 34px 16px 100px; line-height: 34px;
+    }
+    .container { max-width: 600px; margin: 0 auto; }
+    .header { margin-bottom: 34px; border-bottom: 2px dashed var(--accent); padding-bottom: 16px; }
+    .back-link { color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 800; display: block; cursor: pointer; height: 34px; line-height: 34px; }
+    .check-list { font-size: 14px; font-weight: 700; line-height: 1.8; }
+    .check-ng { color: #b45309; font-weight: 900; }
+    .check-ok { color: #6b7280; }
+    .title {
+      font-size: 24px; font-weight: 900; color: var(--text); margin: 0;
+      position: relative; display: inline-block; line-height: 34px;
+    }
+    .title::after {
+      content: ""; position: absolute; left: 0; right: 0; bottom: 4px; height: 12px;
+      background: var(--highlighter); z-index: -1; border-radius: 4px; transform: rotate(-1deg);
+    }
+
+    .card {
+      background: var(--paper); border: 2px solid var(--line); border-radius: 16px;
+      padding: 16px; box-shadow: var(--shadow); line-height: 1.5;
+    }
+    .field { margin-bottom: 14px; }
+    .field:last-child { margin-bottom: 0; }
+    .label { display: block; font-size: 12px; font-weight: 800; color: var(--muted); margin-bottom: 6px; }
+    .value {
+      font-size: 16px; font-weight: 700; color: var(--text);
+      background: var(--page-bg); border: 1px dashed var(--line); border-radius: 10px; padding: 10px;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <a id="backBtn" class="back-link">◁ 戻る</a>
+      <h1 class="title">履歴詳細</h1>
+    </div>
+
+    <div id="content"></div>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const vin = params.get("vin");
+    const logId = params.get("log_id");
+
+    window.addEventListener("DOMContentLoaded", () => {
+      document.getElementById("backBtn").onclick = () => {
+        goBackSmart(vin ? `user_history.html?vin=${encodeURIComponent(vin)}` : "user_home.html");
+      };
+      render();
+    });
+
+    // inspection_biz.html の点検項目ID → 名前マップ
+    const INSPECT_ITEM_NAMES = {
+      e1:'エンジンオイル量', e2:'冷却水量', e3:'エンジン始動状態', e4:'異音確認', e5:'排気の色',
+      ba1:'バッテリー液量', ba2:'端子状態',
+      be1:'ベルト張り', be2:'ベルト損傷',
+      t1:'タイヤ空気圧', t2:'タイヤ亀裂・損傷', t3:'タイヤ摩耗状態', t4:'タイヤ溝深さ',
+      b1:'ブレーキ液量', b2:'ブレーキペダル踏みしろ', b3:'駐車ブレーキ引きしろ',
+      l1:'前照灯', l2:'制動灯', l3:'方向指示器', l4:'尾灯/車幅灯',
+      w1:'ワイパー状態', w2:'ウォッシャー液',
+      o1:'エアタンク', o2:'異臭確認', o3:'その他異常'
+    };
+
+    function render() {
+      showLoading("読込中", "履歴詳細を取得しています...");
+      setTimeout(() => {
+        const logs = JSON.parse(localStorage.getItem("nappy_logs_v1") || "[]");
+        const log = logs.find(l => String(l.log_id) === String(logId));
+        const content = document.getElementById("content");
+
+        if (!log) {
+          content.innerHTML = `<div class="card"><div class="value">データが見つかりませんでした。</div></div>`;
+          hideLoading();
+          return;
+        }
+
+        // 日常点検の checks を項目一覧として表示
+        let checksHtml = "";
+        if (log.type === 'inspection' && log.checks && typeof log.checks === 'object') {
+          const entries = Object.entries(log.checks);
+          if (entries.length > 0) {
+            const rows = entries.map(([k, v]) => {
+              const name = INSPECT_ITEM_NAMES[k] || k;
+              const isNg = v !== '良' && v !== '無';
+              return `<div class="${isNg ? 'check-ng' : 'check-ok'}">` +
+                `${isNg ? '⚠ ' : '✓ '}${escapeHtml(name)}：${escapeHtml(v)}</div>`;
+            }).join('');
+            checksHtml = `
+              <div class="field">
+                <span class="label">点検項目</span>
+                <div class="value check-list">${rows}</div>
+              </div>`;
+          }
+        }
+
+        // 交換部品フィールド（日常点検以外、またはpartsに値があれば表示）
+        const showParts = log.parts && log.type !== 'inspection';
+        const partsHtml = showParts ? `
+          <div class="field">
+            <span class="label">交換部品・作業内容</span>
+            <div class="value">${escapeHtml(log.parts)}</div>
+          </div>` : '';
+
+        // 担当工場情報（inspection_user は非表示）
+        let shopSectionHtml = '';
+        if (log.type !== 'inspection_user' && log.shopType !== 'user') {
+          const shops = JSON.parse(localStorage.getItem('nappy_shops_v1') || '[]');
+          const shop  = shops.find(s => s.shopId === log.shopId) || {};
+          const shopName   = log.shopName  || shop.shopName  || '-';
+          const bureau     = log.transportBureau || shop.transportBureau || shop.riku_un || '-';
+          const certNumber = log.factoryNumber   || shop.factoryNumber   || '-';
+          const certType   = log.factoryType     || '';
+          const certLabel  = certType ? `${certType}番号` : '指定/認証番号';
+          shopSectionHtml = `
+            <div class="field">
+              <span class="label">担当工場・事業者</span>
+              <div class="value">${escapeHtml(shopName)}</div>
+            </div>
+            <div class="field">
+              <span class="label">陸運支局</span>
+              <div class="value">${escapeHtml(bureau)}</div>
+            </div>
+            <div class="field">
+              <span class="label">${escapeHtml(certLabel)}</span>
+              <div class="value">${escapeHtml(certNumber)}</div>
+            </div>`;
+        }
+
+        content.innerHTML = `
+          <div class="card">
+            <div class="field">
+              <span class="label">日付</span>
+              <div class="value">${escapeHtml(log.date || "-")}</div>
+            </div>
+            <div class="field">
+              <span class="label">走行距離</span>
+              <div class="value">${log.mileage ? escapeHtml(String(log.mileage)) + ' km' : '-'}</div>
+            </div>
+            <div class="field">
+              <span class="label">整備区分</span>
+              <div class="value">${escapeHtml(log.title || "-")}</div>
+            </div>
+            ${checksHtml}
+            ${partsHtml}
+            <div class="field">
+              <span class="label">メモ</span>
+              <div class="value">${escapeHtml(log.memo || "-")}</div>
+            </div>
+            ${shopSectionHtml}
+          </div>
+        `;
+        hideLoading();
+      }, 300);
+    }
+
+    function escapeHtml(str) {
+      if (!str) return "";
+      return String(str).replace(/[&<>"'`=\/]/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','/':'&#x2F;','`':'&#x60;','=':'&#x3D;'}[s]));
+    }
+  </script>
+</body>
+</html>

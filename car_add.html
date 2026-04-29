@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>車両の登録 | 車のお薬手帳</title>
+  <link rel="stylesheet" href="common.css">
+  <script src="app.js"></script>
+  <script src="theme.js"></script>
+  <style>
+    body {
+      background: linear-gradient(to bottom, var(--line) 1px, transparent 1px) 0 0 / 100% 34px, var(--page-bg);
+      padding-bottom: 100px;
+    }
+
+    .scan-btn {
+      background: var(--paper, #fff); border: 2px dashed var(--accent); border-radius: 16px;
+      padding: 20px; text-align: center; cursor: pointer; font-weight: 900; font-size: 16px;
+      color: var(--accent); margin-bottom: 24px; transition: transform 0.1s;
+      line-height: 1.2;
+    }
+    .scan-btn:active { transform: scale(0.98); }
+    .scan-hint { font-size: 11px; color: var(--muted); font-weight: 700; margin-top: 8px; }
+
+    .select-wrap { position: relative; }
+    .select-wrap::after {
+      content: "▼"; position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
+      font-size: 12px; color: var(--muted); pointer-events: none;
+    }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    input[type="text"], input[type="date"], select {
+      width: 100%; padding: 14px; border: 2px solid var(--line); border-radius: 12px;
+      background: var(--page-bg); font-size: 16px; font-weight: 700; color: var(--text);
+      box-sizing: border-box; font-family: inherit; appearance: none;
+      transition: border-color 0.15s;
+    }
+    input:focus, select:focus { outline: none; border-color: var(--accent); background: var(--paper, #fff); }
+    input.error-field { border-color: #ef4444 !important; }
+
+    .err-msg {
+      display: none; color: #ef4444; font-size: 12px; font-weight: 800;
+      margin-top: 4px; padding-left: 4px;
+    }
+    .err-msg.show { display: block; }
+
+    /* 法定点検サマリーカード */
+    .inspection-card {
+      background: var(--paper, #fff); border: 2px solid var(--accent);
+      border-radius: 14px; padding: 16px 18px; margin-bottom: 24px;
+    }
+    .inspection-card .ic-title {
+      font-size: 13px; font-weight: 900; color: var(--accent);
+      margin-bottom: 10px; display: flex; align-items: center; gap: 6px;
+    }
+    .inspection-card .ic-cycle {
+      font-size: 15px; font-weight: 900; color: var(--text);
+      margin-bottom: 8px; line-height: 34px;
+    }
+    .inspection-card .ic-dates { display: flex; flex-direction: column; gap: 4px; }
+    .inspection-card .ic-date-row {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 13px; font-weight: 700; line-height: 28px;
+    }
+    .ic-badge {
+      font-size: 11px; font-weight: 900; padding: 2px 8px; border-radius: 99px;
+      background: var(--accent); color: #fff; white-space: nowrap;
+    }
+    .ic-badge.past { background: var(--muted); }
+    .ic-empty { font-size: 13px; color: var(--muted); font-weight: 700; }
+
+    .save-btn {
+      width: 100%; padding: 18px; background: var(--accent); color: white;
+      border: none; border-radius: 14px; font-size: 17px; font-weight: 900;
+      cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      transition: opacity 0.15s;
+    }
+    .save-btn:disabled { opacity: 0.5; }
+
+    .doc-scan-btn {
+      background: var(--paper, #fff); border: 2px dashed var(--accent); border-radius: 16px;
+      padding: 20px; text-align: center; cursor: pointer; font-weight: 900; font-size: 16px;
+      color: var(--accent); margin-bottom: 12px; transition: transform 0.1s;
+      line-height: 1.2;
+    }
+    .doc-scan-btn:active { transform: scale(0.98); }
+    .doc-preview-area {
+      display: none; margin-bottom: 16px; border: 2px solid var(--line);
+      border-radius: 12px; overflow: hidden; background: #fff;
+    }
+    .doc-preview-area img { width: 100%; display: block; filter: grayscale(40%); }
+    .discard-notice {
+      font-size: 12px; color: var(--accent); font-weight: 800; text-align: center;
+      margin-bottom: 20px; line-height: 1.4;
+    }
+
+    /* 車両区分ラジオボタン */
+    .cat-radio-group { display: flex; gap: 8px; margin-top: 4px; }
+    .cat-radio-input { display: none; }
+    .cat-radio-label {
+      flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+      padding: 12px; border-radius: 12px; border: 2px solid var(--line);
+      font-size: 14px; font-weight: 900; cursor: pointer; background: var(--page-bg);
+      transition: all 0.15s; line-height: 1;
+    }
+    .cat-radio-input:checked + .cat-radio-label {
+      background: var(--accent); color: #fff; border-color: var(--accent);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <div class="header">
+      <a onclick="goBackHome()" class="back-link">≪戻る</a>
+      <h1 class="title" id="pageTitle">🚗 車両の登録</h1>
+      <p class="sub-title" id="pageSubtitle">車両の登録します</p>
+    </div>
+
+    <div class="doc-scan-btn" onclick="document.getElementById('docInput').click()">
+      📄 車検証をスキャン（AI読取）
+      <div class="scan-hint">整備入力と同じく、写真から車台番号・満了日・型式などを読み取ります。</div>
+    </div>
+    <input type="file" id="docInput" accept="image/*" capture="environment" hidden>
+    <div class="doc-preview-area" id="docPreviewArea"><img id="docPreviewImg" src="" alt=""></div>
+    <div class="discard-notice" id="discardNotice" style="display:none;">※画像は保存されず破棄されます</div>
+
+    <div class="card">
+      <!-- 車両区分（工場・事業者のみ表示） -->
+      <div class="field" id="categoryField" style="display:none;">
+        <span class="label">車両区分</span>
+        <div class="cat-radio-group">
+          <input type="radio" name="vehicleCategory" id="catManaged" value="managed" class="cat-radio-input" checked>
+          <label for="catManaged" class="cat-radio-label">🚗 管理車両</label>
+          <input type="radio" name="vehicleCategory" id="catLoaner" value="loaner" class="cat-radio-input">
+          <label for="catLoaner" class="cat-radio-label">🔄 代 車</label>
+        </div>
+      </div>
+
+      <div class="field">
+        <span class="label">表示名 / ニックネーム <span class="optional">※任意</span></span>
+        <input id="inName" type="text" placeholder="例：私のプリウス、30号車など">
+      </div>
+
+      <div class="field">
+        <span class="label">車台番号 (VIN) <span class="required">※必須</span></span>
+        <input id="inVin" type="text" placeholder="例：ZVW50-123456" autocomplete="off"
+               oninput="clearErr('inVin')">
+        <div class="err-msg" id="errVin">⚠ 車台番号は必須です</div>
+      </div>
+
+      <!-- 車両詳細情報（factory_input.html と同じ構成） -->
+      <details style="margin-bottom:10px;">
+        <summary style="font-size:13px; font-weight:900; color:var(--muted); cursor:pointer; padding:6px 0; user-select:none;">
+          ▶ 車両詳細情報を入力する（任意）
+        </summary>
+        <div style="margin-top:10px;">
+          <div class="row">
+            <div class="field">
+              <span class="label">型式 <span class="optional">※任意</span></span>
+              <input id="inModel" type="text" placeholder="例：DBA-GT123">
+            </div>
+            <div class="field">
+              <span class="label">原動機型式 <span class="optional">※任意</span></span>
+              <input id="inEngine" type="text" placeholder="例：2ZR-FXE">
+            </div>
+          </div>
+          <div class="row">
+            <div class="field">
+              <span class="label">類別区分番号 <span class="optional">※任意</span></span>
+              <input id="inCategory" type="text" placeholder="例：0001">
+            </div>
+            <div class="field">
+              <span class="label">型式指定番号 <span class="optional">※任意</span></span>
+              <input id="inTypeDesig" type="text" placeholder="例：1234">
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <div class="field">
+        <span class="label">車検満了日 <span class="required">※必須</span></span>
+        <input id="inExpiry" type="date" onchange="clearErr('inExpiry'); updateSchedule()">
+        <div class="err-msg" id="errExpiry">⚠ 車検満了日は必須です</div>
+      </div>
+
+      <div class="field">
+        <span class="label">初年度登録年月 <span class="required">※必須</span></span>
+        <input id="inFirstReg" type="month" onchange="clearErr('inFirstReg')"
+               placeholder="例：2021-03">
+        <div class="err-msg" id="errInFirstReg">⚠ 初年度登録年月は必須です</div>
+      </div>
+
+    </div><!-- /card -->
+
+    <div class="card">
+      <div class="row">
+        <div class="field">
+          <span class="label">自動車の種別</span>
+          <div class="select-wrap">
+            <select id="inClass" onchange="updateSchedule()">
+              <optgroup label="軽自動車（660cc以下）">
+                <option value="軽自動車">軽自動車</option>
+              </optgroup>
+              <optgroup label="小型自動車（5ナンバー等）">
+                <option value="小型乗用">小型乗用</option>
+                <option value="小型貨物">小型貨物</option>
+                <option value="小型乗合">小型乗合（バス）</option>
+                <option value="小型特種">小型特種</option>
+              </optgroup>
+              <optgroup label="普通自動車（3ナンバー・大型車等）">
+                <option value="普通乗用">普通乗用</option>
+                <option value="普通貨物" selected>普通貨物</option>
+                <option value="普通乗合">普通乗合（バス）</option>
+                <option value="普通特種">普通特種（緊急車両等）</option>
+              </optgroup>
+              <optgroup label="特殊自動車">
+                <option value="大型特殊">大型特殊（フォークリフト等）</option>
+                <option value="小型特殊">小型特殊（農耕トラクター等）</option>
+              </optgroup>
+            </select>
+          </div>
+        </div>
+
+        <div class="field">
+          <span class="label">用途</span>
+          <div class="select-wrap">
+            <select id="inUsage" onchange="updateSchedule()">
+              <option value="乗用">乗用</option>
+              <option value="貨物" selected>貨物</option>
+              <option value="乗合">乗合（バス）</option>
+              <option value="特種">特種</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="field" style="margin-top:16px;">
+        <span class="label">自家用 / 事業用の別</span>
+        <div class="select-wrap">
+          <select id="inOwnerType" onchange="updateSchedule()">
+            <option value="自家用">自家用</option>
+            <option value="事業用">事業用</option>
+            <option value="レンタカー">レンタカー</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- 法定点検スケジュール -->
+    <div class="inspection-card" id="inspectionCard" style="display:none;">
+      <div class="ic-title">📋 法定点検スケジュール（自動計算）</div>
+      <div class="ic-cycle" id="icCycle">—</div>
+      <div class="ic-dates" id="icDates"></div>
+    </div>
+
+    <div class="save-area">
+      <p style="font-size:12px; font-weight:800; color:var(--muted); text-align:center; margin:0 0 12px; line-height:1.5;">
+        登録前に内容を確認できます。個人情報の誤入力にご注意ください。
+      </p>
+      <button class="save-btn" id="saveBtn" onclick="execSave()">内容を確認して登録</button>
+    </div>
+  </div>
+
+  <script>
+    const profile = (typeof getCurrentProfile === 'function')
+      ? getCurrentProfile()
+      : JSON.parse(localStorage.getItem('nappy_current_user') || localStorage.getItem('nappy_profile_v1') || 'null');
+
+    const role = profile && (profile.shopType || profile.role);
+    const isBiz = role === 'factory' || role === 'dealer' ||
+                  (profile && (profile.role === 'master' || profile.role === 'staff' ||
+                               profile.role === 'inspector' || profile.role === 'viewer'));
+
+    window.addEventListener('DOMContentLoaded', () => {
+      if (isBiz) {
+        document.getElementById('pageTitle').textContent    = '🚙 車両の登録';
+        document.getElementById('pageSubtitle').textContent = '入庫車両や在庫車の情報を登録します。';
+        // 工場・事業者のみ車両区分フィールドを表示
+        document.getElementById('categoryField').style.display = '';
+      }
+      updateSchedule();
+    });
+
+    function goBackHome() {
+      if (role === 'dealer') location.replace('dealer_home.html');
+      else if (isBiz)        location.replace('factory_home.html');
+      else                   location.replace('user_home.html');
+    }
+
+    /* ── バリデーション ── */
+    function clearErr(id) {
+      document.getElementById(id).classList.remove('error-field');
+      const errId = 'err' + id.charAt(0).toUpperCase() + id.slice(1);
+      const el = document.getElementById(errId);
+      if (el) el.classList.remove('show');
+    }
+    function showErr(id, msg) {
+      document.getElementById(id).classList.add('error-field');
+      const errId = 'err' + id.charAt(0).toUpperCase() + id.slice(1);
+      const el = document.getElementById(errId);
+      if (el) { el.textContent = '⚠ ' + msg; el.classList.add('show'); }
+    }
+
+    /* ── 法定点検スケジュール計算 ── */
+    function getInspectionCycle() {
+      const usage     = document.getElementById('inUsage').value;
+      const ownerType = document.getElementById('inOwnerType').value;
+
+      if (ownerType === '事業用' && (usage === '乗合')) return { months: 3, label: '3ヶ月点検（事業用乗合・バス）' };
+      if (ownerType === '事業用' && (usage === '貨物'))  return { months: 3, label: '3ヶ月点検（事業用貨物・緑ナンバー）' };
+      if (ownerType === '事業用')                        return { months: 6, label: '6ヶ月点検（事業用）' };
+      if (ownerType === 'レンタカー')                    return { months: 6, label: '6ヶ月点検（レンタカー）' };
+      if (usage === '貨物')                              return { months: 6, label: '6ヶ月点検（自家用貨物）' };
+      if (usage === '乗合')                              return { months: 3, label: '3ヶ月点検（乗合・バス）' };
+      if (usage === '特種')                              return { months: 6, label: '6ヶ月点検（特種車両）' };
+      return { months: 12, label: '12ヶ月点検（一般乗用車）' };
+    }
+
+    function addMonths(date, n) {
+      const d = new Date(date);
+      d.setMonth(d.getMonth() + n);
+      return d;
+    }
+
+    function fmtDate(d) {
+      return d.getFullYear() + '年' +
+             String(d.getMonth() + 1).padStart(2, '0') + '月' +
+             String(d.getDate()).padStart(2, '0') + '日';
+    }
+
+    function updateSchedule() {
+      const expiryVal = document.getElementById('inExpiry').value;
+      const card      = document.getElementById('inspectionCard');
+
+      if (!expiryVal) { card.style.display = 'none'; return; }
+
+      const { months, label } = getInspectionCycle();
+      const shaken = new Date(expiryVal);
+      const today  = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      // 車検日から遡って点検日を生成（最大5年分）
+      const allDates = [];
+      for (let i = 1; i <= Math.ceil(60 / months); i++) {
+        const d = new Date(shaken);
+        d.setMonth(d.getMonth() - months * i);
+        allDates.push(d);
+      }
+
+      // 今日以降の直近3件（近い順）
+      const upcoming = allDates.filter(d => d >= today).reverse().slice(0, 3);
+      // 過去直近1件
+      const past     = allDates.filter(d => d < today).slice(0, 1);
+
+      document.getElementById('icCycle').textContent = '点検サイクル：' + label;
+
+      const container = document.getElementById('icDates');
+      if (upcoming.length === 0 && past.length === 0) {
+        container.innerHTML = '<div class="ic-empty">車検日から点検日を計算できませんでした。</div>';
+      } else {
+        let html = '';
+        if (past.length) {
+          html += `<div class="ic-date-row"><span class="ic-badge past">前回</span>${fmtDate(past[0])}</div>`;
+        }
+        upcoming.forEach((d, i) => {
+          const lbl = i === 0 ? '次回' : i === 1 ? '2回目' : '3回目';
+          html += `<div class="ic-date-row"><span class="ic-badge">${lbl}</span>${fmtDate(d)}</div>`;
+        });
+        html += `<div class="ic-date-row"><span class="ic-badge" style="background:#6b7280;">車検</span>${fmtDate(shaken)}</div>`;
+        container.innerHTML = html;
+      }
+
+      card.style.display = 'block';
+    }
+
+    /* ── 登録実行（確認後） ── */
+    async function performCarAddSave() {
+      const vin    = document.getElementById('inVin').value.trim().toUpperCase();
+      const expiry = document.getElementById('inExpiry').value;
+      const btn = document.getElementById('saveBtn');
+      btn.disabled = true;
+      if (typeof showLoading === 'function') showLoading('登録中', '車両情報を保存しています...');
+
+      const { months } = getInspectionCycle();
+
+      // 車両区分（工場・事業者のみ選択あり、それ以外は managed）
+      const catEl = document.querySelector('input[name="vehicleCategory"]:checked');
+      const vehicleCategory = catEl ? catEl.value : 'managed';
+
+      // 初年度登録年月（YYYY-MM形式で保存）
+      const firstReg = document.getElementById('inFirstReg').value;
+
+      const newVehicle = {
+        vin:               vin,
+        model:             document.getElementById('inName').value.trim() || '名称未設定',
+        vehicleModel:      document.getElementById('inModel').value.trim(),
+        engine:            document.getElementById('inEngine').value.trim(),
+        category:          document.getElementById('inCategory').value.trim(),
+        classification:    document.getElementById('inCategory').value.trim(),
+        typeDesignation:   document.getElementById('inTypeDesig').value.trim(),
+        nextShaken:        expiry,
+        firstRegistration: firstReg,
+        vClass:            document.getElementById('inClass').value,
+        usage:             document.getElementById('inUsage').value,
+        ownerType:         document.getElementById('inOwnerType').value,
+        inspectMonths:     months,
+        vehicleCategory:   vehicleCategory,  // managed / loaner
+        createdAt:         new Date().toISOString(),
+        lastMaint:         '---'
+      };
+
+      if (profile) {
+        if (isBiz) {
+          newVehicle.shopId   = profile.shopId   || '';
+          newVehicle.shopName = profile.shopName || '';
+          newVehicle.shopType = profile.shopType || role || '';
+        } else {
+          newVehicle.userId  = profile.userId;
+          newVehicle.ownerId = profile.userId;
+        }
+      }
+
+      try {
+        if (typeof addVehicle === 'function') {
+          addVehicle(newVehicle);
+        } else {
+          const list = JSON.parse(localStorage.getItem('nappy_vehicles_v1') || '[]');
+          const idx = list.findIndex(v => v.vin === vin);
+          if (idx >= 0) list[idx] = { ...list[idx], ...newVehicle };
+          else list.push(newVehicle);
+          localStorage.setItem('nappy_vehicles_v1', JSON.stringify(list));
+        }
+
+        setTimeout(() => {
+          if (typeof hideLoading === 'function') hideLoading();
+          btn.disabled = false;
+          showToast('success', '正常に登録されました');
+          setTimeout(() => goBackHome(), 1200);
+        }, 600);
+
+      } catch (e) {
+        if (typeof hideLoading === 'function') hideLoading();
+        btn.disabled = false;
+        showToast('error', '保存中にエラーが発生しました。もう一度お試しください。');
+      }
+    }
+
+    function execSave() {
+      const vin      = document.getElementById('inVin').value.trim().toUpperCase();
+      const expiry   = document.getElementById('inExpiry').value;
+      const firstReg = document.getElementById('inFirstReg').value;
+      let valid = true;
+
+      if (!vin)      { showErr('inVin',      '車台番号(VIN)は必須です');  valid = false; }
+      if (!expiry)   { showErr('inExpiry',   '車検満了日は必須です');      valid = false; }
+      if (!firstReg) { showErr('inFirstReg', '初年度登録年月は必須です');  valid = false; }
+      if (!valid) return;
+
+      const vClass = document.getElementById('inClass');
+      const vUsage = document.getElementById('inUsage');
+      const vOwner = document.getElementById('inOwnerType');
+      const catChecked = document.querySelector('input[name="vehicleCategory"]:checked');
+      const catLabel   = catChecked?.value === 'loaner' ? '代車' : '管理車両';
+      const bodyHtml =
+        (isBiz ? ringConfirmRow('車両区分', catLabel) : '') +
+        ringConfirmRow('表示名 / ニックネーム', document.getElementById('inName').value.trim() || '名称未設定') +
+        ringConfirmRow('車台番号(VIN)', vin) +
+        ringConfirmRow('車検満了日', expiry) +
+        ringConfirmRow('初年度登録年月', firstReg) +
+        ringConfirmRow('型式', document.getElementById('inModel').value) +
+        ringConfirmRow('原動機型式', document.getElementById('inEngine').value) +
+        ringConfirmRow('類別区分番号', document.getElementById('inCategory').value) +
+        ringConfirmRow('型式指定番号', document.getElementById('inTypeDesig').value) +
+        ringConfirmRow('自動車の種別', vClass.options[vClass.selectedIndex].text) +
+        ringConfirmRow('用途', vUsage.options[vUsage.selectedIndex].text) +
+        ringConfirmRow('自家用/事業用', vOwner.options[vOwner.selectedIndex].text);
+
+      showRingSaveConfirm({
+        title: '車両登録の確認',
+        bodyHtml: bodyHtml,
+        confirmLabel: 'この内容で登録する',
+        onConfirm: function () { performCarAddSave(); }
+      });
+    }
+
+    document.getElementById('docInput').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        document.getElementById('docPreviewImg').src = ev.target.result;
+        document.getElementById('docPreviewArea').style.display = 'block';
+        document.getElementById('discardNotice').style.display = 'block';
+      };
+      reader.readAsDataURL(file);
+
+      if (typeof showLoading === 'function') showLoading('分析中', 'AIが車検証を読み取っています...');
+      try {
+        const res = await analyzeDocument([file]);
+        if (res) {
+          if (res.vin)              document.getElementById('inVin').value      = String(res.vin).toUpperCase();
+          if (res.shaken)           document.getElementById('inExpiry').value   = res.shaken;
+          if (res.firstRegistration) document.getElementById('inFirstReg').value = res.firstRegistration;
+          if (res.model)            document.getElementById('inModel').value    = res.model;
+          if (res.engine)           document.getElementById('inEngine').value   = res.engine;
+          if (res.class)            document.getElementById('inCategory').value = res.class;
+          if (res.typeDesignation)  document.getElementById('inTypeDesig').value = res.typeDesignation;
+          const det = document.querySelector('.card details');
+          if (det && (res.model || res.engine || res.class || res.typeDesignation)) det.open = true;
+          updateSchedule();
+        }
+      } finally {
+        if (typeof hideLoading === 'function') hideLoading();
+        e.target.value = '';
+      }
+    });
+  </script>
+</body>
+</html>

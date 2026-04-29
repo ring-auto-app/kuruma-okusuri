@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>スタッフ管理 | 車のお薬手帳</title>
+  
+  <link rel="stylesheet" href="common.css">
+  <script src="app.js"></script>
+  <script src="theme.js"></script>
+  
+  <style>
+    .app-page { width: 100%; max-width: 600px; padding: 0; margin: 0 auto; }
+    .shop-id-display { font-size: 13px; font-weight: 800; color: var(--muted); height: 34px; line-height: 34px; margin: 0; }
+    .section-title { font-size: 18px; font-weight: 900; color: var(--text); margin: 34px 0 12px; padding-bottom: 8px; border-bottom: 2px dashed var(--line); }
+
+    /* テーブル */
+    .table-wrap { overflow-x: auto; margin-bottom: 34px; background: var(--paper); border-radius: 16px; border: 1px solid var(--line); box-shadow: var(--shadow); }
+    table { width: 100%; border-collapse: collapse; min-width: 480px; }
+    th, td { padding: 10px 12px; border-bottom: 1px dashed var(--line); text-align: left; font-size: 13px; font-weight: 700; vertical-align: middle; }
+    th { font-size: 12px; font-weight: 900; color: var(--muted); background: rgba(0,0,0,0.03); white-space: nowrap; }
+    tr:last-child td { border-bottom: none; }
+    .col-id   { font-family: monospace; font-size: 14px; font-weight: 900; white-space: nowrap; }
+    .col-name { white-space: nowrap; }
+    .badge-master { font-size: 10px; font-weight: 800; color: #d97706; background: #fef3c7; border: 1px solid #fde68a; border-radius: 999px; padding: 2px 7px; }
+
+    /* 権限セレクト（丸角ボタン風） */
+    .role-wrap { position: relative; display: inline-block; }
+    .role-select {
+      appearance: none; -webkit-appearance: none;
+      padding: 5px 28px 5px 10px;
+      border-radius: 999px;           /* 完全な丸角 */
+      border: 1.5px solid currentColor;
+      font-size: 12px; font-weight: 800;
+      cursor: pointer; outline: none;
+      transition: background 0.15s, color 0.15s;
+      min-width: 110px;
+    }
+    .role-select.r-staff    { background: #d1fae5; color: #065f46; border-color: #34d399; }
+    .role-select.r-inspector{ background: #dbeafe; color: #1e40af; border-color: #60a5fa; }
+    .role-select.r-viewer   { background: #fef3c7; color: #92400e; border-color: #fbbf24; }
+    .role-wrap::after {
+      content: '▾'; position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+      font-size: 11px; pointer-events: none; color: inherit;
+    }
+
+    /* 削除ボタン */
+    .btn-delete { background: none; border: none; font-size: 17px; cursor: pointer; color: var(--muted); padding: 2px 4px; line-height: 1; }
+    .btn-delete:hover { color: var(--accent); }
+    .btn-delete:disabled { opacity: 0.25; cursor: not-allowed; }
+
+    .note { font-size: 11.5px; font-weight: 800; color: var(--muted); margin-top: 4px; line-height: 1.4; }
+    .empty-note { text-align: center; padding: 24px; color: var(--muted); font-size: 13px; font-weight: 800; line-height: 1.8; }
+  </style>
+</head>
+<body>
+  <div class="container app-page">
+    
+    <div class="header">
+      <a id="backBtn" class="back-link">≪戻る</a>
+      <h1 class="title">スタッフ管理</h1>
+      <p class="shop-id-display" id="shopInfo">店舗情報読込中...</p>
+    </div>
+
+    <h2 class="section-title">スタッフ一覧</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>スタッフネーム</th>
+            <th>表示名</th>
+            <th>入力制限</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="staffList">
+          <tr><td colspan="5" class="empty-note">読み込み中...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2 class="section-title">＋ 新規スタッフ追加</h2>
+    <p style="font-size: 12px; color: var(--muted); margin-bottom: 17px; font-weight: 800; line-height: 1.5;">
+      ※ログインIDは自動で発行されます。<br>
+      ※パスワードは会社共通のものを使用するため入力不要です。
+    </p>
+
+    <div class="field">
+      <span class="label">画面表示名 <span class="required" style="color:var(--accent); font-size:11px;">必須</span></span>
+      <input type="text" id="newDisplayName" placeholder="例：A、B、スタッフA など">
+      <div class="note">※カルテなど、アプリの画面上でお客様に見える名前です</div>
+    </div>
+    
+    <div class="field">
+      <span class="label">スタッフネーム <span class="required" style="color:var(--accent); font-size:11px;">必須</span></span>
+      <input type="text" id="newRealName" placeholder="例：田中、佐藤 など">
+      <div class="note">※システム管理用です。一般には公表されません。</div>
+    </div>
+
+    <button class="save-btn" onclick="addStaff()" id="addBtn" style="margin-top: 17px;">このスタッフを追加する</button>
+  </div>
+
+  <script>
+    let currentProfile = null;
+
+    window.addEventListener('DOMContentLoaded', () => {
+      currentProfile = typeof getCurrentProfile === "function" ? getCurrentProfile() : null;
+      if (!currentProfile || currentProfile.role !== 'master') {
+        alert("このページにアクセスする権限がありません。（オーナー専用）");
+        location.replace("index.html");
+        return;
+      }
+
+      // 事業者 / 工場でラベル切り替え
+      if (currentProfile.shopType === 'dealer') {
+        document.querySelector('h1.title').textContent = "スタッフ管理";
+        document.querySelector('.section-title').textContent = "スタッフ一覧";
+        document.title = "スタッフ管理 | 車のお薬手帳";
+      }
+
+      // スマート戻るボタンの設定
+      const backBtn = document.getElementById('backBtn');
+      const backUrl = currentProfile.shopType === 'dealer' ? "dealer_home.html" : "factory_home.html";
+      backBtn.innerText = "≪戻る";
+      backBtn.onclick = () => goBackSmart(backUrl);
+
+      document.getElementById("shopInfo").textContent = `${currentProfile.shopName} (ID: ${currentProfile.shopId})`;
+      
+      loadStaffList();
+    });
+
+    /**
+     * スタッフ一覧の読み込み処理
+     */
+    async function loadStaffList() {
+      showLoading("データ取得中", "スタッフ一覧を読み込んでいます...");
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 8000);
+        const res = await fetch(GAS_URL, {
+          method: 'POST', headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({ action: 'get_staff', shopId: currentProfile.shopId }),
+          signal: controller.signal
+        });
+        clearTimeout(timer);
+        const data = await res.json();
+
+        if (data.success) {
+          const key = `nappy_staff_${currentProfile.shopId}`;
+          const local = JSON.parse(localStorage.getItem(key) || '[]');
+          const gasIds = new Set(data.staffList.map(s => s.loginId));
+          const merged = [...data.staffList, ...local.filter(s => !gasIds.has(s.loginId))];
+          renderTable(merged);
+        } else {
+          renderLocalStaff();
+        }
+      } catch (e) {
+        renderLocalStaff();
+      } finally {
+        hideLoading();
+      }
+    }
+
+    function renderLocalStaff() {
+      const key = `nappy_staff_${currentProfile.shopId}`;
+      const local = JSON.parse(localStorage.getItem(key) || '[]');
+      if (local.length === 0) {
+        document.getElementById("staffList").innerHTML =
+          `<tr><td colspan="5" class="empty-note">📡 サーバー未接続<br><span style="font-size:12px;">まだスタッフが追加されていません</span></td></tr>`;
+      } else {
+        renderTable(local);
+      }
+    }
+
+    // 権限値 → クラス名・ラベルのマップ
+    const ROLE_MAP = {
+      staff:     { cls: 'r-staff',     label: '✅ 全入力可' },
+      inspector: { cls: 'r-inspector', label: '🔵 日常点検のみ' },
+      viewer:    { cls: 'r-viewer',    label: '👁 閲覧のみ' },
+    };
+
+    function renderTable(list) {
+      const tbody = document.getElementById("staffList");
+      tbody.innerHTML = "";
+
+      list.forEach(staff => {
+        const isMaster = staff.role === 'master';
+        const role = staff.role || 'staff';
+        const rm = ROLE_MAP[role] || ROLE_MAP.staff;
+        const eid = escapeHtml(staff.loginId);
+
+        const restrictCell = isMaster
+          ? `<span class="badge-master">👑 オーナー</span>`
+          : `<div class="role-wrap">
+               <select class="role-select ${rm.cls}"
+                 onchange="changeRole('${eid}', this.value); applyRoleStyle(this);">
+                 <option value="staff"     ${role==='staff'     ? 'selected':''}>✅ 全入力可</option>
+                 <option value="inspector" ${role==='inspector' ? 'selected':''}>🔵 日常点検のみ</option>
+                 <option value="viewer"    ${role==='viewer'    ? 'selected':''}>👁 閲覧のみ</option>
+               </select>
+             </div>`;
+
+        const deleteCell = isMaster
+          ? ''
+          : `<button class="btn-delete" onclick="deleteStaff('${eid}')" title="削除">🗑</button>`;
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="col-id">${eid}</td>
+          <td class="col-name">${escapeHtml(staff.realName)}</td>
+          <td class="col-name">${escapeHtml(staff.displayName)}</td>
+          <td>${restrictCell}</td>
+          <td>${deleteCell}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    // セレクト変更時に色クラスを付け替える
+    function applyRoleStyle(sel) {
+      sel.className = `role-select ${ROLE_MAP[sel.value]?.cls || 'r-staff'}`;
+    }
+
+    /**
+     * 権限変更（staff / inspector / viewer）
+     */
+    async function changeRole(loginId, newRole) {
+      const key = `nappy_staff_${currentProfile.shopId}`;
+      const staff = JSON.parse(localStorage.getItem(key) || '[]');
+      const idx = staff.findIndex(s => s.loginId === loginId);
+      if (idx >= 0) { staff[idx].role = newRole; localStorage.setItem(key, JSON.stringify(staff)); }
+
+      try {
+        const res = await fetch(GAS_URL, {
+          method: 'POST', headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({ action: 'update_staff_status', shopId: currentProfile.shopId, loginId, newRole })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast('success', '権限を変更しました');
+        } else {
+          showToast('error', '権限変更に失敗しました: ' + (data.error || '不明なエラー'));
+        }
+      } catch (e) {
+        showToast('info', 'ローカルのみ変更しました。シートへの反映は次回接続時に行われます。');
+      }
+    }
+
+    /**
+     * スタッフの削除処理
+     */
+    async function deleteStaff(loginId) {
+      if (!confirm(`本当にID「${loginId}」を削除しますか？`)) return;
+
+      const key = `nappy_staff_${currentProfile.shopId}`;
+      const staff = JSON.parse(localStorage.getItem(key) || '[]');
+      localStorage.setItem(key, JSON.stringify(staff.filter(s => s.loginId !== loginId)));
+      renderLocalStaff();
+
+      showLoading("削除中", "スタッフ情報を削除しています...");
+
+      try {
+        const res = await fetch(GAS_URL, {
+          method: 'POST', headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({ action: 'delete_staff', shopId: currentProfile.shopId, loginId: loginId })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast('success', 'スタッフを削除しました');
+          await loadStaffList();
+        } else {
+          showToast('error', '削除失敗: ' + (data.error || '不明なエラー'));
+        }
+      } catch (e) {
+        showToast('info', 'ローカルから削除しました。シートへの反映は次回接続時に行われます。');
+      } finally {
+        hideLoading();
+      }
+    }
+
+
+    /**
+     * 発行IDを画面に表示するカード
+     */
+    function showIssuedId(loginId, displayName) {
+      const existing = document.getElementById('issuedIdCard');
+      if (existing) existing.remove();
+
+      const card = document.createElement('div');
+      card.id = 'issuedIdCard';
+      card.style.cssText = `
+        background:#ecfdf5; border:2px solid #6ee7b7; border-radius:16px;
+        padding:20px; margin:20px 0; text-align:center;
+      `;
+      card.innerHTML = `
+        <div style="font-size:13px; font-weight:800; color:#065f46; margin-bottom:8px;">✅ スタッフを追加しました</div>
+        <div style="font-size:13px; font-weight:700; color:#047857; margin-bottom:12px;">${escapeHtml(displayName)} さんのログインID</div>
+        <div style="font-size:28px; font-weight:900; letter-spacing:0.15em; font-family:monospace; color:#064e3b; background:#d1fae5; padding:12px 24px; border-radius:10px; display:inline-block;">${escapeHtml(loginId)}</div>
+        <div style="font-size:11px; font-weight:700; color:#6b7280; margin-top:10px;">※このIDとパスワードでログインできます。必ずスタッフに伝えてください。</div>
+        <button onclick="this.closest('#issuedIdCard').remove()" style="margin-top:14px; padding:8px 20px; border-radius:999px; border:1px solid #6ee7b7; background:#fff; color:#047857; font-weight:800; font-size:13px; cursor:pointer;">閉じる</button>
+      `;
+      document.getElementById('addBtn').after(card);
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    /**
+     * 新規スタッフの追加処理（GAS接続失敗時はローカルで発行）
+     */
+    async function addStaff() {
+      const displayName = document.getElementById('newDisplayName').value.trim();
+      const realName = document.getElementById('newRealName').value.trim();
+      if (!displayName || !realName) return alert("表示名とスタッフネームを入力してください。");
+
+      const btn = document.getElementById('addBtn');
+      btn.disabled = true;
+      showLoading("スタッフ追加中", "新しいスタッフを登録しています...");
+
+      // ローカルID発行（shopId + 4桁PIN）
+      function genLocalId() {
+        const pin = String(Math.floor(1000 + Math.random() * 9000));
+        return currentProfile.shopId + "-" + pin;
+      }
+
+      // LocalStorageに保存して即一覧に反映
+      function completeAdd(newLoginId) {
+        const key = `nappy_staff_${currentProfile.shopId}`;
+        const staff = JSON.parse(localStorage.getItem(key) || '[]');
+        if (!staff.some(s => s.loginId === newLoginId)) {
+          staff.push({ loginId: newLoginId, displayName, realName, role: 'staff', shopId: currentProfile.shopId });
+          localStorage.setItem(key, JSON.stringify(staff));
+        }
+        document.getElementById('newDisplayName').value = "";
+        document.getElementById('newRealName').value = "";
+        hideLoading();
+        showIssuedId(newLoginId, displayName);
+        renderLocalStaff();
+      }
+
+      const gasReady = GAS_URL && GAS_URL.startsWith('https://');
+
+      // GAS が設定されていない場合のみローカル即発行
+      if (!gasReady) {
+        completeAdd(genLocalId());
+        btn.disabled = false;
+        return;
+      }
+
+      // GAS が設定されていれば常に送信（file:// でも試みる）
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 8000);
+        const res = await fetch(GAS_URL, {
+          method: 'POST', headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({ action: 'add_staff', shopId: currentProfile.shopId, displayName, realName, role: 'staff' }),
+          signal: controller.signal
+        });
+        clearTimeout(timer);
+        const data = await res.json();
+        if (data.success) {
+          completeAdd(data.newLoginId);
+          showToast('success', 'シートに登録しました（ID: ' + data.newLoginId + '）');
+        } else {
+          hideLoading();
+          showToast('error', '追加失敗: ' + (data.error || '不明なエラー'));
+        }
+      } catch (e) {
+        // GAS に届かなかった場合はローカルにフォールバック
+        completeAdd(genLocalId());
+        showToast('info', 'オフライン登録しました。次回オンライン時にシートへ反映してください。');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function escapeHtml(str) { return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#039;"}[c])); }
+  </script>
+</body>
+</html>

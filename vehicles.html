@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>車両一覧 | 車のお薬手帳</title>
+  <link rel="stylesheet" href="common.css">
+  <script src="app.js"></script>
+  <script src="theme.js"></script>
+  <style>
+    /* 掟：34pxグリッドと付箋デザインを完全維持 */
+    :root { --sticky-odd: #fef9c3; --sticky-even: #fffbeb; }
+    body {
+      margin: 0; font-family: -apple-system, sans-serif;
+      background: linear-gradient(to bottom, var(--page-line) 1px, transparent 1px) 0 0 / 100% 34px, var(--page-bg);
+      color: var(--text); padding: 34px 16px 102px; line-height: 34px;
+    }
+    .container { max-width: 600px; margin: 0 auto; }
+    .header { margin-bottom: 34px; display: flex; justify-content: space-between; align-items: flex-end;}
+    .back-link { color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 800; display: inline-block; cursor: pointer; height: 34px; line-height: 34px; }
+    .title { font-size: 26px; font-weight: 900; color: var(--text-main); margin: 0; position: relative; display: inline-block; width: max-content; }
+    .title::after { content: ""; position: absolute; left: 0; right: 0; bottom: 2px; height: 10px; background: var(--highlighter); z-index: -1; border-radius: 4px; transform: rotate(-1deg); }
+    .sort-area { margin-bottom: 20px; text-align: right; }
+    .sort-select { padding: 6px 10px; border: 2px solid var(--accent); border-radius: 4px; font-size: 13px; font-weight: 700; color: var(--text); background: var(--paper); outline: none; cursor: pointer; }
+
+    /* 車両区分タブ（工場・事業者のみ表示） */
+    .cat-tabs { display: flex; gap: 8px; margin-bottom: 20px; }
+    .cat-tab {
+      flex: 1; padding: 11px 0; text-align: center; border-radius: 10px;
+      font-size: 14px; font-weight: 900; border: 2px solid var(--accent);
+      background: var(--paper); color: var(--accent); cursor: pointer;
+      transition: all 0.15s; line-height: 1;
+    }
+    .cat-tab.active { background: var(--accent); color: #fff; }
+    /* タブの台数バッジ */
+    .cat-tab-count {
+      display: inline-block; font-size: 11px; font-weight: 900;
+      background: rgba(0,0,0,0.12); border-radius: 99px;
+      padding: 1px 6px; margin-left: 4px;
+    }
+    .cat-tab.active .cat-tab-count { background: rgba(255,255,255,0.3); }
+    .car-card { padding: 12px 16px; margin-bottom: 16px; border-radius: 2px 2px 12px 2px; box-shadow: 1px 3px 6px rgba(0,0,0,0.08); line-height: 1.5; }
+    .car-card:nth-child(odd) { background: var(--sticky-odd); }
+    .car-card:nth-child(even) { background: var(--sticky-even); }
+    .car-header { margin-bottom: 8px; border-bottom: 1px dashed rgba(0,0,0,0.15); padding-bottom: 6px; display: flex; justify-content: space-between; align-items: center; }
+    .car-info-btn { font-size: 11px; font-weight: 900; padding: 4px 10px; border-radius: 999px; background: var(--paper); border: 1.5px solid var(--accent); color: var(--accent); text-decoration: none; white-space: nowrap; flex-shrink: 0; }
+    .car-model { font-size: 16px; font-weight: 900; color: var(--text); margin: 0; line-height: 1.2; }
+    .car-info-grid { display: flex; gap: 16px; margin-bottom: 10px; }
+    .info-box { background: transparent; padding: 0; border: none; display: flex; align-items: baseline; gap: 6px; }
+    .info-label { display: block; font-size: 11px; color: var(--muted); font-weight: 800; margin: 0; }
+    .info-value { display: block; font-size: 13px; font-weight: 900; color: var(--text); margin: 0; }
+    .btn-group { display: flex; gap: 6px; }
+    .btn { flex: 1; padding: 8px 0; text-align: center; border-radius: 4px; font-size: 12px; font-weight: 900; text-decoration: none; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; transition: transform 0.1s; box-shadow: 0 2px 4px rgba(0,0,0,0.05); background: rgba(255, 255, 255, 0.9); color: var(--text); border: 1px solid rgba(0,0,0,0.2); white-space: nowrap; line-height: 1; }
+    .btn:active { transform: scale(0.98); }
+    .empty-msg { text-align: center; color: var(--muted); font-weight: 800; margin-top: 68px; line-height: 34px; }
+    .add-car-btn { display: block; width: 100%; padding: 14px; text-align: center; background: var(--paper); color: var(--accent); border: 2px dashed var(--accent); border-radius: 8px; font-size: 15px; font-weight: 900; text-decoration: none; margin-top: 34px; cursor: pointer; box-sizing: border-box; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div>
+      <a id="backBtn" class="back-link">◁ ホームへ戻る</a>
+      <div class="header">
+        <h1 class="title" id="pageTitle">車両一覧</h1>
+      </div>
+    </div>
+    <!-- 車両区分タブ（工場・事業者のみ JS で表示） -->
+    <div class="cat-tabs" id="categoryTabs" style="display:none;">
+      <button class="cat-tab active" id="tabManaged" onclick="setTab('managed')">
+        🚗 管理車両<span class="cat-tab-count" id="cntManaged">0</span>
+      </button>
+      <button class="cat-tab" id="tabLoaner" onclick="setTab('loaner')">
+        🔄 代車<span class="cat-tab-count" id="cntLoaner">0</span>
+      </button>
+    </div>
+
+    <div class="sort-area">
+      <select id="sortSelect" class="sort-select" onchange="renderCars()">
+        <option value="inspect_near">点検が近い順</option>
+        <option value="shaken_near">車検が近い順</option>
+        <option value="created_new">登録した順</option>
+        <option value="history_old">履歴が古い順</option>
+      </select>
+    </div>
+    <div id="carListArea"></div>
+    <a id="addBtn" class="add-car-btn">＋ 新しい車両を登録する</a>
+  </div>
+
+  <script>
+    const profile = typeof getCurrentProfile === "function" ? getCurrentProfile() : JSON.parse(localStorage.getItem('nappy_profile_v1') || 'null');
+    const userRole = profile ? (profile.shopType || profile.role) : 'user';
+    const isBizMode = (userRole === 'factory' || userRole === 'dealer');
+
+    // 現在選択中の車両区分タブ（工場・事業者のみ使用）
+    let currentCategoryTab = 'managed';
+
+    window.addEventListener('DOMContentLoaded', () => {
+      // 役職ごとの戻り先とタイトルの設定
+      const backBtn = document.getElementById('backBtn');
+      const pageTitle = document.getElementById('pageTitle');
+      const addBtn = document.getElementById('addBtn');
+
+      if (userRole === 'factory') {
+        pageTitle.innerText = "管理車両";
+        backBtn.onclick = () => location.href = 'factory_home.html';
+      } else if (userRole === 'dealer') {
+        pageTitle.innerText = "管理車両";
+        backBtn.onclick = () => location.href = 'dealer_home.html';
+      } else {
+        pageTitle.innerText = "マイカー";
+        backBtn.onclick = () => location.href = 'user_home.html';
+      }
+
+      // 工場・事業者のみ車両区分タブを表示
+      if (isBizMode) {
+        document.getElementById('categoryTabs').style.display = '';
+      }
+
+      // 登録ボタンの飛び先
+      if (addBtn) addBtn.onclick = () => location.href = 'car_add.html';
+
+      renderCars();
+    });
+
+    /* ── 車両区分タブ切替 ── */
+    function setTab(tab) {
+      currentCategoryTab = tab;
+      document.getElementById('tabManaged').classList.toggle('active', tab === 'managed');
+      document.getElementById('tabLoaner').classList.toggle('active', tab === 'loaner');
+      renderCars();
+    }
+
+    /* ── 次回点検日の計算 ── */
+    function calcNextInspect(car) {
+      if (!car.nextShaken) return null;
+      const months = car.inspectMonths || 12;
+      const shaken = new Date(car.nextShaken);
+      const today  = new Date(); today.setHours(0, 0, 0, 0);
+
+      // 車検日から遡って点検日を生成し、今日以降の最も近いものを返す
+      const upcoming = [];
+      for (let i = 1; i <= Math.ceil(60 / months); i++) {
+        const d = new Date(shaken);
+        d.setMonth(d.getMonth() - months * i);
+        if (d >= today) upcoming.push(d);
+        else break;
+      }
+      return upcoming.length ? upcoming[upcoming.length - 1] : null;
+    }
+
+    function fmtDate(d) {
+      if (!d) return '---';
+      const dd = d instanceof Date ? d : new Date(d);
+      if (isNaN(dd)) return '---';
+      return dd.getFullYear() + '/' +
+             String(dd.getMonth() + 1).padStart(2, '0') + '/' +
+             String(dd.getDate()).padStart(2, '0');
+    }
+
+    function daysUntil(d) {
+      if (!d) return Infinity;
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      return Math.ceil((d - today) / 86400000);
+    }
+
+    function renderCars() {
+      const sortType = document.getElementById('sortSelect').value;
+      if (typeof showLoading === "function") showLoading("読込中", "リストを作成中...");
+
+      setTimeout(() => {
+        let allVehicles = JSON.parse(localStorage.getItem('nappy_vehicles_v1') || '[]');
+        let vehicles = [];
+
+        if (profile) {
+          const myShopId = profile.shopId || "";
+          const myUserId = profile.userId || "";
+          vehicles = allVehicles.filter(car =>
+            (myShopId && car.shopId === myShopId) ||
+            car.shopId  === myUserId ||
+            car.userId  === myUserId ||
+            car.ownerId === myUserId
+          );
+        }
+
+        // 次回点検日を事前計算してキャッシュ
+        vehicles = vehicles.map(car => ({
+          ...car,
+          _nextInspect: calcNextInspect(car)
+        }));
+
+        // タブカウント更新（工場・事業者のみ）
+        if (isBizMode) {
+          const cntM = vehicles.filter(c => (c.vehicleCategory || 'managed') === 'managed').length;
+          const cntL = vehicles.filter(c => c.vehicleCategory === 'loaner').length;
+          document.getElementById('cntManaged').textContent = cntM;
+          document.getElementById('cntLoaner').textContent  = cntL;
+          // タブフィルター適用
+          vehicles = vehicles.filter(c =>
+            currentCategoryTab === 'loaner'
+              ? c.vehicleCategory === 'loaner'
+              : (c.vehicleCategory || 'managed') === 'managed'
+          );
+        }
+
+        const container = document.getElementById('carListArea');
+        if (vehicles.length === 0) {
+          const emptyMsg = isBizMode && currentCategoryTab === 'loaner'
+            ? '代車の登録がありません。'
+            : '登録車両がありません。';
+          container.innerHTML = `<div class="empty-msg">${emptyMsg}</div>`;
+          if (typeof hideLoading === "function") hideLoading();
+          return;
+        }
+
+        // ソート
+        const FAR = new Date('9999-12-31');
+        vehicles.sort((a, b) => {
+          if (sortType === 'inspect_near') return (a._nextInspect || FAR) - (b._nextInspect || FAR);
+          if (sortType === 'shaken_near')  return (a.nextShaken || '9').localeCompare(b.nextShaken || '9');
+          if (sortType === 'created_new')  return (new Date(b.createdAt || 0)) - (new Date(a.createdAt || 0));
+          if (sortType === 'history_old')  return (new Date(a.lastMaint || 0)) - (new Date(b.lastMaint || 0));
+          return 0;
+        });
+
+        const historyLink      = (userRole === 'user') ? 'user_history.html'            : 'history.html';
+        const inspectHistoryLink = (userRole === 'user') ? 'user_inspection_history.html' : 'daily_history.html';
+        const inspectLink      = (userRole === 'user') ? 'inspection_user.html'          : 'inspection_biz.html';
+
+        let html = "";
+        vehicles.forEach(car => {
+          const nextInspectDate = car._nextInspect;
+          const days = daysUntil(nextInspectDate);
+          let inspectStr = fmtDate(nextInspectDate);
+
+          // 期限が近い場合に警告色
+          let inspectStyle = '';
+          let urgentBadge  = '';
+          if (nextInspectDate) {
+            if (days <= 0)  { inspectStyle = 'color:#ef4444;font-weight:900;'; urgentBadge = ' <span style="font-size:10px;background:#ef4444;color:#fff;padding:1px 5px;border-radius:99px;font-weight:900;">超過</span>'; }
+            else if (days <= 14) { inspectStyle = 'color:#ef4444;font-weight:900;'; urgentBadge = ' <span style="font-size:10px;background:#ef4444;color:#fff;padding:1px 5px;border-radius:99px;font-weight:900;">あと' + days + '日</span>'; }
+            else if (days <= 30) { inspectStyle = 'color:#f59e0b;font-weight:900;'; urgentBadge = ' <span style="font-size:10px;background:#f59e0b;color:#fff;padding:1px 5px;border-radius:99px;font-weight:900;">あと' + days + '日</span>'; }
+          }
+
+          html += `
+            <div class="car-card">
+              <div class="car-header">
+                <h2 class="car-model">${escapeHtml(car.model || car.nickname || '未設定')}</h2>
+                <a href="vehicle_info.html?vin=${encodeURIComponent(car.vin)}" class="car-info-btn">📋 車両情報</a>
+              </div>
+              <div class="car-info-grid">
+                <div class="info-box">
+                  <span class="info-label">次回点検:</span>
+                  <span class="info-value" style="${inspectStyle}">${inspectStr}${urgentBadge}</span>
+                </div>
+                <div class="info-box">
+                  <span class="info-label">車検:</span>
+                  <span class="info-value">${car.nextShaken || '---'}</span>
+                </div>
+              </div>
+              <div class="btn-group">
+                <a href="${historyLink}?vin=${encodeURIComponent(car.vin)}" class="btn">📖 整備履歴</a>
+                <a href="${inspectHistoryLink}?vin=${encodeURIComponent(car.vin)}" class="btn">🔍 日常点検記録</a>
+                <a href="${inspectLink}?vin=${encodeURIComponent(car.vin)}" class="btn">📋 日常点検入力</a>
+              </div>
+            </div>`;
+        });
+        container.innerHTML = html;
+        if (typeof hideLoading === "function") hideLoading();
+      }, 300);
+    }
+
+    function escapeHtml(str) {
+      if (!str) return "";
+      return String(str).replace(/[&<>"'`=\/]/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','/':'&#x2F;','`':'&#x60;','=':'&#x3D;'}[s]));
+    }
+  </script>
+</body>
+</html>

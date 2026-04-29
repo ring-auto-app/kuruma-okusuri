@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>RinG Auto | スプラッシュ画面</title>
+  
+  <link rel="stylesheet" href="common.css">
+  <script src="app.js"></script> 
+  <script src="theme.js"></script>
+  
+  <style>
+    body {
+      margin: 0;
+      background-color: #ffffff;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      opacity: 1;
+      transition: opacity 0.5s ease-out;
+    }
+    
+    body.fade-out {
+      opacity: 0;
+    }
+
+    .splash-view {
+      display: flex;
+      flex-direction: column;
+      align-items: center; 
+      gap: 70px; 
+      animation: fadeIn 0.8s ease-in forwards;
+    }
+
+    .splash-icon {
+      width: 220px; 
+      height: auto;
+      display: block;
+    }
+
+    .title-box {
+      width: 220px; 
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end; 
+      gap: 8px; 
+    }
+
+    .main-title {
+      margin: 0;
+      font-family: "Hiragino Sans", sans-serif;
+      font-weight: 800; 
+      font-size: 28px;
+      color: #000;
+      border-bottom: 2px solid #000;
+      padding-bottom: 2px;
+      line-height: 1.1;
+      letter-spacing: 0.1em;
+    }
+
+    .sub-title {
+      margin: 0;
+      font-family: "Hiragino Mincho ProN", serif;
+      font-weight: 600; 
+      font-size: 20px;
+      color: #000;
+      border-bottom: 2px solid #000;
+      padding-bottom: 2px;
+      line-height: 1.1;
+      letter-spacing: 0.1em;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    @media (max-width: 520px) {
+      .splash-icon {
+        width: 180px; 
+      }
+      .title-box {
+        width: 180px; 
+      }
+      .main-title {
+        font-size: 24px;
+      }
+      .sub-title {
+        font-size: 18px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="splash-view">
+    <img src="icons/splash-logo.png" alt="車のお薬手帳" class="splash-icon">
+
+    <div class="title-box">
+      <h1 class="main-title">車のお薬手帳</h1>
+      <h2 class="sub-title">RinG Auto</h2>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      // 指定された2.5秒間ロゴを表示
+      setTimeout(() => {
+        
+        // 1. フェードアウト開始
+        document.body.classList.add("fade-out");
+
+        // 2. フェードアウト完了後にリダイレクト
+        setTimeout(() => {
+          
+          // ログイン状態を確認（app.jsの共通関数を使用）
+          const profile = typeof getCurrentProfile === "function" ? getCurrentProfile() : null;
+
+          if (!profile) {
+            // スプラッシュ表示済みフラグをセット（セッション内で1回だけ表示）
+            sessionStorage.setItem('splashShown', '1');
+            location.href = "index.html";
+            return;
+          }
+
+          // 役割に応じて遷移先を振り分け
+          if (profile.shopType === "factory") {
+            location.href = "factory_home.html";
+          } else if (profile.shopType === "dealer") {
+            location.href = "dealer_home.html";
+          } else {
+            location.href = "user_home.html";
+          }
+          
+        }, 500); 
+
+      }, 2500); 
+    });
+  </script>
+</body>
+</html>

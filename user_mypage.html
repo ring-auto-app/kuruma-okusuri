@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>マイページ | 車のお薬手帳</title>
+  <link rel="stylesheet" href="common.css">
+  <script src="app.js"></script>
+  <script src="theme.js"></script>
+  <style>
+    body { margin: 0; font-family: -apple-system, sans-serif; background: var(--page-bg); color: var(--text); padding: 34px 16px 100px; }
+    .container { max-width: 560px; margin: 0 auto; }
+    .header { margin-bottom: 24px; border-bottom: 2px dashed var(--accent); padding-bottom: 12px; }
+    .back-link { color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 800; cursor: pointer; }
+    .title { font-size: 22px; font-weight: 900; margin: 8px 0 0; }
+    .section { margin-top: 28px; }
+    .section-title { font-size: 13px; font-weight: 900; color: var(--text); margin-bottom: 10px; padding-bottom: 6px; border-bottom: 2px solid var(--line); }
+    .id-box {
+      background: var(--paper); border: 2px solid var(--line); border-radius: 14px; padding: 14px 16px;
+      font-size: 13px; font-weight: 800; line-height: 1.6;
+    }
+    .id-box .row { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin: 6px 0; }
+    .id-box .k { color: var(--muted); }
+    .id-box .v { word-break: break-all; text-align: right; }
+    .btn-row { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+    .btn-secondary {
+      display: block; text-align: center; padding: 12px 16px; border-radius: 12px; font-weight: 900; font-size: 14px;
+      text-decoration: none; border: 2px solid var(--line); color: var(--text); background: var(--paper);
+    }
+    .btn-primary {
+      display: block; text-align: center; padding: 12px 16px; border-radius: 12px; font-weight: 900; font-size: 14px;
+      text-decoration: none; background: var(--accent); color: #fff; border: 2px solid var(--accent);
+    }
+    .mini-list { background: var(--paper); border: 2px solid var(--line); border-radius: 14px; overflow: hidden; }
+    .mini-item {
+      display: block; padding: 12px 14px; border-bottom: 1px dashed var(--line); text-decoration: none; color: inherit;
+      font-size: 14px; font-weight: 800;
+    }
+    .mini-item:last-child { border-bottom: none; }
+    .mini-item:active { opacity: 0.85; }
+    .mini-sub { font-size: 11px; font-weight: 700; color: var(--muted); margin-top: 4px; }
+    .empty-hint { font-size: 12px; font-weight: 800; color: var(--muted); padding: 16px; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <a class="back-link" onclick="goBackSmart('user_home.html')">◁ 戻る</a>
+      <h1 class="title">マイページ</h1>
+    </div>
+
+    <div class="section">
+      <div class="section-title">アカウント</div>
+      <div class="id-box" id="profileBox">
+        <div class="row"><span class="k">お名前</span><span class="v" id="dispName">—</span></div>
+        <div class="row"><span class="k">ユーザーID</span><span class="v" id="dispUserId">—</span></div>
+        <div class="row"><span class="k">ログインID</span><span class="v" id="dispLoginId">—</span></div>
+      </div>
+      <div class="btn-row">
+        <a class="btn-primary" href="change_password.html">パスワード変更</a>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">登録している車</div>
+      <div class="mini-list" id="vehicleList"></div>
+      <div class="btn-row">
+        <a class="btn-secondary" href="vehicles.html">すべての車を見る・追加</a>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">かかりつけの工場・お店</div>
+      <div class="mini-list" id="favList"></div>
+      <div class="btn-row">
+        <a class="btn-secondary" href="user_fav_shops.html">一覧・解除</a>
+        <a class="btn-secondary" href="user_fav_shop_edit.html">検索して追加・編集</a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function esc(s) {
+      if (s == null) return '';
+      return String(s).replace(/[&<>"']/g, function (c) {
+        return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+      });
+    }
+
+    function getUserVehicles(profile) {
+      var all = JSON.parse(localStorage.getItem('nappy_vehicles_v1') || '[]');
+      var uid = profile.userId || '';
+      return all.filter(function (car) {
+        return car.userId === uid || car.ownerId === uid || car.shopId === uid;
+      });
+    }
+
+    function getFavShops() {
+      return JSON.parse(localStorage.getItem('nappy_fav_shops_v1') || '[]');
+    }
+
+    window.addEventListener('DOMContentLoaded', function () {
+      var profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+      if (!profile || (profile.shopType !== 'user' && profile.role !== 'user')) {
+        location.replace('user_login.html');
+        return;
+      }
+
+      document.getElementById('dispName').textContent = profile.userName || '—';
+      document.getElementById('dispUserId').textContent = profile.userId || '—';
+      document.getElementById('dispLoginId').textContent = profile.loginId || profile.userId || '—';
+
+      var vehicles = getUserVehicles(profile);
+      var vEl = document.getElementById('vehicleList');
+      if (!vehicles.length) {
+        vEl.innerHTML = '<div class="empty-hint">まだ車がありません。車両登録から追加できます。</div>';
+      } else {
+        vEl.innerHTML = vehicles.slice(0, 8).map(function (car) {
+          var name = car.model || car.nickname || '名称未設定';
+          var sub = car.vin ? car.vin : '';
+          return '<a class="mini-item" href="vehicle_info.html?vin=' + encodeURIComponent(car.vin) + '">' +
+            esc(name) + '<div class="mini-sub">' + esc(sub) + '</div></a>';
+        }).join('');
+        if (vehicles.length > 8) {
+          vEl.innerHTML += '<div class="empty-hint">他 ' + (vehicles.length - 8) + ' 台（一覧へ）</div>';
+        }
+      }
+
+      var favs = getFavShops();
+      var fEl = document.getElementById('favList');
+      if (!favs.length) {
+        fEl.innerHTML = '<div class="empty-hint">未登録です。検索から追加できます。</div>';
+      } else {
+        fEl.innerHTML = favs.slice(0, 6).map(function (s) {
+          return '<a class="mini-item" href="user_fav_shop_edit.html?shopId=' + encodeURIComponent(s.shopId) + '">' +
+            esc(s.shopName || s.shopId) +
+            '<div class="mini-sub">' + esc(s.factoryNumber || s.address || '') + '</div></a>';
+        }).join('');
+      }
+    });
+  </script>
+</body>
+</html>

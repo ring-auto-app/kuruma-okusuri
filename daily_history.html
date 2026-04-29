@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>日常点検履歴 | 車のお薬手帳</title>
+  <link rel="stylesheet" href="common.css">
+  <script src="app.js"></script>
+  <script src="theme.js"></script>
+  <style>
+    .car-vin  { font-size: 12px; color: var(--muted); font-weight: 800; line-height: 17px; }
+    .car-name { font-size: 18px; font-weight: 900; color: var(--text); line-height: 34px; margin: 0 0 17px; }
+
+    /* コントロール行 */
+    .ctrl-row { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+    .sel-ym {
+      height: 34px; padding: 0 10px; border: 2px solid var(--accent);
+      border-radius: 8px; font-size: 14px; font-weight: 700;
+      color: var(--text); background: var(--paper); outline: none; cursor: pointer;
+    }
+    .sel-ym.sel-year { flex: 1.2; }
+    .sel-ym.sel-month { flex: 0.8; }
+    .view-toggle { display: flex; border: 2px solid var(--accent); border-radius: 8px; overflow: hidden; flex-shrink: 0; }
+    .view-btn { height: 30px; padding: 0 14px; border: none; background: var(--paper); color: var(--muted); font-size: 13px; font-weight: 800; cursor: pointer; }
+    .view-btn.active { background: var(--accent); color: #fff; }
+
+    /* ─── カレンダー ─── */
+    .cal-wrap { background: rgba(255,255,255,0.7); border: 2px dashed var(--line); border-radius: 12px; overflow: hidden; }
+    .cal-head { display: grid; grid-template-columns: repeat(7,1fr); }
+    .cal-head span {
+      text-align: center; font-size: 11px; font-weight: 900; color: var(--muted);
+      height: 28px; line-height: 28px; border-bottom: 1px dashed var(--line);
+    }
+    .cal-head span:first-child { color: #ef4444; }
+    .cal-head span:last-child  { color: #3b82f6; }
+    .cal-grid { display: grid; grid-template-columns: repeat(7,1fr); }
+    .cal-cell {
+      min-height: 56px; padding: 4px 2px; border-bottom: 1px dashed var(--line);
+      border-right: 1px dashed var(--line); box-sizing: border-box;
+      display: flex; flex-direction: column; align-items: center; gap: 2px;
+    }
+    .cal-cell:nth-child(7n) { border-right: none; }
+    .cal-cell.empty { background: rgba(0,0,0,0.02); }
+    .cal-cell.today .cal-day { background: var(--accent); color: #fff; border-radius: 50%; }
+    .cal-day { font-size: 12px; font-weight: 800; width: 22px; height: 22px; line-height: 22px; text-align: center; color: var(--text); }
+    .cal-cell:nth-child(7n+1) .cal-day { color: #ef4444; }
+    .cal-cell:nth-child(7n)   .cal-day { color: #3b82f6; }
+    .cal-cell.today:nth-child(7n+1) .cal-day,
+    .cal-cell.today:nth-child(7n)   .cal-day { color: #fff; }
+
+    /* ○ × — 同じサイズ・太さ */
+    .mark {
+      font-size: 17px; font-weight: 900; line-height: 1;
+      cursor: pointer; user-select: none;
+      width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+      border-radius: 50%;
+    }
+    .mark.good { color: #16a34a; }
+    .mark.bad  { color: #dc2626; }
+    .mark.good:active { background: #dcfce7; }
+    .mark.bad:active  { background: #fee2e2; }
+    .memo-dot { font-size: 9px; color: var(--muted); font-weight: 800; line-height: 1; }
+
+    /* ─── リストビュー ─── */
+    .list-wrap { background: rgba(255,255,255,0.7); border: 2px dashed var(--line); border-radius: 12px; overflow: hidden; }
+    .list-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 14px; border-bottom: 1px dashed var(--line);
+      text-decoration: none; color: inherit;
+    }
+    .list-row:last-child { border-bottom: none; }
+    .list-mark { font-size: 17px; font-weight: 900; width: 24px; text-align: center; flex-shrink: 0; }
+    .list-mark.good { color: #16a34a; }
+    .list-mark.bad  { color: #dc2626; }
+    .list-date { font-size: 12px; font-weight: 900; color: var(--muted); flex-shrink: 0; }
+    .list-memo { font-size: 13px; font-weight: 700; color: var(--text); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .del-btn {
+      flex-shrink: 0; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;
+      background: #fee2e2; border: 1px solid #fca5a5; border-radius: 8px; font-size: 13px;
+      color: #dc2626; cursor: pointer;
+    }
+
+    /* ─── 付箋ポップアップ ─── */
+    .popup-overlay {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 9000;
+      align-items: center; justify-content: center;
+    }
+    .popup-overlay.open { display: flex; }
+    .popup-card {
+      background: #fffde7; border-radius: 4px 16px 16px 16px;
+      box-shadow: 4px 4px 16px rgba(0,0,0,0.2);
+      padding: 20px; width: 88%; max-width: 340px; position: relative;
+    }
+    .popup-card::before {
+      content: ''; position: absolute; top: 0; left: 0;
+      width: 0; height: 0;
+      border-left: 16px solid #f59e0b;
+      border-bottom: 16px solid transparent;
+      border-radius: 4px 0 0 0;
+    }
+    .popup-date { font-size: 13px; font-weight: 900; color: #92400e; margin-bottom: 10px; padding-left: 8px; }
+    .popup-item { font-size: 13px; font-weight: 800; color: #dc2626; margin-bottom: 4px; }
+    .popup-memo { font-size: 12px; font-weight: 700; color: #666; margin-top: 10px; border-top: 1px dashed #e5c44a; padding-top: 8px; }
+    .popup-actions { display: flex; gap: 8px; margin-top: 14px; }
+    .popup-btn-detail {
+      flex: 1; height: 36px; border-radius: 999px; background: var(--accent);
+      color: #fff; border: none; font-size: 13px; font-weight: 800; cursor: pointer;
+    }
+    .popup-btn-close {
+      height: 36px; padding: 0 16px; border-radius: 999px;
+      background: #fff; border: 1.5px solid #e5c44a; font-size: 13px; font-weight: 800;
+      color: #92400e; cursor: pointer;
+    }
+
+    /* ─── 印刷モーダル ─── */
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 9999; align-items: flex-end; justify-content: center; }
+    .modal-overlay.open { display: flex; }
+    .modal-sheet { background: var(--paper); border-radius: 20px 20px 0 0; width: 100%; max-width: 600px; padding: 24px 24px 40px; box-shadow: 0 -4px 20px rgba(0,0,0,0.15); }
+    .modal-title { font-size: 16px; font-weight: 900; color: var(--text); margin: 0 0 16px; }
+    .modal-section { margin-bottom: 16px; }
+    .modal-label { font-size: 11px; font-weight: 800; color: var(--muted); margin-bottom: 8px; }
+    .radio-group { display: flex; gap: 8px; flex-wrap: wrap; }
+    .radio-pill input { display: none; }
+    .radio-pill label { display: inline-block; padding: 6px 14px; border-radius: 999px; border: 1.5px solid var(--line); font-size: 13px; font-weight: 800; color: var(--muted); cursor: pointer; transition: 0.15s; }
+    .radio-pill input:checked + label { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .modal-actions { display: flex; gap: 10px; margin-top: 20px; }
+    .btn-exec { flex: 1; height: 44px; border-radius: 999px; background: var(--accent); color: #fff; border: none; font-size: 15px; font-weight: 900; cursor: pointer; }
+    .btn-cancel { height: 44px; padding: 0 20px; border-radius: 999px; background: var(--page-bg); border: 1.5px solid var(--line); font-size: 14px; font-weight: 800; color: var(--muted); cursor: pointer; }
+
+    .print-bar { display: flex; justify-content: flex-end; margin: 12px 0; }
+    .btn-print { padding: 0 16px; height: 34px; border-radius: 999px; background: var(--paper); border: 2px solid var(--accent); color: var(--accent); font-size: 13px; font-weight: 800; cursor: pointer; }
+
+    @media print {
+      .header, .ctrl-row, .print-bar, .modal-overlay, .popup-overlay, .del-btn { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <a onclick="goBackSmart('vehicles.html')" class="back-link">≪戻る</a>
+      <h1 class="title">日常点検履歴</h1>
+    </div>
+
+    <div class="car-info">
+      <div class="car-vin" id="dispVin">VIN: 読込中...</div>
+      <h2 class="car-name" id="dispName">車両名読込中...</h2>
+    </div>
+
+    <div class="ctrl-row">
+      <select id="selYear" class="sel-ym sel-year" onchange="onYMChange()"></select>
+      <select id="selMonth" class="sel-ym sel-month" onchange="onYMChange()"></select>
+      <div class="view-toggle">
+        <button id="btnCal" class="view-btn active" onclick="switchView('cal')">📅</button>
+        <button id="btnList" class="view-btn" onclick="switchView('list')">☰</button>
+      </div>
+    </div>
+
+    <!-- カレンダービュー -->
+    <div id="calView">
+      <div class="cal-wrap">
+        <div class="cal-head">
+          <span>日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span>
+        </div>
+        <div class="cal-grid" id="calGrid"></div>
+      </div>
+    </div>
+
+    <!-- リストビュー -->
+    <div id="listView" style="display:none">
+      <div class="list-wrap" id="listArea"></div>
+    </div>
+
+    <div class="print-bar">
+      <button class="btn-print" onclick="openPrintModal()">📄 印刷 / PDF出力</button>
+    </div>
+  </div>
+
+  <!-- 付箋ポップアップ -->
+  <div class="popup-overlay" id="popupOverlay" onclick="closePopup(event)">
+    <div class="popup-card" id="popupCard">
+      <div class="popup-date" id="popupDate"></div>
+      <div id="popupItems"></div>
+      <div class="popup-memo" id="popupMemo" style="display:none"></div>
+      <div class="popup-actions">
+        <button class="popup-btn-detail" id="popupDetailBtn">詳細を見る</button>
+        <button class="popup-btn-close" onclick="document.getElementById('popupOverlay').classList.remove('open')">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 印刷モーダル -->
+  <div class="modal-overlay" id="printModal">
+    <div class="modal-sheet">
+      <div class="modal-title">📄 印刷 / PDF出力</div>
+      <div class="modal-section">
+        <div class="modal-label">出力形式</div>
+        <div class="radio-group">
+          <div class="radio-pill"><input type="radio" name="pFormat" id="pf_list" value="list" checked><label for="pf_list">一覧</label></div>
+          <div class="radio-pill"><input type="radio" name="pFormat" id="pf_detail" value="detail"><label for="pf_detail">詳細</label></div>
+        </div>
+      </div>
+      <div class="modal-section">
+        <div class="modal-label">期間</div>
+        <div class="radio-group" id="printPeriodGroup">
+          <div class="radio-pill"><input type="radio" name="pPeriod" id="pp_1w" value="1week" checked><label for="pp_1w">一週間分</label></div>
+          <div class="radio-pill"><input type="radio" name="pPeriod" id="pp_1m" value="1month"><label for="pp_1m">一か月分</label></div>
+          <div class="radio-pill"><input type="radio" name="pPeriod" id="pp_6m" value="6month"><label for="pp_6m">半年分</label></div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closePrintModal()">キャンセル</button>
+        <button class="btn-exec" onclick="executePrint()">印刷する</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const profile = typeof getCurrentProfile === "function" ? getCurrentProfile() : null;
+    const currentVin = new URLSearchParams(window.location.search).get('vin') || "";
+    let fetchedData = [];
+    let currentView = 'cal';
+    let curYear, curMonth; // 0-indexed month
+
+    // 点検項目定義
+    const inspectionData = [
+      { cat: "エンジン", items: [
+        { id: "e1", name: "エンジンオイル量" }, { id: "e2", name: "冷却水量" },
+        { id: "e3", name: "エンジン始動状態" }, { id: "e4", name: "異音確認" }, { id: "e5", name: "排気の色" }
+      ]},
+      { cat: "バッテリー", items: [{ id: "ba1", name: "バッテリー液量" }, { id: "ba2", name: "端子状態" }]},
+      { cat: "ベルト", items: [{ id: "be1", name: "ベルト張り" }, { id: "be2", name: "ベルト損傷" }]},
+      { cat: "タイヤ", items: [
+        { id: "t1", name: "タイヤ空気圧" }, { id: "t2", name: "タイヤ亀裂・損傷" },
+        { id: "t3", name: "タイヤ摩耗状態" }, { id: "t4", name: "タイヤ溝深さ" }
+      ]},
+      { cat: "ブレーキ", items: [
+        { id: "b1", name: "ブレーキ液量" }, { id: "b2", name: "ブレーキペダル踏みしろ" }, { id: "b3", name: "駐車ブレーキ引きしろ" }
+      ]},
+      { cat: "灯火類", items: [
+        { id: "l1", name: "前照灯" }, { id: "l2", name: "制動灯" },
+        { id: "l3", name: "方向指示器" }, { id: "l4", name: "尾灯 / 車幅灯" }
+      ]},
+      { cat: "ワイパー / 洗浄液", items: [{ id: "w1", name: "ワイパー状態" }, { id: "w2", name: "ウォッシャー液" }]},
+      { cat: "走行装置 / その他", items: [
+        { id: "o1", name: "エアタンク(対象車のみ)" }, { id: "o2", name: "異臭確認" }, { id: "o3", name: "その他異常" }
+      ]}
+    ];
+
+    // 全項目名マップ
+    const itemNameMap = {};
+    inspectionData.forEach(g => g.items.forEach(it => { itemNameMap[it.id] = it.name; }));
+
+    window.addEventListener('DOMContentLoaded', () => {
+      showLoading("データ読込中", "点検履歴を取得しています...");
+      setTimeout(() => {
+        document.getElementById('dispVin').textContent = `VIN: ${currentVin || '未指定'}`;
+        const vehicles = JSON.parse(localStorage.getItem('nappy_vehicles_v1') || '[]');
+        const car = vehicles.find(v => v.vin === currentVin);
+        document.getElementById('dispName').textContent = car ? (car.model || "名称未設定") : "車両名未設定";
+        fetchLocalHistory();
+        hideLoading();
+      }, 300);
+    });
+
+    function fetchLocalHistory() {
+      const allLogs = JSON.parse(localStorage.getItem('inspections_v1') || '[]');
+      fetchedData = allLogs.filter(log => log.vin === currentVin && log.type && log.type.startsWith('inspection'));
+
+      const now = new Date();
+      curYear  = now.getFullYear();
+      curMonth = now.getMonth();
+
+      buildYMSelectors();
+      render();
+    }
+
+    function buildYMSelectors() {
+      const years = [...new Set(fetchedData.map(item => {
+        const d = new Date(item.date || item.createdAt);
+        return isNaN(d) ? null : d.getFullYear();
+      }).filter(Boolean))];
+      if (!years.includes(curYear)) years.push(curYear);
+      years.sort((a, b) => b - a);
+
+      const selY = document.getElementById('selYear');
+      selY.innerHTML = years.map(y => `<option value="${y}" ${y === curYear ? 'selected' : ''}>${y}年</option>`).join('');
+
+      const selM = document.getElementById('selMonth');
+      selM.innerHTML = Array.from({length: 12}, (_, i) =>
+        `<option value="${i}" ${i === curMonth ? 'selected' : ''}>${i + 1}月</option>`).join('');
+
+      // 印刷モーダルに年オプション追加
+      const pg = document.getElementById('printPeriodGroup');
+      pg.querySelectorAll('.year-pill').forEach(el => el.remove());
+      years.forEach(y => {
+        const div = document.createElement('div');
+        div.className = 'radio-pill year-pill';
+        div.innerHTML = `<input type="radio" name="pPeriod" id="pp_y${y}" value="year_${y}"><label for="pp_y${y}">${y}年</label>`;
+        pg.appendChild(div);
+      });
+    }
+
+    function onYMChange() {
+      curYear  = parseInt(document.getElementById('selYear').value);
+      curMonth = parseInt(document.getElementById('selMonth').value);
+      render();
+    }
+
+    function switchView(v) {
+      currentView = v;
+      document.getElementById('calView').style.display  = v === 'cal'  ? '' : 'none';
+      document.getElementById('listView').style.display = v === 'list' ? '' : 'none';
+      document.getElementById('btnCal').classList.toggle('active', v === 'cal');
+      document.getElementById('btnList').classList.toggle('active', v === 'list');
+      render();
+    }
+
+    function render() {
+      if (currentView === 'cal') renderCalendar();
+      else renderList();
+    }
+
+    // ─── 良否判定 ───
+    // null = データなし, true = 全良/無, false = 異常あり
+    function checkAllGood(item) {
+      const checks = item.checks;
+      if (!checks || Object.keys(checks).length === 0) return null;
+      return Object.values(checks).every(v => v === '良' || v === '無');
+    }
+
+    // × の原因項目リスト
+    function getBadItems(item) {
+      if (!item.checks) return [];
+      return Object.entries(item.checks)
+        .filter(([, v]) => v !== '良' && v !== '無')
+        .map(([id, v]) => `${itemNameMap[id] || id}（${v}）`);
+    }
+
+    // ─── カレンダー描画 ───
+    function renderCalendar() {
+      const grid = document.getElementById('calGrid');
+      grid.innerHTML = '';
+
+      const firstDay = new Date(curYear, curMonth, 1).getDay(); // 0=Sun
+      const daysInMonth = new Date(curYear, curMonth + 1, 0).getDate();
+      const today = new Date();
+
+      // 月内データをdayごとにまとめる
+      const dayMap = {};
+      fetchedData.forEach(item => {
+        const d = new Date(item.date || item.createdAt);
+        if (d.getFullYear() === curYear && d.getMonth() === curMonth) {
+          const day = d.getDate();
+          if (!dayMap[day]) dayMap[day] = [];
+          dayMap[day].push(item);
+        }
+      });
+
+      // 空セル
+      for (let i = 0; i < firstDay; i++) {
+        const cell = document.createElement('div');
+        cell.className = 'cal-cell empty';
+        grid.appendChild(cell);
+      }
+
+      for (let day = 1; day <= daysInMonth; day++) {
+        const cell = document.createElement('div');
+        cell.className = 'cal-cell';
+        const isToday = today.getFullYear() === curYear && today.getMonth() === curMonth && today.getDate() === day;
+        if (isToday) cell.classList.add('today');
+
+        const dayEl = document.createElement('div');
+        dayEl.className = 'cal-day';
+        dayEl.textContent = day;
+        cell.appendChild(dayEl);
+
+        const items = dayMap[day];
+        if (items && items.length > 0) {
+          // 複数ある場合は最初の1件を代表
+          const item = items[0];
+          const good = checkAllGood(item);
+
+          if (good !== null) {
+            const mark = document.createElement('div');
+            mark.className = `mark ${good ? 'good' : 'bad'}`;
+            mark.textContent = good ? '○' : '×';
+
+            if (good) {
+              mark.onclick = () => {
+                location.href = `daily_history_detail.html?logId=${item.log_id}&vin=${encodeURIComponent(currentVin)}`;
+              };
+            } else {
+              mark.onclick = () => showPopup(item, day);
+            }
+            cell.appendChild(mark);
+          }
+
+          if (item.memo) {
+            const dot = document.createElement('div');
+            dot.className = 'memo-dot';
+            dot.textContent = '📝';
+            cell.appendChild(dot);
+          }
+        }
+
+        grid.appendChild(cell);
+      }
+    }
+
+    // ─── リスト描画 ───
+    function renderList() {
+      const area = document.getElementById('listArea');
+      const monthData = fetchedData.filter(item => {
+        const d = new Date(item.date || item.createdAt);
+        return d.getFullYear() === curYear && d.getMonth() === curMonth;
+      }).sort((a, b) => new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt));
+
+      if (monthData.length === 0) {
+        area.innerHTML = `<div style="padding:16px;text-align:center;font-weight:800;color:var(--muted);">この月の点検記録はありません</div>`;
+        return;
+      }
+
+      area.innerHTML = monthData.map(item => {
+        const good = checkAllGood(item);
+        const markCls = good === null ? '' : (good ? 'good' : 'bad');
+        const markTxt = good === null ? '－' : (good ? '○' : '×');
+        const memo = item.memo || '異常なし';
+        return `
+          <a href="daily_history_detail.html?logId=${item.log_id}&vin=${encodeURIComponent(currentVin)}" class="list-row">
+            <span class="list-mark ${markCls}">${markTxt}</span>
+            <span class="list-date">${item.date || '日付不明'}</span>
+            <span class="list-memo">${memo}</span>
+            <div class="del-btn" onclick="deleteLog('${item.log_id}',event)">🗑</div>
+          </a>`;
+      }).join('');
+    }
+
+    // ─── 付箋ポップアップ ───
+    function showPopup(item, day) {
+      const dateStr = `${curYear}年${curMonth + 1}月${day}日`;
+      document.getElementById('popupDate').textContent = `📅 ${dateStr}`;
+
+      const badItems = getBadItems(item);
+      document.getElementById('popupItems').innerHTML = badItems.length
+        ? badItems.map(s => `<div class="popup-item">× ${s}</div>`).join('')
+        : '<div style="font-size:13px;color:#666;">詳細データなし</div>';
+
+      const memoEl = document.getElementById('popupMemo');
+      if (item.memo) {
+        memoEl.textContent = `📝 ${item.memo}`;
+        memoEl.style.display = '';
+      } else {
+        memoEl.style.display = 'none';
+      }
+
+      document.getElementById('popupDetailBtn').onclick = () => {
+        location.href = `daily_history_detail.html?logId=${item.log_id}&vin=${encodeURIComponent(currentVin)}`;
+      };
+
+      document.getElementById('popupOverlay').classList.add('open');
+    }
+
+    function closePopup(e) {
+      if (e.target === document.getElementById('popupOverlay')) {
+        document.getElementById('popupOverlay').classList.remove('open');
+      }
+    }
+
+    function deleteLog(logId, event) {
+      event.preventDefault(); event.stopPropagation();
+      if (!confirm("この点検履歴を削除しますか？")) return;
+      showLoading("削除中", "履歴データを消去しています...");
+      setTimeout(() => {
+        let all = JSON.parse(localStorage.getItem('inspections_v1') || '[]');
+        all = all.filter(log => log.log_id !== logId);
+        localStorage.setItem('inspections_v1', JSON.stringify(all));
+        fetchLocalHistory();
+        hideLoading();
+      }, 300);
+    }
+
+    // ─── 印刷 ───
+    function openPrintModal()  { document.getElementById('printModal').classList.add('open'); }
+    function closePrintModal() { document.getElementById('printModal').classList.remove('open'); }
+
+    function filterByPeriod(data, period) {
+      const now = new Date();
+      return data.filter(item => {
+        const d = new Date(item.date || item.createdAt);
+        if (isNaN(d)) return false;
+        if (period === '1week')  { const t = new Date(now); t.setDate(t.getDate() - 7);   return d >= t; }
+        if (period === '1month') { const t = new Date(now); t.setMonth(t.getMonth() - 1); return d >= t; }
+        if (period === '6month') { const t = new Date(now); t.setMonth(t.getMonth() - 6); return d >= t; }
+        if (period.startsWith('year_')) return d.getFullYear() === parseInt(period.replace('year_', ''));
+        return true;
+      });
+    }
+
+    function executePrint() {
+      const format = document.querySelector('input[name="pFormat"]:checked').value;
+      const period = document.querySelector('input[name="pPeriod"]:checked').value;
+      closePrintModal();
+
+      const vehicles = JSON.parse(localStorage.getItem('nappy_vehicles_v1') || '[]');
+      const car = vehicles.find(v => v.vin === currentVin);
+      const carLabel = car ? `${car.model || 'VIN'} (${currentVin})` : currentVin;
+      const periodLabel = { '1week': '一週間分', '1month': '一か月分', '6month': '半年分' }[period]
+        || (period.startsWith('year_') ? period.replace('year_', '') + '年分' : period);
+
+      const data = filterByPeriod(fetchedData, period)
+        .sort((a, b) => new Date(a.date || a.createdAt) - new Date(b.date || b.createdAt));
+
+      const body = format === 'list' ? buildListPrint(data, carLabel, periodLabel) : buildDetailPrint(data, carLabel, periodLabel);
+      const win = window.open('', '_blank');
+      win.document.write(`<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
+        <title>日常点検 ${periodLabel} — ${carLabel}</title>
+        <style>
+          body { font-family: -apple-system, sans-serif; font-size: 13px; color: #111; padding: 24px; }
+          h1 { font-size: 16px; margin-bottom: 4px; }
+          .sub { font-size: 12px; color: #666; margin-bottom: 16px; }
+          table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+          th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; font-size: 12px; }
+          th { background: #f5f5f5; font-weight: 700; }
+          .good { color: #16a34a; font-weight: 900; font-size: 15px; }
+          .bad  { color: #dc2626; font-weight: 900; font-size: 15px; }
+          .record-block { border: 1px solid #ccc; border-radius: 6px; padding: 12px; margin-bottom: 16px; page-break-inside: avoid; }
+          .record-date { font-size: 14px; font-weight: 900; margin-bottom: 8px; }
+          .cat-title { font-size: 13px; font-weight: 700; border-bottom: 1px solid #ccc; margin: 10px 0 4px; }
+          .item-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 12px; }
+          @media print { button { display: none; } }
+        </style></head><body>${body}
+        <button onclick="window.print()" style="margin-top:16px;padding:8px 20px;font-size:14px;cursor:pointer;">🖨 印刷する</button>
+        </body></html>`);
+      win.document.close();
+    }
+
+    function buildListPrint(data, carLabel, periodLabel) {
+      const rows = data.map(item => {
+        const good = checkAllGood(item);
+        const mark = good === null ? '－' : (good
+          ? '<span class="good">○</span>' : '<span class="bad">×</span>');
+        return `<tr><td>${item.date || '不明'}</td><td>${mark}</td><td>${item.memo || '異常なし'}</td></tr>`;
+      }).join('');
+      return `<h1>日常点検一覧 — ${carLabel}</h1>
+        <div class="sub">対象期間：${periodLabel}　／　全 ${data.length} 件</div>
+        <table><thead><tr><th>点検日</th><th>結果</th><th>メモ</th></tr></thead><tbody>${rows}</tbody></table>`;
+    }
+
+    function buildDetailPrint(data, carLabel, periodLabel) {
+      const blocks = data.map(item => {
+        let rows = '';
+        inspectionData.forEach(group => {
+          rows += `<div class="cat-title">【${group.cat}】</div>`;
+          group.items.forEach(it => {
+            const val = (item.checks && item.checks[it.id]) || '－';
+            const cls = val === '良' || val === '無' ? '' : (val === '点' ? 'bad' : '');
+            rows += `<div class="item-row"><span>${it.name}</span><span class="${cls}">${val}</span></div>`;
+          });
+        });
+        return `<div class="record-block">
+          <div class="record-date">📅 ${item.date || '日付不明'}</div>
+          ${rows}
+          ${item.memo ? `<div style="margin-top:8px;font-size:12px;color:#666;">メモ：${item.memo}</div>` : ''}
+        </div>`;
+      }).join('');
+      return `<h1>日常点検詳細 — ${carLabel}</h1>
+        <div class="sub">対象期間：${periodLabel}　／　全 ${data.length} 件</div>${blocks}`;
+    }
+  </script>
+</body>
+</html>
