@@ -8,18 +8,18 @@ if (typeof window !== 'undefined') window.__RING_GAS_URL__ = GAS_URL;
 
 const DB_VEHICLES = "nappy_vehicles_v1";
 const DB_LOGS = "nappy_logs_v1";
-const DB_INSPECTIONS = "nappy_inspections_v1"; 
+const DB_INSPECTIONS = "inspections_v1"; 
 const DB_CURRENT_USER = "nappy_current_user";  
 const DB_LEGACY_PROFILE = "nappy_profile_v1";
 
 /**
  * ユーザー認証管理
  */
-function login(profile) {
+function login(profile, authToken) {
     const raw = JSON.stringify(profile);
     localStorage.setItem(DB_CURRENT_USER, raw);
-    // 既存ページ互換のため旧キーにも同期
     localStorage.setItem(DB_LEGACY_PROFILE, raw);
+    if (authToken) localStorage.setItem('ring_auth_token', authToken);
 }
 function getCurrentProfile() {
     const current = localStorage.getItem(DB_CURRENT_USER);
@@ -30,6 +30,7 @@ function getCurrentProfile() {
 function logout() {
     localStorage.removeItem(DB_CURRENT_USER);
     localStorage.removeItem(DB_LEGACY_PROFILE);
+    localStorage.removeItem('ring_auth_token');
 }
 
 // ★ 全ページ共通のログアウト処理
@@ -362,39 +363,44 @@ function _normalize(v) {
 /**
  * 車両の追加・更新
  */
-function addVehicle(v) {
+async function addVehicle(v) {
     const list = loadVehicles();
     const i = list.findIndex(x => _normalize(x.vin) === _normalize(v.vin));
-    if (i !== -1) list[i] = { ...list[i], ...v }; else list.push(v);
+    const merged = i !== -1 ? { ...list[i], ...v } : { ...v };
+    if (i !== -1) list[i] = merged; else list.push(merged);
     localStorage.setItem(DB_VEHICLES, JSON.stringify(list));
-    sendToGAS_Safe('vehicle', v);
+    return sendToGAS_Safe('vehicle', merged);
 }
 
 /**
  * 整備ログの保存
  */
-function saveLog(d) {
+async function saveLog(d) {
     const list = JSON.parse(localStorage.getItem(DB_LOGS) || "[]");
-    const newLogId = `LOG-${Date.now()}`;
+    const newLogId = d.log_id || `LOG-${Date.now()}`;
     const profile = getCurrentProfile() || {};
     const cleanVin = (d.vin || "").toUpperCase();
-    
-    // 保存データに店舗情報を付与
-    const newEntry = { 
-        ...d, 
-        vin: cleanVin, 
-        log_id: newLogId, 
-        shopId: profile.shopId || "", 
-        shopName: profile.shopName || "", 
-        shopType: profile.shopType || "", 
-        factoryType: profile.factoryType || "", 
-        factoryNumber: profile.factoryNumber || "" 
+
+    const newEntry = {
+        ...d,
+        vin: cleanVin,
+        log_id: newLogId,
+        shopId: d.shopId || profile.shopId || "",
+        shopName: d.shopName || profile.shopName || "",
+        shopType: d.shopType || profile.shopType || "",
+        factoryType: d.factoryType || profile.factoryType || "",
+        factoryNumber: d.factoryNumber || profile.factoryNumber || ""
     };
-    
+
     list.push(newEntry);
     localStorage.setItem(DB_LOGS, JSON.stringify(list));
-    sendToGAS_Safe('log', newEntry);
-    return newLogId;
+
+    try {
+        await sendToGAS_Safe('log', newEntry);
+        return { logId: newLogId, localSaved: true, serverSaved: true };
+    } catch (err) {
+        return { logId: newLogId, localSaved: true, serverSaved: false, error: err.message };
+    }
 }
 
 /**
@@ -409,21 +415,131 @@ function getLogsByVin(vin) {
 }
 
 /**
- * GAS送信処理（個人情報に関連する項目を除外して送信）
+ * GAS送信処理
  */
 async function sendToGAS_Safe(actionType, data) {
-    let payload = JSON.parse(JSON.stringify(data));
+    const payload = JSON.parse(JSON.stringify(data || {}));
     payload.action = actionType;
-    if (actionType === 'vehicle') { delete payload.model; delete payload.number; }
-    try {
-        console.log("GAS送信（処理識別子）:", payload);
-    } catch(e) { console.error("GAS送信エラー:", e); }
+
+    if (actionType === 'vehicle') {
+        delete payload.number;
+    }
+    if (actionType === 'log' && payload.partsPhoto && !payload.photoUrl) {
+        payload.photoUrl = payload.partsPhoto;
+    }
+
+    const authToken = localStorage.getItem('ring_auth_token');
+    if (authToken) payload.authToken = authToken;
+
+    const res = await fetch(GAS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify(payload)
+    });
+    const json = await res.json();
+    if (!json || json.success !== true) {
+        throw new Error((json && json.error) || 'GAS保存に失敗しました');
+    }
+    return json;
 }
 
 /**
  * HTMLエスケープ処理
  */
 function escapeHtml(s) { return s ? String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#039;"}[c])) : ""; }
+
+/**
+ * XSS対策：innerHTML に流す前に必ずエスケープする（escapeHtml より広いセット）
+ */
+function safeText(value) {
+    return String(value == null ? '' : value).replace(/[&<>"'`=/]/g, function (s) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;',
+                 "'": '&#39;', '`': '&#x60;', '=': '&#x3D;', '/': '&#x2F;' }[s];
+    });
+}
+
+/**
+ * 整備履歴の論理削除（物理削除しない）
+ */
+function markLogVoided(logId, reason) {
+    const profile = getCurrentProfile() || {};
+    const logs = JSON.parse(localStorage.getItem(DB_LOGS) || '[]');
+    const next = logs.map(function (log) {
+        if (log.log_id !== logId) return log;
+        if (log.shopId && profile.shopId && log.shopId !== profile.shopId) return log;
+        return {
+            ...log,
+            voidedAt: new Date().toISOString(),
+            voidedBy: profile.staffId || profile.loginId || profile.userId || '',
+            voidReason: reason || '入力元による取消'
+        };
+    });
+    localStorage.setItem(DB_LOGS, JSON.stringify(next));
+}
+
+/**
+ * 最低表示時間付きローディングラッパー
+ */
+function delay(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
+async function withLoading(title, text, task) {
+    showLoading(title, text);
+    try {
+        const results = await Promise.all([task(), delay(300)]);
+        return results[0];
+    } finally {
+        hideLoading();
+    }
+}
+
+/**
+ * ボタン二重送信防止ガード
+ */
+async function runOnce(button, task) {
+    if (!button || button.dataset.busy === '1') return;
+    button.dataset.busy = '1';
+    button.disabled = true;
+    try {
+        return await task();
+    } finally {
+        button.dataset.busy = '0';
+        button.disabled = false;
+    }
+}
+
+/**
+ * かかりつけ店舗の読み込み（旧キーからマイグレーション付き）
+ */
+function loadFavShops() {
+    const current = JSON.parse(localStorage.getItem('nappy_fav_shops_v1') || '[]');
+    const legacy  = JSON.parse(localStorage.getItem('nappy_fav_shops')    || '[]');
+    if (!legacy.length) return current;
+    const byId = {};
+    current.concat(legacy).forEach(function (shop) {
+        if (shop && shop.shopId) byId[shop.shopId] = Object.assign({}, byId[shop.shopId] || {}, shop);
+    });
+    const merged = Object.values(byId);
+    localStorage.setItem('nappy_fav_shops_v1', JSON.stringify(merged));
+    localStorage.removeItem('nappy_fav_shops');
+    return merged;
+}
+
+/**
+ * 日常点検の読み込み（旧キーからマイグレーション付き）
+ */
+function loadInspections() {
+    const primary = JSON.parse(localStorage.getItem(DB_INSPECTIONS) || '[]');
+    const legacy  = JSON.parse(localStorage.getItem('nappy_inspections_v1') || '[]');
+    if (legacy.length) {
+        const seen = new Set(primary.map(function (x) { return x.log_id || x.logId; }));
+        legacy.forEach(function (x) {
+            const id = x.log_id || x.logId;
+            if (!seen.has(id)) primary.push(x);
+        });
+        localStorage.setItem(DB_INSPECTIONS, JSON.stringify(primary));
+        localStorage.removeItem('nappy_inspections_v1');
+    }
+    return primary;
+}
 
 /** 保存前確認用：長文を省略 */
 function truncateRingConfirm(s, max) {
@@ -755,7 +871,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     if (!shopId || (getCurrentProfile() && !window.location.pathname.includes('user_'))) return;
 
-    let favShops = JSON.parse(localStorage.getItem('nappy_fav_shops') || '[]');
+    let favShops = loadFavShops();
     let isAlreadyRegistered = favShops.some(s => s.shopId === shopId);
 
     if (!isAlreadyRegistered) {
@@ -769,7 +885,7 @@ window.addEventListener('DOMContentLoaded', async () => {
             lineUrl: ""
         };
         favShops.push(dummyShopData);
-        localStorage.setItem('nappy_fav_shops', JSON.stringify(favShops));
+        localStorage.setItem('nappy_fav_shops_v1', JSON.stringify(favShops));
     }
 
     window.history.replaceState(null, null, window.location.pathname);

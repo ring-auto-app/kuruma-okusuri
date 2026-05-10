@@ -172,8 +172,9 @@
       try {
         const res = await fetch(GAS_URL, {
           method: 'POST', headers: { 'Content-Type': 'text/plain' },
-          body: JSON.stringify({ 
-            action: 'update_shop_info', 
+          body: JSON.stringify({
+            action: 'update_shop_info',
+            authToken: localStorage.getItem('ring_auth_token') || '',
             shopId: currentProfile.shopId,
             shopName: shopName,
             address: address,

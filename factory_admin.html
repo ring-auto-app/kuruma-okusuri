@@ -140,7 +140,7 @@
         const timer = setTimeout(() => controller.abort(), 8000);
         const res = await fetch(GAS_URL, {
           method: 'POST', headers: { 'Content-Type': 'text/plain' },
-          body: JSON.stringify({ action: 'get_staff', shopId: currentProfile.shopId }),
+          body: JSON.stringify({ action: 'get_staff', authToken: localStorage.getItem('ring_auth_token') || '', shopId: currentProfile.shopId }),
           signal: controller.signal
         });
         clearTimeout(timer);
@@ -223,57 +223,51 @@
     }
 
     /**
-     * 権限変更（staff / inspector / viewer）
+     * 権限変更（staff / inspector / viewer）— GAS成功後にlocalStorage更新
      */
     async function changeRole(loginId, newRole) {
-      const key = `nappy_staff_${currentProfile.shopId}`;
-      const staff = JSON.parse(localStorage.getItem(key) || '[]');
-      const idx = staff.findIndex(s => s.loginId === loginId);
-      if (idx >= 0) { staff[idx].role = newRole; localStorage.setItem(key, JSON.stringify(staff)); }
-
       try {
         const res = await fetch(GAS_URL, {
           method: 'POST', headers: { 'Content-Type': 'text/plain' },
-          body: JSON.stringify({ action: 'update_staff_status', shopId: currentProfile.shopId, loginId, newRole })
+          body: JSON.stringify({ action: 'update_staff_status', authToken: localStorage.getItem('ring_auth_token') || '', shopId: currentProfile.shopId, loginId, newRole })
         });
         const data = await res.json();
-        if (data.success) {
-          showToast('success', '権限を変更しました');
-        } else {
-          showToast('error', '権限変更に失敗しました: ' + (data.error || '不明なエラー'));
-        }
+        if (!data.success) throw new Error(data.error || '権限変更に失敗しました');
+
+        const key = `nappy_staff_${currentProfile.shopId}`;
+        const staff = JSON.parse(localStorage.getItem(key) || '[]');
+        const idx = staff.findIndex(s => s.loginId === loginId);
+        if (idx >= 0) { staff[idx].role = newRole; localStorage.setItem(key, JSON.stringify(staff)); }
+        showToast('success', '権限を変更しました');
       } catch (e) {
-        showToast('info', 'ローカルのみ変更しました。シートへの反映は次回接続時に行われます。');
+        showToast('error', '権限変更に失敗しました: ' + e.message);
+        await loadStaffList();
       }
     }
 
     /**
-     * スタッフの削除処理
+     * スタッフの削除処理 — GAS成功後にlocalStorage更新
      */
     async function deleteStaff(loginId) {
       if (!confirm(`本当にID「${loginId}」を削除しますか？`)) return;
-
-      const key = `nappy_staff_${currentProfile.shopId}`;
-      const staff = JSON.parse(localStorage.getItem(key) || '[]');
-      localStorage.setItem(key, JSON.stringify(staff.filter(s => s.loginId !== loginId)));
-      renderLocalStaff();
 
       showLoading("削除中", "スタッフ情報を削除しています...");
 
       try {
         const res = await fetch(GAS_URL, {
           method: 'POST', headers: { 'Content-Type': 'text/plain' },
-          body: JSON.stringify({ action: 'delete_staff', shopId: currentProfile.shopId, loginId: loginId })
+          body: JSON.stringify({ action: 'delete_staff', authToken: localStorage.getItem('ring_auth_token') || '', shopId: currentProfile.shopId, loginId: loginId })
         });
         const data = await res.json();
-        if (data.success) {
-          showToast('success', 'スタッフを削除しました');
-          await loadStaffList();
-        } else {
-          showToast('error', '削除失敗: ' + (data.error || '不明なエラー'));
-        }
+        if (!data.success) throw new Error(data.error || '削除失敗');
+
+        const key = `nappy_staff_${currentProfile.shopId}`;
+        const staff = JSON.parse(localStorage.getItem(key) || '[]');
+        localStorage.setItem(key, JSON.stringify(staff.filter(s => s.loginId !== loginId)));
+        showToast('success', 'スタッフを削除しました');
+        await loadStaffList();
       } catch (e) {
-        showToast('info', 'ローカルから削除しました。シートへの反映は次回接続時に行われます。');
+        showToast('error', '削除に失敗しました: ' + e.message);
       } finally {
         hideLoading();
       }
@@ -352,7 +346,7 @@
         const timer = setTimeout(() => controller.abort(), 8000);
         const res = await fetch(GAS_URL, {
           method: 'POST', headers: { 'Content-Type': 'text/plain' },
-          body: JSON.stringify({ action: 'add_staff', shopId: currentProfile.shopId, displayName, realName, role: 'staff' }),
+          body: JSON.stringify({ action: 'add_staff', authToken: localStorage.getItem('ring_auth_token') || '', shopId: currentProfile.shopId, displayName, realName, role: 'staff' }),
           signal: controller.signal
         });
         clearTimeout(timer);

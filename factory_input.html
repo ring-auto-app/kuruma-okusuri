@@ -289,17 +289,19 @@
         createdAt: new Date().toISOString()
       };
 
+      let logResult = { logId: null, localSaved: false, serverSaved: false };
       if (typeof saveLog === "function") {
-        await saveLog(logData);
+        logResult = await saveLog(logData);
       } else {
         let logs = JSON.parse(localStorage.getItem('nappy_logs_v1') || '[]');
         logData.log_id = 'log_' + Date.now();
         logs.push(logData);
         localStorage.setItem('nappy_logs_v1', JSON.stringify(logs));
+        logResult = { logId: logData.log_id, localSaved: true, serverSaved: false };
       }
 
       if (typeof addVehicle === "function") {
-        addVehicle({
+        await addVehicle({
           vin: vin,
           vehicleModel:    document.getElementById('inModel').value,
           engine:          document.getElementById('inEngine').value,
@@ -310,11 +312,13 @@
         });
       }
 
-      setTimeout(() => {
-        hideLoading();
+      hideLoading();
+      if (logResult.serverSaved) {
         showToast('success', '正常に登録されました');
-        setTimeout(() => location.replace(`factory_history.html?vin=${encodeURIComponent(vin)}`), 1200);
-      }, 800);
+      } else {
+        showToast('info', '端末に保存しました（サーバー反映は次回接続時）');
+      }
+      setTimeout(() => location.replace(`factory_history.html?vin=${encodeURIComponent(vin)}`), 1200);
     }
 
     document.getElementById("saveLogBtn").addEventListener("click", async () => {
@@ -364,11 +368,12 @@
         ringConfirmRow('整備メモ', truncateRingConfirm(memoVal, 180)) +
         ringConfirmRow('写真', photoOn ? '添付あり' : '—');
 
+      const saveLogBtn = document.getElementById("saveLogBtn");
       showRingSaveConfirm({
         title: '整備記録の確認',
         bodyHtml: bodyHtml,
         confirmLabel: 'この内容で登録する',
-        onConfirm: function () { performFactoryLogSave(); }
+        onConfirm: function () { runOnce(saveLogBtn, performFactoryLogSave); }
       });
     });
   </script>

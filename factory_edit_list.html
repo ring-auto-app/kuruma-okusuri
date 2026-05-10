@@ -100,7 +100,8 @@
       const myRecentLogs = logs.filter(log => {
         if (!myShopId) return false;
         if ((log.shopId || "").trim() !== myShopId) return false;
-        const createdDate = new Date(log.createdAt || log.date); 
+        if (log.voidedAt) return false;
+        const createdDate = new Date(log.createdAt || log.date);
         return createdDate >= sevenDaysAgo;
       });
 
@@ -119,21 +120,26 @@
       let html = "";
       myRecentLogs.forEach((log, index) => {
         const uniqueId = log.log_id || `temp_${new Date(log.createdAt).getTime()}_${index}`;
-        
+        const safeDate  = safeText(log.date || '未設定');
+        const safeVin   = safeText(log.vin || '---');
+        const safeTitle = safeText(log.title || '一般整備');
+        const safeParts = safeText(log.parts || '（詳細なし）');
+        const safeId    = safeText(uniqueId);
+        const safeVinEnc = encodeURIComponent(log.vin || '');
+
         html += `
           <div class="log-card">
             <div class="log-header">
-              <div class="log-date">作業日: ${log.date || '未設定'}</div>
-              <div class="log-vin">VIN: ${log.vin || '---'}</div>
+              <div class="log-date">作業日: ${safeDate}</div>
+              <div class="log-vin">VIN: ${safeVin}</div>
             </div>
             <div class="log-body">
-              <div class="log-title">${log.title || '一般整備'}</div>
-              <div class="log-parts">内容: ${log.parts || '（詳細なし）'}</div>
+              <div class="log-title">${safeTitle}</div>
+              <div class="log-parts">内容: ${safeParts}</div>
             </div>
-            
             <div class="action-row">
-              <button onclick="deleteLog('${uniqueId}')" class="btn-action btn-delete">消去する</button>
-              <a href="factory_edit_detail.html?log_id=${uniqueId}&vin=${encodeURIComponent(log.vin || '')}" class="btn-action btn-edit">内容を修正</a>
+              <button onclick="voidLog('${safeId}')" class="btn-action btn-delete">取消する</button>
+              <a href="factory_edit_detail.html?log_id=${safeId}&vin=${safeVinEnc}" class="btn-action btn-edit">内容を修正</a>
             </div>
           </div>
         `;
@@ -142,31 +148,26 @@
       container.innerHTML = html;
     }
 
-    function deleteLog(targetId) {
-      if(!confirm("この記録を消去しますか？\n※この操作は元に戻せません。")) return;
+    function voidLog(targetId) {
+      if (!confirm("この記録を取消しますか？\n※記録はサーバー上に残ります（不正防止のため物理削除はできません）。")) return;
 
-      showLoading("削除中", "記録を消去しています...");
+      showLoading("取消処理中", "記録を取消しています...");
 
-      setTimeout(() => {
-        let logs = JSON.parse(localStorage.getItem('nappy_logs_v1') || '[]');
-        const initialCount = logs.length;
-
-        logs = logs.filter((log, index) => {
-          const uniqueId = log.log_id || `temp_${new Date(log.createdAt).getTime()}_${index}`;
-          if (uniqueId === targetId && log.shopId === currentProfile.shopId) return false;
-          return true;
+      if (typeof markLogVoided === 'function') {
+        markLogVoided(targetId, '入力元による取消');
+      } else {
+        const logs = JSON.parse(localStorage.getItem('nappy_logs_v1') || '[]');
+        const next = logs.map(log => {
+          if (log.log_id !== targetId) return log;
+          if (currentProfile && log.shopId && log.shopId !== currentProfile.shopId) return log;
+          return { ...log, voidedAt: new Date().toISOString(), voidReason: '入力元による取消' };
         });
+        localStorage.setItem('nappy_logs_v1', JSON.stringify(next));
+      }
 
-        if (logs.length < initialCount) {
-          localStorage.setItem('nappy_logs_v1', JSON.stringify(logs));
-          renderEditList();
-          hideLoading();
-          alert("履歴を消去しました。");
-        } else {
-          hideLoading();
-          alert("エラー：データの特定に失敗しました。");
-        }
-      }, 500);
+      hideLoading();
+      renderEditList();
+      showToast('success', '取消しました（記録は保持されています）');
     }
   </script>
 </body>

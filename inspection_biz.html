@@ -285,69 +285,73 @@
       });
     });
 
-    document.getElementById('saveBtn').addEventListener('click', () => {
-      const vin = document.getElementById('inVin').value.trim();
-      if (!vin) return alert("車台番号(VIN)がありません。");
+    document.getElementById('saveBtn').addEventListener('click', function () {
+      const saveBtn = document.getElementById('saveBtn');
+      runOnce(saveBtn, async () => {
+        const vin = document.getElementById('inVin').value.trim();
+        if (!vin) return alert("車台番号(VIN)がありません。");
 
-      const memo = document.getElementById('inMemo').value.trim();
-      let hasIssue = false; 
-      let unselectedCount = 0; 
-      
-      let checks = {}; 
+        const memo = document.getElementById('inMemo').value.trim();
+        let hasIssue = false;
+        let unselectedCount = 0;
+        let checks = {};
 
-      inspectionData.forEach(group => {
-        group.items.forEach(item => {
-          const checkedOpt = document.querySelector(`input[name="${item.id}"]:checked`);
-          if (!checkedOpt) {
-            unselectedCount++;
-          } else {
-            checks[item.id] = checkedOpt.value; 
-            if (checkedOpt.value !== '良' && checkedOpt.value !== '無') hasIssue = true;
-          }
+        inspectionData.forEach(group => {
+          group.items.forEach(item => {
+            const checkedOpt = document.querySelector(`input[name="${item.id}"]:checked`);
+            if (!checkedOpt) {
+              unselectedCount++;
+            } else {
+              checks[item.id] = checkedOpt.value;
+              if (checkedOpt.value !== '良' && checkedOpt.value !== '無') hasIssue = true;
+            }
+          });
         });
-      });
 
-      if (unselectedCount > 0) {
-        if (!confirm(`未選択の項目が ${unselectedCount} 件あります。このまま保存しますか？`)) return;
-      }
-      if (memo !== "") hasIssue = true;
+        if (unselectedCount > 0) {
+          if (!confirm(`未選択の項目が ${unselectedCount} 件あります。このまま保存しますか？`)) return;
+        }
+        if (memo !== "") hasIssue = true;
 
-      setTimeout(() => {
+        showLoading("保存中", "点検記録を保存しています...");
+
         const generatedLogId = "LOG_" + Date.now();
         const mileageRaw = document.getElementById('inMileage').value.trim();
         const mileage = mileageRaw ? parseInt(mileageRaw, 10) : null;
-        const logData = { 
-          log_id: generatedLogId,
-          vin: vin, 
-          date: document.getElementById('inDate').value, 
-          title: "日常点検", 
-          memo: memo, 
-          type: "inspection", 
-          checks: checks,
-          mileage: mileage,
-          createdAt: new Date().toISOString() 
+        const date = document.getElementById('inDate').value;
+        const createdAt = new Date().toISOString();
+        const logData = {
+          log_id: generatedLogId, vin: vin, date: date,
+          title: "日常点検", memo: memo, type: "inspection",
+          checks: checks, mileage: mileage, createdAt: createdAt
         };
-        
+
         const inspections = JSON.parse(localStorage.getItem('inspections_v1') || '[]');
         inspections.push(logData);
         localStorage.setItem('inspections_v1', JSON.stringify(inspections));
 
         if (hasIssue) {
-          // checks オブジェクトから項目名マップを生成して非良/無の項目を文字列化
           const itemMap = {};
           inspectionData.forEach(g => g.items.forEach(i => { itemMap[i.id] = i.name; }));
           const ngItems = Object.entries(checks)
             .filter(([, v]) => v !== '良' && v !== '無')
             .map(([k, v]) => `${itemMap[k] || k}：${v}`);
           logData.parts = ngItems.length > 0 ? ngItems.join(' / ') : "日常点検（指摘事項あり）";
-          if (typeof saveLog === "function") saveLog(logData); 
-          showToast('success', '点検を保存しました（整備履歴にも追加）');
-        } else {
-          showToast('success', '正常に登録されました');
+          if (typeof saveLog === "function") await saveLog(logData);
         }
-        
+
+        // GASにも送信（No.005）
+        try {
+          await sendToGAS_Safe('save_inspection', {
+            log_id: generatedLogId, vin: vin, date: date, title: '日常点検',
+            memo: memo, photoUrl: '', createdAt: createdAt, mileage: mileage
+          });
+        } catch (e) { /* ローカル保存済みのため継続 */ }
+
+        hideLoading();
+        showToast('success', hasIssue ? '点検を保存しました（整備履歴にも追加）' : '正常に登録されました');
         setTimeout(() => location.replace("vehicles.html"), 1200);
-      }, 500);
+      });
     });
   </script>
 </body>

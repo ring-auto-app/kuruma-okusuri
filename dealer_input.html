@@ -289,62 +289,65 @@
     });
 
     // 保存実行処理
-    document.getElementById("saveBtn").addEventListener("click", () => {
-      const vinEl   = document.getElementById('inVin');
-      const dateEl  = document.getElementById('inDate');
-      const errVin  = document.getElementById('errVin');
-      const errDate = document.getElementById('errDate');
+    document.getElementById("saveBtn").addEventListener("click", function () {
+      const saveBtn = document.getElementById("saveBtn");
+      runOnce(saveBtn, async () => {
+        const vinEl   = document.getElementById('inVin');
+        const dateEl  = document.getElementById('inDate');
+        const errVin  = document.getElementById('errVin');
+        const errDate = document.getElementById('errDate');
 
-      const vin  = vinEl.value.trim();
-      const date = dateEl.value;
-      const shaken = document.getElementById('inShaken').value;
+        const vin  = vinEl.value.trim();
+        const date = dateEl.value;
+        const shaken = document.getElementById('inShaken').value;
 
-      // リセット
-      errVin.style.display  = 'none';
-      errDate.style.display = 'none';
-      document.getElementById('errShaken').style.display = 'none';
+        errVin.style.display  = 'none';
+        errDate.style.display = 'none';
+        document.getElementById('errShaken').style.display = 'none';
 
-      let hasErr = false;
-      if (!vin)    { errVin.style.display   = 'block'; hasErr = true; }
-      if (!date)   { errDate.style.display  = 'block'; hasErr = true; }
-      if (!shaken) { document.getElementById('errShaken').style.display = 'block'; hasErr = true; }
-      if (hasErr) return;
-      
-      let parts = [];
-      document.querySelectorAll('.toggle-btn.active').forEach(b => {
-        let name = b.innerText;
-        const dId = b.getAttribute('data-detail');
-        if(dId && document.getElementById(dId).value) name += `(${document.getElementById(dId).value})`;
-        parts.push(`・${name}`);
-      });
-      
-      const inputTitle = document.getElementById('inTitle').value.trim();
-      const logData = { 
-        vin: vin, 
-        date: date, 
-        mileage: document.getElementById('inMileage').value, 
-        nextShaken: shaken,
-        title: inputTitle || "一般整備",
-        parts: parts.join('\n'), 
-        memo: document.getElementById('inMemo').value, 
-        partsPhoto: document.getElementById('inPartsPhotoBase64').value, 
-        shopId: currentProfile ? currentProfile.shopId || '' : '',
-        shopName: currentProfile ? currentProfile.shopName || '' : '',
-        shopType: currentProfile ? currentProfile.shopType || 'dealer' : 'dealer',
-        factoryType: currentProfile ? currentProfile.factoryType || '' : '',
-        staffId: currentProfile ? currentProfile.staffId || currentProfile.loginId || '' : '',
-        staffName: currentProfile ? currentProfile.displayName || currentProfile.realName || '' : '',
-        createdAt: new Date().toISOString() 
-      };
-      
-      showLoading("保存中", "整備記録を保存しています...");
+        let hasErr = false;
+        if (!vin)    { errVin.style.display   = 'block'; hasErr = true; }
+        if (!date)   { errDate.style.display  = 'block'; hasErr = true; }
+        if (!shaken) { document.getElementById('errShaken').style.display = 'block'; hasErr = true; }
+        if (hasErr) return;
 
-      setTimeout(() => {
-        const logId = saveLog(logData); 
+        let parts = [];
+        document.querySelectorAll('.toggle-btn.active').forEach(b => {
+          let name = b.innerText;
+          const dId = b.getAttribute('data-detail');
+          if(dId && document.getElementById(dId).value) name += `(${document.getElementById(dId).value})`;
+          parts.push(`・${name}`);
+        });
+
+        const inputTitle = document.getElementById('inTitle').value.trim();
+        const logData = {
+          vin: vin,
+          date: date,
+          mileage: document.getElementById('inMileage').value,
+          nextShaken: shaken,
+          title: inputTitle || "一般整備",
+          parts: parts.join('\n'),
+          memo: document.getElementById('inMemo').value,
+          partsPhoto: document.getElementById('inPartsPhotoBase64').value,
+          shopId: currentProfile ? currentProfile.shopId || '' : '',
+          shopName: currentProfile ? currentProfile.shopName || '' : '',
+          shopType: currentProfile ? currentProfile.shopType || 'dealer' : 'dealer',
+          factoryType: currentProfile ? currentProfile.factoryType || '' : '',
+          staffId: currentProfile ? currentProfile.staffId || currentProfile.loginId || '' : '',
+          staffName: currentProfile ? currentProfile.displayName || currentProfile.realName || '' : '',
+          createdAt: new Date().toISOString()
+        };
+
+        showLoading("保存中", "整備記録を保存しています...");
+        const result = await saveLog(logData);
         hideLoading();
-        showToast('success', '正常に登録されました');
-        setTimeout(() => location.replace(`factory_edit_list.html?vin=${encodeURIComponent(vin)}&log_id=${logId}`), 1200);
-      }, 600);
+        if (result.serverSaved) {
+          showToast('success', '正常に登録されました');
+        } else {
+          showToast('info', '端末に保存しました（サーバー反映は次回接続時）');
+        }
+        setTimeout(() => location.replace(`factory_edit_list.html?vin=${encodeURIComponent(vin)}&log_id=${result.logId || ''}`), 1200);
+      });
     });
   </script>
 </body>

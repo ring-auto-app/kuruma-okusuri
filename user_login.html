@@ -530,7 +530,7 @@
         const data = await res.json();
 
         if (data.success && (data.profile.role === 'user' || data.profile.shopType === 'user')) {
-          login(data.profile);
+          login(data.profile, data.authToken);
           location.replace('user_home.html');
         } else if (data.success) {
           hideLoading();

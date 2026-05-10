@@ -202,84 +202,79 @@
     formContainer.innerHTML = htmlStr;
 
     // 保存処理
-    document.getElementById('saveBtn').addEventListener('click', () => {
-      const vin = document.getElementById('inVin').value.trim();
-      const date = document.getElementById('inDate').value;
-      let memo = document.getElementById('inMemo').value.trim();
+    document.getElementById('saveBtn').addEventListener('click', function () {
+      const saveBtn = document.getElementById('saveBtn');
+      runOnce(saveBtn, async () => {
+        const vin = document.getElementById('inVin').value.trim();
+        const date = document.getElementById('inDate').value;
+        let memo = document.getElementById('inMemo').value.trim();
 
-      if (!vin) return alert("車台番号(VIN)がありません。");
+        if (!vin) return alert("車台番号(VIN)がありません。");
 
-      let hasIssue = false;
-      const issues = [];
-      // 全項目の○/×をオブジェクトとして収集
-      const userChecks = {};
+        let hasIssue = false;
+        const issues = [];
+        const userChecks = {};
 
-      userItems.forEach(item => {
-        const checkedOpt = document.querySelector(`input[name="${item.id}"]:checked`);
-        const val = checkedOpt ? checkedOpt.value : 'OK';
-        userChecks[item.id] = val;
-        if (val === 'NG') {
-          hasIssue = true;
-          const detailMemo = document.getElementById(`${item.id}-memo`).value.trim();
-          issues.push(`・${item.name}${detailMemo ? `（${detailMemo}）` : ""}`);
+        userItems.forEach(item => {
+          const checkedOpt = document.querySelector(`input[name="${item.id}"]:checked`);
+          const val = checkedOpt ? checkedOpt.value : 'OK';
+          userChecks[item.id] = val;
+          if (val === 'NG') {
+            hasIssue = true;
+            const detailMemo = document.getElementById(`${item.id}-memo`).value.trim();
+            issues.push(`・${item.name}${detailMemo ? `（${detailMemo}）` : ""}`);
+          }
+        });
+
+        if (issues.length > 0) {
+          let issueText = "【⚠️ 気になる項目】\n" + issues.join("\n");
+          memo = memo ? issueText + "\n\n【全体メモ】\n" + memo : issueText;
         }
-      });
 
-      if (issues.length > 0) {
-        let issueText = "【⚠️ 気になる項目】\n" + issues.join("\n");
-        memo = memo ? issueText + "\n\n【全体メモ】\n" + memo : issueText;
-      }
+        showLoading("保存中", "手帳に記録しています...");
 
-      showLoading("保存中", "手帳に記録しています...");
-
-      setTimeout(() => {
         const mileageRaw = document.getElementById('inMileage').value.trim();
         const mileage = mileageRaw ? parseInt(mileageRaw, 10) : null;
         const newLogId = `INS-${Date.now()}`;
         const createdAt = new Date().toISOString();
 
-        // inspections_v1 に保存（type・userChecks を含める）
+        const inspRecord = {
+          logId: newLogId, log_id: newLogId, vin: vin, date: date,
+          title: "日常点検", memo: memo, mileage: mileage,
+          type: "inspection_user", userChecks: userChecks,
+          photoUrl: "", createdAt: createdAt
+        };
+
         const inspections = JSON.parse(localStorage.getItem('inspections_v1') || '[]');
-        inspections.push({
-          logId: newLogId,
-          log_id: newLogId,
-          vin: vin,
-          date: date,
-          title: "日常点検",
-          memo: memo,
-          mileage: mileage,
-          type: "inspection_user",
-          userChecks: userChecks,
-          photoUrl: "",
-          createdAt: createdAt
-        });
+        inspections.push(inspRecord);
         localStorage.setItem('inspections_v1', JSON.stringify(inspections));
 
-        // ×がある場合は整備履歴（nappy_logs_v1）にも反映
         if (hasIssue) {
           const ngNames = issues.map(s => s.replace(/^・/, '').trim());
           const logs = JSON.parse(localStorage.getItem('nappy_logs_v1') || '[]');
           logs.push({
-            log_id: `LOG-${Date.now()}`,
-            vin: vin,
-            date: date,
-            title: "【日常点検】気になる項目あり",
-            parts: ngNames.join(' / '),
-            memo: memo,
-            mileage: mileage,
-            type: "inspection_user",
-            shopType: "user",
-            createdAt: createdAt
+            log_id: `LOG-${Date.now()}`, vin: vin, date: date,
+            title: "【日常点検】気になる項目あり", parts: ngNames.join(' / '),
+            memo: memo, mileage: mileage, type: "inspection_user",
+            shopType: "user", createdAt: createdAt
           });
           localStorage.setItem('nappy_logs_v1', JSON.stringify(logs));
         }
+
+        // GASにも送信（No.005）
+        try {
+          await sendToGAS_Safe('save_inspection', {
+            log_id: newLogId, vin: vin, date: date, title: '日常点検',
+            memo: memo, photoUrl: '', createdAt: createdAt, mileage: mileage
+          });
+        } catch (e) { /* ローカル保存済みのため継続 */ }
 
         hideLoading();
         showToast('success', hasIssue ? '記録しました（整備履歴にも追加）' : '正常に登録されました');
         setTimeout(() => {
           location.replace(targetVin ? `user_inspection_history.html?vin=${encodeURIComponent(targetVin)}` : "user_home.html");
         }, 1200);
-      }, 500);
+      });
     });
   </script>
 </body>

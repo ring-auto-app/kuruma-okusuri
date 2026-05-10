@@ -400,7 +400,7 @@
         });
         const result = await res.json();
         if (result.success) {
-          login(result.profile);
+          login(result.profile, result.authToken);
           location.replace(result.profile.shopType === 'factory' ? "factory_home.html" : "dealer_home.html");
         } else {
           hideLoading();
