@@ -16,8 +16,15 @@
     .login-link { text-align: center; margin-top: 24px; font-size: 14px; font-weight: 800; }
     .login-link a { color: var(--accent); text-decoration: none; border-bottom: 2px solid var(--accent); }
     .pw-wrap { position: relative; }
-    .pw-wrap input { padding-right: 48px; }
-    .pw-eye { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; font-size: 18px; color: var(--muted); padding: 0; }
+    .pw-wrap input { padding-right: 56px; }
+    .pw-eye {
+      position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+      width: var(--tap-min); height: var(--tap-min);
+      display: inline-flex; align-items: center; justify-content: center;
+      background: none; border: none; cursor: pointer; font-size: 20px; color: var(--muted);
+      padding: 0; border-radius: 50%; -webkit-tap-highlight-color: transparent;
+    }
+    .pw-eye:active { background: rgba(0,0,0,0.06); }
   </style>
 </head>
 <body>

@@ -54,16 +54,8 @@
     .info-label { display: block; font-size: 11px; color: var(--muted); font-weight: 800; margin-bottom: 4px; }
     .info-value { display: block; font-size: 14px; font-weight: 900; color: var(--text); word-break: break-all; }
 
-    .top-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
-
-    .btn {
-      padding: 12px; border-radius: 12px; text-align: center; text-decoration: none;
-      font-size: 14px; font-weight: 900; box-shadow: var(--shadow);
-      border: 2px solid var(--accent); cursor: pointer; transition: transform 0.1s;
-    }
-    .btn:active { transform: scale(0.98); }
-    .btn-outline { background: var(--paper); color: var(--accent); }
-    .btn-main { background: var(--accent); color: #fff; }
+    .top-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--tap-gap); margin-top: 16px; }
+    .top-actions > .btn { width: 100%; }
 
     .section-title { font-size: 18px; font-weight: 900; margin: 34px 0 17px; color: var(--text); line-height: 34px; border-bottom: 2px solid var(--line); }
 
@@ -92,8 +84,7 @@
 
     .empty-state { text-align: center; padding: 34px 18px; color: var(--muted); font-weight: 800; line-height: 34px; border: 2px dashed var(--line); border-radius: 20px; background: var(--paper); opacity: 0.7; }
 
-    .bottom-actions { margin-top: 34px; display: grid; gap: 12px; }
-    .bottom-btn { display: block; text-align: center; padding: 14px; border-radius: 14px; text-decoration: none; font-weight: 900; background: var(--paper); color: var(--text); border: 2px solid var(--line); cursor: pointer; }
+    .bottom-actions { margin-top: 34px; display: grid; gap: var(--tap-gap); }
   </style>
 </head>
 <body>
@@ -127,8 +118,8 @@
       </div>
 
       <div class="top-actions">
-        <a href="#" id="dailyBtn" class="btn btn-main">日常点検</a>
-        <a href="#" id="historyBtn" class="btn btn-outline">履歴詳細</a>
+        <a href="#" id="dailyBtn" class="btn btn-primary">日常点検</a>
+        <a href="#" id="historyBtn" class="btn btn-secondary">履歴詳細</a>
       </div>
     </section>
 
@@ -136,7 +127,7 @@
     <div id="historyArea" class="history-list"></div>
 
     <div class="bottom-actions">
-      <button class="bottom-btn" id="removeBtn">一覧から外す</button>
+      <button type="button" class="btn btn-secondary btn-block" id="removeBtn">一覧から外す</button>
     </div>
   </div>
 

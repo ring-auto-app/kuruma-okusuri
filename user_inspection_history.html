@@ -39,16 +39,16 @@
     .add-btn:active { transform: scale(0.98); }
 
     /* ─── コントロール行（年月セレクタ＋切替） ─── */
-    .ctrl-row { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+    .ctrl-row { display: flex; align-items: center; gap: var(--tap-gap); margin-bottom: 16px; }
     .sel-ym {
-      height: 34px; padding: 0 10px; border: 2px solid var(--accent);
-      border-radius: 8px; font-size: 14px; font-weight: 700;
+      height: var(--tap-min); padding: 0 12px; border: 2px solid var(--accent);
+      border-radius: 10px; font-size: 15px; font-weight: 700;
       color: var(--text); background: var(--paper); outline: none; cursor: pointer;
     }
     .sel-ym.sel-year  { flex: 1.2; }
     .sel-ym.sel-month { flex: 0.8; }
-    .view-toggle { display: flex; border: 2px solid var(--accent); border-radius: 8px; overflow: hidden; flex-shrink: 0; }
-    .view-btn { height: 30px; padding: 0 14px; border: none; background: var(--paper); color: var(--muted); font-size: 13px; font-weight: 800; cursor: pointer; }
+    .view-toggle { display: flex; border: 2px solid var(--accent); border-radius: 10px; overflow: hidden; flex-shrink: 0; }
+    .view-btn { min-height: var(--tap-min); min-width: var(--tap-min); padding: 0 16px; border: none; background: var(--paper); color: var(--muted); font-size: 15px; font-weight: 800; cursor: pointer; }
     .view-btn.active { background: var(--accent); color: #fff; }
 
     /* ─── カレンダー ─── */
@@ -89,8 +89,8 @@
     /* ─── リストビュー ─── */
     .sort-area { margin-bottom: 12px; text-align: right; }
     .sort-select {
-      padding: 6px 10px; border: 2px solid var(--accent); border-radius: 4px;
-      font-size: 13px; font-weight: 700; color: var(--text);
+      min-height: var(--tap-min); padding: 0 14px; border: 2px solid var(--accent); border-radius: 10px;
+      font-size: 14px; font-weight: 700; color: var(--text);
       background: var(--paper); outline: none; cursor: pointer;
     }
     .list-wrap { background: rgba(255,255,255,0.7); border: 2px dashed var(--line); border-radius: 12px; overflow: hidden; }
@@ -127,16 +127,18 @@
     .popup-date { font-size: 13px; font-weight: 900; color: #92400e; margin-bottom: 10px; padding-left: 8px; }
     .popup-item { font-size: 13px; font-weight: 800; color: #dc2626; margin-bottom: 4px; }
     .popup-memo { font-size: 12px; font-weight: 700; color: #666; margin-top: 10px; border-top: 1px dashed #e5c44a; padding-top: 8px; }
-    .popup-actions { display: flex; gap: 8px; margin-top: 14px; }
+    .popup-actions { display: flex; gap: var(--tap-gap); margin-top: 14px; }
     .popup-btn-detail {
-      flex: 1; height: 36px; border-radius: 999px; background: var(--accent);
-      color: #fff; border: none; font-size: 13px; font-weight: 800; cursor: pointer;
+      flex: 1; min-height: var(--tap-min); border-radius: 999px; background: var(--accent);
+      color: #fff; border: none; font-size: 15px; font-weight: 900; cursor: pointer;
     }
+    .popup-btn-detail:active { transform: scale(0.97); }
     .popup-btn-close {
-      height: 36px; padding: 0 16px; border-radius: 999px;
-      background: #fff; border: 1.5px solid #e5c44a; font-size: 13px; font-weight: 800;
+      min-height: var(--tap-min); padding: 0 20px; border-radius: 999px;
+      background: #fff; border: 2px solid #e5c44a; font-size: 15px; font-weight: 800;
       color: #92400e; cursor: pointer;
     }
+    .popup-btn-close:active { transform: scale(0.97); }
 
     .empty-msg { text-align: center; color: var(--muted); font-weight: 800; margin-top: 68px; line-height: 34px; }
 

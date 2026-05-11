@@ -83,15 +83,15 @@
     .empty-msg { text-align: center; padding: 68px 20px; color: var(--muted); font-weight: 800; border: 2px dashed var(--line); border-radius: 18px; }
 
     /* フィルター行 */
-    .filter-row { display: flex; gap: 8px; margin-bottom: 20px; }
+    .filter-row { display: flex; gap: var(--tap-gap); margin-bottom: 20px; }
     .filter-select {
-      flex: 1; padding: 6px 10px; border: 2px solid var(--accent); border-radius: 4px;
-      font-size: 13px; font-weight: 700; color: var(--text);
+      flex: 1; min-height: var(--tap-min); padding: 0 14px; border: 2px solid var(--accent); border-radius: 10px;
+      font-size: 14px; font-weight: 700; color: var(--text);
       background: var(--paper); outline: none; cursor: pointer;
     }
     .year-select {
-      width: 84px; flex-shrink: 0; padding: 6px 4px; border: 2px solid var(--accent);
-      border-radius: 4px; font-size: 13px; font-weight: 700; color: var(--text);
+      width: 96px; flex-shrink: 0; min-height: var(--tap-min); padding: 0 8px; border: 2px solid var(--accent);
+      border-radius: 10px; font-size: 14px; font-weight: 700; color: var(--text);
       background: var(--paper); outline: none; cursor: pointer;
     }
 
@@ -101,16 +101,19 @@
       display: flex; align-items: center; border: 2px solid var(--accent);
       border-radius: 10px; background: var(--paper); overflow: hidden;
     }
-    .search-icon { padding: 0 10px; font-size: 15px; flex-shrink: 0; }
+    .search-icon { padding: 0 10px; font-size: 18px; flex-shrink: 0; }
     .search-input {
-      flex: 1; border: none; background: transparent; padding: 10px 0;
-      font-size: 14px; font-weight: 700; color: var(--text); outline: none;
+      flex: 1; border: none; background: transparent; padding: 12px 0;
+      min-height: var(--tap-min);
+      font-size: 16px; font-weight: 700; color: var(--text); outline: none;
       font-family: inherit;
     }
     .search-input::placeholder { color: var(--muted); font-weight: 700; }
     .search-clear {
-      padding: 0 12px; font-size: 18px; color: var(--muted); cursor: pointer;
+      min-width: var(--tap-min); min-height: var(--tap-min);
+      padding: 0 12px; font-size: 22px; color: var(--muted); cursor: pointer;
       border: none; background: transparent; font-weight: 900; line-height: 1;
+      -webkit-tap-highlight-color: transparent;
     }
     .suggestion-box {
       display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0;
@@ -119,8 +122,9 @@
     }
     .sugg-item {
       display: flex; justify-content: space-between; align-items: center;
-      padding: 11px 14px; font-size: 14px; font-weight: 700; cursor: pointer;
+      min-height: var(--tap-min); padding: 12px 14px; font-size: 14px; font-weight: 700; cursor: pointer;
       border-bottom: 1px dashed var(--line);
+      -webkit-tap-highlight-color: transparent;
     }
     .sugg-item:last-child { border-bottom: none; }
     .sugg-item:active { background: var(--page-bg); }
@@ -146,7 +150,7 @@
     <div class="vin-container">
       <div class="vin-display-top" id="vinDisplay">読込中...</div>
       <div style="margin-top:12px;">
-        <a id="vehicleInfoBtn" href="#" style="display:inline-block; padding:6px 16px; border:1.5px solid var(--accent); border-radius:999px; font-size:12px; font-weight:900; color:var(--accent); text-decoration:none; background:var(--paper);">📋 車両情報を見る・編集</a>
+        <a id="vehicleInfoBtn" href="#" class="btn btn-secondary" style="border-color:var(--accent); color:var(--accent); border-radius:999px; padding:0 18px;">📋 車両情報を見る・編集</a>
       </div>
     </div>
 

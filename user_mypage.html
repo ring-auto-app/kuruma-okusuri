@@ -22,15 +22,6 @@
     .id-box .row { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin: 6px 0; }
     .id-box .k { color: var(--muted); }
     .id-box .v { word-break: break-all; text-align: right; }
-    .btn-row { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
-    .btn-secondary {
-      display: block; text-align: center; padding: 12px 16px; border-radius: 12px; font-weight: 900; font-size: 14px;
-      text-decoration: none; border: 2px solid var(--line); color: var(--text); background: var(--paper);
-    }
-    .btn-primary {
-      display: block; text-align: center; padding: 12px 16px; border-radius: 12px; font-weight: 900; font-size: 14px;
-      text-decoration: none; background: var(--accent); color: #fff; border: 2px solid var(--accent);
-    }
     .mini-list { background: var(--paper); border: 2px solid var(--line); border-radius: 14px; overflow: hidden; }
     .mini-item {
       display: block; padding: 12px 14px; border-bottom: 1px dashed var(--line); text-decoration: none; color: inherit;
@@ -56,25 +47,25 @@
         <div class="row"><span class="k">ユーザーID</span><span class="v" id="dispUserId">—</span></div>
         <div class="row"><span class="k">ログインID</span><span class="v" id="dispLoginId">—</span></div>
       </div>
-      <div class="btn-row">
-        <a class="btn-primary" href="change_password.html">パスワード変更</a>
+      <div class="btn-stack">
+        <a class="btn btn-primary" href="change_password.html">パスワード変更</a>
       </div>
     </div>
 
     <div class="section">
       <div class="section-title">登録している車</div>
       <div class="mini-list" id="vehicleList"></div>
-      <div class="btn-row">
-        <a class="btn-secondary" href="vehicles.html">すべての車を見る・追加</a>
+      <div class="btn-stack">
+        <a class="btn btn-secondary" href="vehicles.html">すべての車を見る・追加</a>
       </div>
     </div>
 
     <div class="section">
       <div class="section-title">かかりつけの工場・お店</div>
       <div class="mini-list" id="favList"></div>
-      <div class="btn-row">
-        <a class="btn-secondary" href="user_fav_shops.html">一覧・解除</a>
-        <a class="btn-secondary" href="user_fav_shop_edit.html">検索して追加・編集</a>
+      <div class="btn-stack">
+        <a class="btn btn-secondary" href="user_fav_shops.html">一覧・解除</a>
+        <a class="btn btn-secondary" href="user_fav_shop_edit.html">検索して追加・編集</a>
       </div>
     </div>
   </div>

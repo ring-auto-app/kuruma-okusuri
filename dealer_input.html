@@ -52,10 +52,14 @@
     
     .toggle-wrap { position: relative; width: 100%; }
     .toggle-btn {
-      background: var(--paper); border: 1.5px solid var(--line); border-radius: 8px;
-      padding: 12px 8px; text-align: center; font-size: 13px; font-weight: 800; color: var(--muted);
+      min-height: var(--tap-min);
+      display: flex; align-items: center; justify-content: center;
+      background: var(--paper); border: 2px solid var(--line); border-radius: 10px;
+      padding: 8px 6px; text-align: center; font-size: 14px; font-weight: 800; color: var(--muted);
       cursor: pointer; position: relative; user-select: none; box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
     }
+    .toggle-btn:active { transform: scale(0.97); }
     
     /* 赤丸の絶対掟：指定色 #e53e3e を維持 */
     .toggle-btn.active { border-color: #e53e3e; color: #e53e3e; box-shadow: inset 0 0 0 1px #e53e3e; }

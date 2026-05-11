@@ -43,24 +43,34 @@
     
     .shop-address { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 16px; opacity: 0.8; }
 
-    .action-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+    .action-btns { display: flex; gap: var(--tap-gap); flex-wrap: wrap; }
+    /* 連絡アクション: タップ44px最低保証、横並び等分 */
     .btn-action {
-      flex: 1; min-width: 80px; padding: 10px 4px; text-align: center; border-radius: 10px;
-      font-size: 12px; font-weight: 900; text-decoration: none; color: white;
-      display: flex; align-items: center; justify-content: center; gap: 4px;
+      flex: 1; min-width: 96px; min-height: var(--tap-min);
+      padding: 8px 10px; text-align: center; border-radius: 12px;
+      font-size: 13px; font-weight: 900; text-decoration: none; color: white;
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
       transition: transform 0.1s; box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      -webkit-tap-highlight-color: transparent;
+      box-sizing: border-box;
     }
     .btn-action:active { transform: scale(0.95); }
-    
-    .btn-tel { background: #3b82f6; } 
-    .btn-mail { background: #64748b; } 
-    .btn-line { background: #06C755; } 
+
+    .btn-tel { background: #3b82f6; }
+    .btn-mail { background: #64748b; }
+    .btn-line { background: #06C755; }
     .btn-map { background: #f59e0b; }
 
     .disabled-btn { background: #cbd5e1 !important; color: #94a3b8 !important; pointer-events: none; box-shadow: none; }
 
-    .remove-area { text-align: right; margin-top: 16px; }
-    .btn-remove { color: #ef4444; font-size: 12px; font-weight: 800; background: none; border: none; cursor: pointer; text-decoration: underline; padding: 4px; }
+    .remove-area { text-align: right; margin-top: 16px; display: flex; justify-content: flex-end; gap: var(--tap-gap); flex-wrap: wrap; }
+    .btn-remove {
+      min-height: var(--tap-min); padding: 8px 14px;
+      color: #dc2626; font-size: 13px; font-weight: 900;
+      background: #fff1f2; border: 2px solid #fda4af; border-radius: 12px;
+      cursor: pointer; -webkit-tap-highlight-color: transparent;
+    }
+    .btn-remove:active { transform: scale(0.97); }
 
     .empty-msg { text-align: center; background: var(--paper); padding: 34px 16px; border-radius: 16px; border: 2px dashed var(--line); line-height: 34px; }
   </style>
@@ -127,8 +137,8 @@
               </div>
 
               <div class="remove-area">
-                <a href="user_fav_shop_edit.html?shopId=${encodeURIComponent(shop.shopId)}" style="font-size:12px;font-weight:800;color:var(--accent);margin-right:12px;">編集</a>
-                <button class="btn-remove" onclick="removeShop('${shop.shopId}')">登録を解除する</button>
+                <a href="user_fav_shop_edit.html?shopId=${encodeURIComponent(shop.shopId)}" class="btn btn-secondary" style="min-width:96px;">編集</a>
+                <button type="button" class="btn-remove" onclick="removeShop('${shop.shopId}')">登録を解除する</button>
               </div>
             </div>
           `;

@@ -32,17 +32,8 @@
     .log-title { font-size: 17px; font-weight: 900; margin-bottom: 4px; color: var(--text); }
     .log-parts { font-size: 13px; color: var(--muted); font-weight: 700; line-height: 1.4; }
 
-    .action-row { display: flex; gap: 10px; margin-top: 4px; position: relative; z-index: 1; }
-    
-    .btn-action {
-      flex: 1; padding: 12px; border-radius: 10px; font-size: 13.5px; font-weight: 900;
-      text-align: center; cursor: pointer; text-decoration: none; transition: all 0.1s; border: none;
-    }
-    .btn-edit { background: var(--paper); border: 2px solid var(--accent); color: var(--accent); }
-    .btn-edit:active { transform: scale(0.97); }
-
-    .btn-delete { background: #fff1f2; border: 2px solid #fda4af; color: #ef4444; }
-    .btn-delete:active { background: #ffe4e6; transform: scale(0.97); }
+    .action-row { display: flex; gap: var(--tap-gap); margin-top: 4px; position: relative; z-index: 1; }
+    .action-row > .btn { flex: 1; min-width: 0; }
 
     .empty-msg {
       background: rgba(255,255,255,0.5); border: 2px dashed var(--line); border-radius: 18px;
@@ -138,8 +129,8 @@
               <div class="log-parts">内容: ${safeParts}</div>
             </div>
             <div class="action-row">
-              <button onclick="voidLog('${safeId}')" class="btn-action btn-delete">取消する</button>
-              <a href="factory_edit_detail.html?log_id=${safeId}&vin=${safeVinEnc}" class="btn-action btn-edit">内容を修正</a>
+              <button type="button" onclick="voidLog('${safeId}')" class="btn btn-danger">取消する</button>
+              <a href="factory_edit_detail.html?log_id=${safeId}&vin=${safeVinEnc}" class="btn btn-secondary">内容を修正</a>
             </div>
           </div>
         `;

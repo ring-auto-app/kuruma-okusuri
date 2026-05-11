@@ -44,10 +44,19 @@
       font-size: 11px; pointer-events: none; color: inherit;
     }
 
-    /* 削除ボタン */
-    .btn-delete { background: none; border: none; font-size: 17px; cursor: pointer; color: var(--muted); padding: 2px 4px; line-height: 1; }
-    .btn-delete:hover { color: var(--accent); }
+    /* 削除アイコン（44pxヒット領域） */
+    .btn-delete {
+      background: none; border: none; font-size: 20px; cursor: pointer; color: var(--muted);
+      min-width: var(--tap-min); min-height: var(--tap-min);
+      display: inline-flex; align-items: center; justify-content: center;
+      padding: 0; line-height: 1; border-radius: 50%;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .btn-delete:active { background: rgba(0,0,0,0.08); color: var(--accent); }
     .btn-delete:disabled { opacity: 0.25; cursor: not-allowed; }
+
+    /* 権限セレクトもタップ44pxに引き上げ */
+    .role-select { min-height: var(--tap-min); padding: 0 28px 0 14px; font-size: 13px; }
 
     .note { font-size: 11.5px; font-weight: 800; color: var(--muted); margin-top: 4px; line-height: 1.4; }
     .empty-note { text-align: center; padding: 24px; color: var(--muted); font-size: 13px; font-weight: 800; line-height: 1.8; }

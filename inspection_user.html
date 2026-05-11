@@ -53,13 +53,16 @@
     .item-name { font-size: 16px; font-weight: 900; color: var(--text); }
     .item-desc { font-size: 12px; color: var(--muted); font-weight: 700; margin-top: 4px; }
 
-    .btn-group { display: flex; gap: 10px; flex-wrap: wrap;}
+    .btn-group { display: flex; gap: var(--tap-gap); flex-wrap: wrap;}
     .hidden-radio { display: none; }
-    
+
     .btn-label {
-      flex: 1; padding: 12px 0; text-align: center; font-size: 15px; font-weight: 900;
-      border-radius: 10px; cursor: pointer; border: 2px solid var(--line); color: var(--muted);
+      flex: 1; min-height: var(--tap-secondary); padding: 10px 0;
+      display: inline-flex; align-items: center; justify-content: center;
+      text-align: center; font-size: 16px; font-weight: 900;
+      border-radius: 12px; cursor: pointer; border: 2px solid var(--line); color: var(--muted);
       background: var(--page-bg); transition: all 0.15s; user-select: none;
+      -webkit-tap-highlight-color: transparent;
     }
     
     .ok-radio:checked + .btn-label { background: #ecfdf5; border-color: var(--ok-color); color: var(--ok-color); }
