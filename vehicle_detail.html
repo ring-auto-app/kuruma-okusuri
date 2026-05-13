@@ -2,7 +2,13 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#4b5563" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="manifest" href="manifest.json">
   <title>車両詳細 | 車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css">
@@ -127,7 +133,7 @@
     <div id="historyArea" class="history-list"></div>
 
     <div class="bottom-actions">
-      <button type="button" class="btn btn-secondary btn-block" id="removeBtn">一覧から外す</button>
+      <button type="button" class="btn btn-secondary btn-block" id="removeBtn">一覧から外す（準備中）</button>
     </div>
   </div>
 
@@ -150,7 +156,7 @@
       renderVehicle();
       
       document.getElementById("removeBtn").onclick = () => {
-        alert("この車両を管理一覧から外しますか？（機能は後ほど実装）");
+        if (typeof showToast === 'function') showToast('info', '一覧から外す機能は準備中です。');
       };
     }
 
@@ -159,7 +165,7 @@
      */
     function renderVehicle() {
       if (!targetVin) {
-        alert("車両データが見つかりません。");
+        if (typeof showToast === 'function') showToast('error', '車両データが見つかりません。');
         location.replace("vehicles.html");
         return;
       }

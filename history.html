@@ -2,7 +2,13 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#4b5563" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="manifest" href="manifest.json">
   <title>整備履歴 | 車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css">
@@ -162,8 +168,7 @@
     
     <div class="filter-row">
       <select id="filterSelect" class="filter-select" onchange="renderHistory()">
-        <option value="all">新しい順（全て）</option>
-        <option value="inspection">日常点検</option>
+        <option value="all">新しい順（整備のみ）</option>
         <option value="factory">工場入力のみ</option>
         <option value="dealer">事業者入力のみ</option>
       </select>
@@ -302,7 +307,12 @@
     function renderHistory() {
       const listEl = document.getElementById("historyList");
       const filterKey   = document.getElementById('filterSelect')?.value || 'all';
-      const allBaseLogs = getLogsByVin(vin);
+      const allBaseLogs = (typeof getMaintenanceLogsByVin === 'function')
+        ? getMaintenanceLogsByVin(vin)
+        : getLogsByVin(vin).filter(log => {
+            const t = log.type;
+            return t !== 'inspection' && t !== 'inspection_user';
+          });
       baseLogsCache = allBaseLogs; // サジェスト用にキャッシュ
 
       // 年セレクタを構築（データのある年を自動収集）
@@ -316,9 +326,7 @@
 
       // タイプフィルター
       let logs = allBaseLogs;
-      if (filterKey === 'inspection') {
-        logs = logs.filter(log => log.type === 'inspection' || log.type === 'inspection_user');
-      } else if (filterKey === 'factory') {
+      if (filterKey === 'factory') {
         logs = logs.filter(log => log.shopType === 'factory');
       } else if (filterKey === 'dealer') {
         logs = logs.filter(log => log.shopType === 'dealer');

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#4b5563" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="manifest" href="manifest.json">
+  <title>オフライン | 車のお薬手帳</title>
+  <link rel="stylesheet" href="common.css">
+  <style>
+    body {
+      margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      padding: 24px; box-sizing: border-box;
+      background: var(--page-bg, #f7f3ea); color: var(--text, #1f2937);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .card {
+      max-width: 400px; text-align: center;
+      background: var(--paper, #fff); border: 2px solid var(--line, #e5e7eb);
+      border-radius: 16px; padding: 28px 20px; box-shadow: var(--shadow, 0 4px 24px rgba(0,0,0,.08));
+    }
+    h1 { font-size: 18px; font-weight: 900; margin: 0 0 12px; }
+    p { font-size: 14px; font-weight: 700; line-height: 1.6; color: var(--muted, #6b7280); margin: 0; }
+    .btn {
+      margin-top: 20px; display: inline-block; padding: 14px 24px; border-radius: 999px;
+      background: var(--accent, #2563eb); color: #fff; font-weight: 900; font-size: 15px;
+      text-decoration: none; border: none; cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>インターネットに接続できません</h1>
+    <p>電波・Wi-Fi を確認してから、もう一度お試しください。入力した内容は端末に保存されている場合があります。</p>
+    <a class="btn" href="./index.html">トップへ戻る</a>
+  </div>
+</body>
+</html>

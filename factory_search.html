@@ -2,7 +2,13 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#4b5563" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="manifest" href="manifest.json">
   <title>整備履歴検索 | 車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css">
@@ -83,28 +89,42 @@
     // OCRスキャン処理
     document.getElementById('docInput').addEventListener('change', async (e) => {
       const file = e.target.files[0]; if(!file) return;
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        document.getElementById('docPreviewImg').src = event.target.result;
-        document.getElementById('docPreviewArea').style.display = 'block';
-      };
-      reader.readAsDataURL(file);
-
-      showLoading("分析中", "AIがVINを探索しています...");
-      
+      let previewUrl = '';
       try {
-        const res = await analyzeDocument([file]);
-        if (res && res.vin) {
-          document.getElementById('vinInput').value = res.vin;
-          document.getElementById('errorMsg').style.display = 'none';
-        } else {
-          alert("うまく読み取れませんでした。手入力をお試しください。");
-        }
-      } catch (err) { 
-        console.error(err); 
-      } finally { 
-        hideLoading(); 
+        previewUrl = await new Promise((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => resolve(String(r.result || ''));
+          r.onerror = reject;
+          r.readAsDataURL(file);
+        });
+      } catch (err) {
+        console.error(err);
+        return;
       }
+      document.getElementById('docPreviewImg').src = previewUrl;
+      document.getElementById('docPreviewArea').style.display = 'block';
+
+      if (typeof showOcrAnalyzingOverlay === 'function') {
+        showOcrAnalyzingOverlay({ previewDataUrl: previewUrl, title: 'VIN を読み取っています' });
+      } else {
+        showLoading("分析中", "AIがVINを探索しています...");
+      }
+
+      let res = null;
+      try {
+        res = await analyzeDocument([file]);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        if (typeof hideOcrAnalyzingOverlay === 'function') hideOcrAnalyzingOverlay();
+        else hideLoading();
+      }
+      if (typeof wasOcrAnalyzingCancelled === 'function' && wasOcrAnalyzingCancelled()) return;
+
+      handleOcrVinResultForForm(res, function (r) {
+        document.getElementById('vinInput').value = r.vin;
+        document.getElementById('errorMsg').style.display = 'none';
+      });
     });
 
     /**
@@ -127,33 +147,28 @@
         return;
       }
 
-      showLoading("検索中", "車両データを照合しています...");
+      /* ローカル照合は一瞬で終わるため全画面ローディングは使わない（kannsa: 嘘ローディング回避） */
+      const searchVin = normalizeVin(rawInput);
+      const vehicles = JSON.parse(localStorage.getItem('nappy_vehicles_v1') || '[]');
+      let foundOriginalVin = null;
 
-      setTimeout(() => {
-        const searchVin = normalizeVin(rawInput);
-        const vehicles = JSON.parse(localStorage.getItem('nappy_vehicles_v1') || '[]');
-        let foundOriginalVin = null;
+      for (const v of vehicles) {
+        if (normalizeVin(v.vin) === searchVin) { foundOriginalVin = v.vin; break; }
+      }
 
-        for (const v of vehicles) { 
-          if (normalizeVin(v.vin) === searchVin) { foundOriginalVin = v.vin; break; } 
+      if (!foundOriginalVin) {
+        const logs = JSON.parse(localStorage.getItem("nappy_logs_v1") || "[]");
+        for (const log of logs) {
+          if (normalizeVin(log.vin) === searchVin) { foundOriginalVin = log.vin; break; }
         }
+      }
 
-        if (!foundOriginalVin) {
-          const logs = JSON.parse(localStorage.getItem("nappy_logs_v1") || "[]");
-          for (const log of logs) { 
-            if (normalizeVin(log.vin) === searchVin) { foundOriginalVin = log.vin; break; } 
-          }
-        }
-
-        hideLoading();
-
-        if (foundOriginalVin) {
-          errorMsg.style.display = 'none';
-          location.href = `factory_history.html?vin=${encodeURIComponent(foundOriginalVin)}`;
-        } else {
-          errorMsg.style.display = 'block';
-        }
-      }, 500);
+      if (foundOriginalVin) {
+        errorMsg.style.display = 'none';
+        location.href = `factory_history.html?vin=${encodeURIComponent(foundOriginalVin)}`;
+      } else {
+        errorMsg.style.display = 'block';
+      }
     });
   </script>
 </body>

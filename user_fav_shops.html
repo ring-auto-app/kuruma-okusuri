@@ -2,7 +2,13 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#4b5563" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="manifest" href="manifest.json">
   <title>かかりつけの工場・お店 | 車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css">
@@ -149,20 +155,29 @@
       }, 300);
     }
 
-    function removeShop(shopId) {
-      if(confirm("このお店をお気に入りから解除しますか？")) {
-        const card = document.getElementById(`card-${shopId}`);
-        if(card) {
-          card.style.opacity = '0.5';
-          card.style.pointerEvents = 'none';
-          
-          let favShops = JSON.parse(localStorage.getItem('nappy_fav_shops_v1') || '[]');
-          favShops = favShops.filter(s => s.shopId !== shopId);
-          localStorage.setItem('nappy_fav_shops_v1', JSON.stringify(favShops));
-          
-          alert("解除しました。");
-          renderFavShops();
-        }
+    async function removeShop(shopId) {
+      const ok = typeof showRingConfirm === 'function'
+        ? await showRingConfirm({
+            title: 'お気に入り解除',
+            message: 'このお店をお気に入りから解除しますか？',
+            okLabel: '解除する',
+            cancelLabel: 'キャンセル',
+            danger: true,
+          })
+        : confirm("このお店をお気に入りから解除しますか？");
+      if (!ok) return;
+
+      const card = document.getElementById(`card-${shopId}`);
+      if (card) {
+        card.style.opacity = '0.5';
+        card.style.pointerEvents = 'none';
+
+        let favShops = JSON.parse(localStorage.getItem('nappy_fav_shops_v1') || '[]');
+        favShops = favShops.filter(s => s.shopId !== shopId);
+        localStorage.setItem('nappy_fav_shops_v1', JSON.stringify(favShops));
+
+        if (typeof showToast === 'function') showToast('success', '解除しました。');
+        renderFavShops();
       }
     }
 

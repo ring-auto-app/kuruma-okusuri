@@ -2,7 +2,13 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#4b5563" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="manifest" href="manifest.json">
   <title>整備入力 | 車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css">
@@ -161,7 +167,9 @@
       </div>
     </div>
 
+    <div class="ring-sticky-save-wrap">
     <button class="save-btn" id="saveLogBtn">内容を確認して登録</button>
+    </div>
     <p class="privacy-notice">＊「この内容で登録する」前に内容を確認できます。個人情報・金額に注意！</p>
   </div> 
 
@@ -208,7 +216,7 @@
 
       // inspector（日常点検のみ）・viewer（閲覧のみ）は整備入力不可
       if (currentProfile.role === 'inspector' || currentProfile.role === 'viewer') {
-        alert('整備記録の入力権限がありません。\nオーナーに権限設定をご確認ください。');
+        if (typeof showToast === 'function') showToast('error', '整備記録の入力権限がありません（オーナーにご確認ください）。');
         history.back();
         return;
       }
@@ -226,32 +234,62 @@
       document.getElementById('inDate').max = localToday.toISOString().split('T')[0];
     });
 
+    const RING_OCR_FIELDS_FACTORY = [
+      { key: 'vin', label: '車体番号', getCurrent: () => document.getElementById('inVin').value },
+      { key: 'mileage', label: '走行距離(km)', getCurrent: () => document.getElementById('inMileage').value },
+      { key: 'workTitle', label: '整備区分', getCurrent: () => document.getElementById('inTitle').value },
+      { key: 'parts', label: '交換部品', getCurrent: () => document.getElementById('inParts').value },
+      { key: 'shaken', label: '車検満了日', getCurrent: () => document.getElementById('inShaken').value },
+      { key: 'model', label: '型式', getCurrent: () => document.getElementById('inModel').value },
+      { key: 'engine', label: '原動機型式', getCurrent: () => document.getElementById('inEngine').value },
+      { key: 'class', label: '類別区分番号', getCurrent: () => document.getElementById('inClass').value },
+      { key: 'typeDesignation', label: '型式指定番号', getCurrent: () => document.getElementById('inTypeDesig').value },
+    ];
+
     document.getElementById('docInput').addEventListener('change', async (e) => {
       const file = e.target.files[0]; if(!file) return;
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        document.getElementById('docPreviewImg').src = ev.target.result;
-        document.getElementById('docPreviewArea').style.display = 'block';
-        document.getElementById('discardNotice').style.display = 'block';
-      };
-      reader.readAsDataURL(file);
-
-      showLoading("分析中", "AIが書類を読み取っています...");
+      let previewUrl = '';
       try {
-        const res = await analyzeDocument([file]);
-        if (res) {
-          if(res.vin) document.getElementById('inVin').value = res.vin.toUpperCase();
-          if(res.mileage) document.getElementById('inMileage').value = res.mileage;
-          if(res.workTitle) document.getElementById('inTitle').value = res.workTitle;
-          if(res.parts) document.getElementById('inParts').value = res.parts;
-          if(res.shaken) document.getElementById('inShaken').value = res.shaken;
-          if(res.model)  document.getElementById('inModel').value  = res.model;
-          if(res.engine) document.getElementById('inEngine').value = res.engine;
-          if(res.class)  document.getElementById('inClass').value  = res.class;
-          if(res.vin)    lookupVehicle(res.vin);
-          if(res.typeDesignation) document.getElementById('inTypeDesig').value = res.typeDesignation;
-        }
-      } finally { hideLoading(); }
+        previewUrl = await new Promise((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => resolve(String(r.result || ''));
+          r.onerror = reject;
+          r.readAsDataURL(file);
+        });
+      } catch (err) {
+        console.error(err);
+        return;
+      }
+      document.getElementById('docPreviewImg').src = previewUrl;
+      document.getElementById('docPreviewArea').style.display = 'block';
+      document.getElementById('discardNotice').style.display = 'block';
+
+      if (typeof showOcrAnalyzingOverlay === 'function') {
+        showOcrAnalyzingOverlay({ previewDataUrl: previewUrl, title: '書類を解析しています' });
+      } else {
+        showLoading("分析中", "AIが書類を読み取っています...");
+      }
+      let res = null;
+      try {
+        res = await analyzeDocument([file]);
+      } finally {
+        if (typeof hideOcrAnalyzingOverlay === 'function') hideOcrAnalyzingOverlay();
+        else hideLoading();
+      }
+      if (typeof wasOcrAnalyzingCancelled === 'function' && wasOcrAnalyzingCancelled()) return;
+
+      handleOcrVinResultForForm(res, function (r) {
+        if (r.vin) document.getElementById('inVin').value = String(r.vin).toUpperCase();
+        if (r.mileage) document.getElementById('inMileage').value = r.mileage;
+        if (r.workTitle) document.getElementById('inTitle').value = r.workTitle;
+        if (r.parts) document.getElementById('inParts').value = r.parts;
+        if (r.shaken) document.getElementById('inShaken').value = r.shaken;
+        if (r.model)  document.getElementById('inModel').value  = r.model;
+        if (r.engine) document.getElementById('inEngine').value = r.engine;
+        if (r.class)  document.getElementById('inClass').value  = r.class;
+        if (r.vin)    lookupVehicle(r.vin);
+        if (r.typeDesignation) document.getElementById('inTypeDesig').value = r.typeDesignation;
+      }, RING_OCR_FIELDS_FACTORY);
     });
 
     document.getElementById('partsPhotoInput').addEventListener('change', (e) => {
@@ -267,6 +305,12 @@
     });
 
     async function performFactoryLogSave() {
+      if (typeof window !== 'undefined' && window.__ringSaving) {
+        if (typeof showToast === 'function') showToast('info', '保存処理中です。完了までお待ちください。');
+        return;
+      }
+      if (typeof window !== 'undefined') window.__ringSaving = true;
+      try {
       const vin = document.getElementById('inVin').value.trim().toUpperCase();
       const date = document.getElementById('inDate').value;
       const mileageInput = document.getElementById('inMileage').value;
@@ -298,15 +342,16 @@
       if (typeof saveLog === "function") {
         logResult = await saveLog(logData);
       } else {
-        let logs = JSON.parse(localStorage.getItem('nappy_logs_v1') || '[]');
+        let logs = typeof readLogsArray === 'function' ? readLogsArray() : JSON.parse(localStorage.getItem('nappy_logs_v1') || '[]');
         logData.log_id = 'log_' + Date.now();
         logs.push(logData);
         localStorage.setItem('nappy_logs_v1', JSON.stringify(logs));
         logResult = { logId: logData.log_id, localSaved: true, serverSaved: false };
       }
 
+      let vehicleResult = null;
       if (typeof addVehicle === "function") {
-        await addVehicle({
+        vehicleResult = await addVehicle({
           vin: vin,
           vehicleModel:    document.getElementById('inModel').value,
           engine:          document.getElementById('inEngine').value,
@@ -318,12 +363,37 @@
       }
 
       hideLoading();
-      if (logResult.serverSaved) {
-        showToast('success', '正常に登録されました');
-      } else {
-        showToast('info', '端末に保存しました（サーバー反映は次回接続時）');
+
+      const vehQueued = vehicleResult && vehicleResult.queued;
+      const vehVinFail = vehicleResult && vehicleResult.success === false && !vehicleResult.queued
+        && /VIN_REQUIRED/i.test(String(vehicleResult.error || ''));
+
+      const dest = `factory_history.html?vin=${encodeURIComponent(vin)}`;
+
+      if (vehVinFail && !logResult.serverSaved) {
+        showToast('error', '車両台帳がサーバーで受理されませんでした（車台番号を確認してください）');
+        return;
       }
-      setTimeout(() => location.replace(`factory_history.html?vin=${encodeURIComponent(vin)}`), 1200);
+      if (vehVinFail && logResult.serverSaved) {
+        showToast('info', '整備記録は登録済みです。車両台帳は車台番号の確認が必要です（サーバー未反映）');
+        setTimeout(() => location.replace(dest), 1200);
+        return;
+      }
+
+      const queued = !!(logResult.queued || vehQueued);
+      const variant = queued ? 'queued' : 'success';
+      if (typeof showRingSavedSplash === 'function') {
+        showRingSavedSplash({
+          variant,
+          onDone: () => location.replace(dest),
+        });
+      } else {
+        showToast(queued ? 'info' : 'success', queued ? '端末に保存しました。オンライン復帰時に自動送信します。' : '正常に登録されました');
+        setTimeout(() => location.replace(dest), 1200);
+      }
+      } finally {
+        if (typeof window !== 'undefined') window.__ringSaving = false;
+      }
     }
 
     document.getElementById("saveLogBtn").addEventListener("click", async () => {
@@ -350,7 +420,15 @@
           if (vLogs.length > 0) {
             const lastM = parseInt(vLogs[0].mileage, 10);
             if (!isNaN(lastM) && currentMileage < lastM) {
-              if (!confirm(`【確認】直近の記録（${lastM}km）より少ないです。間違いありませんか？`)) return;
+              const ok = typeof showRingConfirm === 'function'
+                ? await showRingConfirm({
+                    title: '走行距離の確認',
+                    message: `【確認】直近の記録（${lastM}km）より少ないです。間違いありませんか？`,
+                    okLabel: 'このまま保存',
+                    cancelLabel: '戻る',
+                  })
+                : confirm(`【確認】直近の記録（${lastM}km）より少ないです。間違いありませんか？`);
+              if (!ok) return;
             }
           }
         } catch(e) {}

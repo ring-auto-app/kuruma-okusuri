@@ -2,7 +2,13 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#4b5563" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="manifest" href="manifest.json">
   <title>会社・工場情報 | 車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css">
@@ -44,6 +50,12 @@
         <input type="text" id="inFactoryNumber" readonly>
         <div class="note">※番号の変更はマスター権限でサポートにお問い合わせください</div>
       </div>
+    </div>
+
+    <div class="field">
+      <span class="label">代表者名・ご担当者名</span>
+      <input type="text" id="inRepresentativeName" placeholder="例：山田 太郎（スタッフ未登録時の日常点検入力者名に使います）" autocomplete="name">
+      <div class="note">※スタッフがいない店舗では、日常点検の「入力スタッフ名」に表示されます</div>
     </div>
 
     <div class="field">
@@ -106,7 +118,7 @@
         // オーナー以外の編集制限
         const isMaster = currentProfile.role === 'master' || currentProfile.isAdmin === true;
         if (!isMaster) {
-          const targets = ['inShopName', 'inAddress', 'inTel', 'inEmail', 'inLineUrl'];
+          const targets = ['inShopName', 'inRepresentativeName', 'inAddress', 'inTel', 'inEmail', 'inLineUrl'];
           targets.forEach(id => {
             const el = document.getElementById(id);
             if (el) {
@@ -148,6 +160,7 @@
           document.getElementById('inTel').value = data.info.tel || "";
           document.getElementById('inEmail').value = data.info.email || "";
           document.getElementById('inLineUrl').value = data.info.lineUrl || "";
+          document.getElementById('inRepresentativeName').value = data.info.representativeName || currentProfile.representativeName || "";
         }
       } catch (e) {
         console.error("店舗情報取得エラー", e);
@@ -164,6 +177,7 @@
       btn.disabled = true;
 
       const shopName = document.getElementById('inShopName').value.trim();
+      const representativeName = document.getElementById('inRepresentativeName').value.trim();
       const address = document.getElementById('inAddress').value.trim();
       const tel = document.getElementById('inTel').value.trim();
       const email = document.getElementById('inEmail').value.trim();
@@ -177,6 +191,7 @@
             authToken: localStorage.getItem('ring_auth_token') || '',
             shopId: currentProfile.shopId,
             shopName: shopName,
+            representativeName: representativeName,
             address: address,
             tel: tel,
             email: email,
@@ -188,6 +203,7 @@
         if (data.success) {
           showToast('success', '正常に登録されました');
           currentProfile.shopName = shopName;
+          currentProfile.representativeName = representativeName;
           login(currentProfile); 
         } else {
           showToast('error', '保存に失敗しました: ' + data.error);

@@ -5,6 +5,11 @@
 ========================================= */
 
 :root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+
   /* デフォルト（一般/イエロー）※theme.jsで上書きされます */
   --page-bg: #f7f3ea;                        /* 全ロール共通ベージュ */
   --page-line: rgba(180, 145, 10, 0.13);     /* 罫線：テーマカラー薄め */
@@ -39,7 +44,10 @@ body {
   background: linear-gradient(to bottom, var(--page-line) 1px, transparent 1px) 0 0 / 100% 34px, var(--page-bg);
   color: var(--text); 
   padding: 34px 16px 68px; 
-  line-height: 34px; 
+  line-height: 34px;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overscroll-behavior-y: contain;
 }
 
 .container { width: 100%; max-width: 600px; margin: 0 auto; }
@@ -59,6 +67,15 @@ body {
   cursor: pointer;       
   line-height: 34px; 
   margin-bottom: 0;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity 0.12s, transform 0.1s;
+}
+.back-link:active { opacity: 0.82; transform: scale(0.98); }
+
+input:not([type="checkbox"]):not([type="radio"]),
+select,
+textarea {
+  touch-action: manipulation;
 }
 
 .title {
@@ -116,9 +133,24 @@ textarea { line-height: 24px; min-height: 88px; }
   border-radius: var(--btn-radius); font-size: var(--font-primary); font-weight: 900;
   box-shadow: 0 8px 25px var(--highlighter); cursor: pointer;
   transition: 0.2s; display: block; margin: 0 auto;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 .save-btn:active { transform: scale(0.96); }
 .save-btn:disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
+
+/* 長いフォームで保存ボタンを親指圏内に（kannsa 中: sticky save） */
+@media (max-width: 520px) {
+  .ring-sticky-save-wrap {
+    position: sticky;
+    bottom: 0;
+    z-index: 40;
+    padding: 10px 0 calc(14px + var(--safe-bottom));
+    margin-top: 28px;
+    background: linear-gradient(180deg, rgba(247, 243, 234, 0) 0%, var(--page-bg) 36%);
+    border-radius: var(--btn-radius-square);
+  }
+}
 
 /* =========================================
    ボタン統一クラス（共通btn体系）
@@ -326,12 +358,86 @@ textarea { line-height: 24px; min-height: 88px; }
   line-height: 1.6;
 }
 
+.loading-elapsed {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--accent);
+  min-height: 16px;
+  margin-bottom: 4px;
+}
+
+.loading-cancel-btn {
+  margin-top: 18px;
+  min-height: var(--tap-min);
+  padding: 0 24px;
+  border-radius: 999px;
+  border: 2px solid var(--line);
+  background: var(--paper);
+  color: var(--muted);
+  font-size: var(--font-secondary);
+  font-weight: 900;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.loading-cancel-btn:active { transform: scale(0.97); }
+
 /* =========================================
    トースト通知
 ========================================= */
+.ring-pending-sync-banner {
+  position: sticky;
+  top: 0;
+  z-index: 120;
+  background: linear-gradient(90deg, #451a03 0%, #92400e 100%);
+  color: #fffbeb;
+  margin: calc(-34px - var(--safe-top)) calc(-16px - var(--safe-right)) 12px calc(-16px - var(--safe-left));
+  padding: 10px 14px calc(10px + var(--safe-top));
+  box-sizing: border-box;
+  width: calc(100% + 32px + var(--safe-left) + var(--safe-right));
+  max-width: none;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.45;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+}
+.ring-pending-sync-banner__inner {
+  max-width: 600px;
+  margin: 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  justify-content: space-between;
+}
+.ring-pending-sync-banner__text { margin: 0; flex: 1; min-width: 0; }
+.ring-pending-sync-banner__badge {
+  display: inline-block;
+  background: #fef3c7;
+  color: #92400e;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  margin-right: 4px;
+}
+.ring-pending-sync-banner__n { font-weight: 900; }
+.ring-pending-sync-banner__btn {
+  flex-shrink: 0;
+  min-height: var(--tap-min);
+  padding: 0 16px;
+  border-radius: 999px;
+  border: none;
+  background: #fffbeb;
+  color: #78350f;
+  font-weight: 900;
+  font-size: 14px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.ring-pending-sync-banner__btn:disabled { opacity: 0.55; cursor: wait; }
+
 .ring-toast {
   position: fixed;
-  bottom: 90px;
+  bottom: calc(90px + var(--safe-bottom));
   left: 50%;
   transform: translateX(-50%) translateY(20px);
   padding: 12px 24px;
@@ -339,7 +445,9 @@ textarea { line-height: 24px; min-height: 88px; }
   font-size: 14px;
   font-weight: 900;
   color: #fff;
-  white-space: nowrap;
+  white-space: normal;
+  text-align: center;
+  max-width: min(90vw, 360px);
   z-index: 10000;
   opacity: 0;
   pointer-events: none;
@@ -353,6 +461,177 @@ textarea { line-height: 24px; min-height: 88px; }
 .ring-toast--success { background: #16a34a; }
 .ring-toast--error   { background: #dc2626; }
 .ring-toast--info    { background: #2563eb; }
+.ring-toast--warning { background: #ca8a04; }
+
+/* =========================================
+   詳細ページ：印刷／PDF（ブラウザの印刷→PDFに送信）
+========================================= */
+.ring-btn-print-sheet {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 24px 16px 0;
+  padding: 0 22px;
+  min-height: var(--tap-min);
+  border-radius: 999px;
+  border: 2px solid var(--accent);
+  background: var(--paper);
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+  width: calc(100% - 32px);
+  max-width: 568px;
+  margin-left: auto;
+  margin-right: auto;
+  box-sizing: border-box;
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+.ring-btn-print-sheet:active {
+  background: var(--accent);
+  color: #fff;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}
+
+/* =========================================
+   保存完了フルスクリーン演出
+========================================= */
+.ring-saved-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px calc(16px + var(--safe-right)) calc(24px + var(--safe-bottom)) calc(16px + var(--safe-left));
+  padding-top: calc(24px + var(--safe-top));
+  box-sizing: border-box;
+  background: rgba(250, 247, 241, 0.97);
+  backdrop-filter: blur(6px);
+  text-align: center;
+  animation: ring-splash-in 0.22s ease-out;
+}
+@keyframes ring-splash-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+.ring-saved-splash__orb {
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 40px;
+  font-weight: 900;
+  color: #fff;
+  margin-bottom: 20px;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.15);
+}
+.ring-saved-splash--success .ring-saved-splash__orb {
+  background: linear-gradient(145deg, #22c55e, #15803d);
+}
+.ring-saved-splash--queued .ring-saved-splash__orb {
+  background: linear-gradient(145deg, #eab308, #ca8a04);
+}
+.ring-saved-splash__msg {
+  font-size: 16px;
+  font-weight: 900;
+  color: var(--text);
+  line-height: 1.55;
+  max-width: 320px;
+}
+
+/* OCR 解析オーバーレイ */
+.ring-ocr-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 10050;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: calc(20px + var(--safe-top)) 16px calc(20px + var(--safe-bottom));
+  box-sizing: border-box;
+  background: rgba(250, 247, 241, 0.95);
+  backdrop-filter: blur(4px);
+  overflow-y: auto;
+}
+.ring-ocr-overlay.show { display: flex; }
+.ring-ocr-overlay__preview {
+  width: 100%;
+  max-width: 280px;
+  max-height: 200px;
+  object-fit: contain;
+  border-radius: 12px;
+  border: 2px solid var(--line);
+  margin-bottom: 14px;
+  background: #fff;
+}
+.ring-ocr-overlay__title {
+  font-size: 17px;
+  font-weight: 900;
+  margin-bottom: 8px;
+  color: var(--text);
+}
+.ring-ocr-overlay__sub {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+  line-height: 1.5;
+  margin-bottom: 18px;
+  min-height: 3em;
+}
+.ring-ocr-overlay__cancel {
+  margin-top: auto;
+  padding: 12px 20px;
+  border-radius: 999px;
+  border: 2px solid var(--line);
+  background: var(--paper);
+  font-size: 14px;
+  font-weight: 900;
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+/* OCR 項目別反映モーダル */
+.ring-ocr-apply__body { padding-bottom: 8px; }
+.ring-ocr-apply__row {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  background: var(--page-bg);
+}
+.ring-ocr-apply__row--warn { border-color: #f59e0b; background: #fffbeb; }
+.ring-ocr-apply__chkwrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 900;
+  color: var(--text);
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+.ring-ocr-apply__chk { width: 18px; height: 18px; accent-color: var(--accent); }
+.ring-ocr-apply__vals { font-size: 12px; line-height: 1.45; }
+.ring-ocr-apply__sub { font-weight: 800; color: var(--muted); }
+.ring-ocr-apply__ocr, .ring-ocr-apply__cur { font-weight: 700; word-break: break-all; }
+.ring-ocr-apply__warn {
+  margin-top: 6px;
+  font-size: 11px;
+  font-weight: 900;
+  color: #b45309;
+}
 
 /* =========================================
    保存前確認（整備入力・車両登録共通）
@@ -362,9 +641,9 @@ textarea { line-height: 24px; min-height: 88px; }
   inset: 0;
   z-index: 11000;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  padding: 16px;
+  padding: calc(12px + var(--safe-top)) calc(16px + var(--safe-right)) calc(16px + var(--safe-bottom)) calc(16px + var(--safe-left));
   box-sizing: border-box;
 }
 .ring-save-confirm__backdrop {
@@ -376,7 +655,7 @@ textarea { line-height: 24px; min-height: 88px; }
   position: relative;
   width: 100%;
   max-width: 400px;
-  max-height: 85vh;
+  max-height: min(80dvh, 80vh);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -441,4 +720,61 @@ textarea { line-height: 24px; min-height: 88px; }
 .ring-save-confirm__btn--primary {
   background: var(--accent);
   color: #fff;
+}
+.ring-save-confirm__btn--danger {
+  background: #dc2626;
+  color: #fff;
+  border: none;
+}
+
+/* PWA / A2HS 案内 */
+.ring-a2hs-panel {
+  width: 100%;
+  max-width: 340px;
+  margin: 24px auto 0;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 2px dashed var(--line);
+  background: var(--paper);
+  box-sizing: border-box;
+}
+.ring-a2hs-panel__title {
+  font-size: 14px;
+  font-weight: 900;
+  margin: 0 0 8px;
+  color: var(--text);
+}
+.ring-a2hs-panel__body {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  line-height: 1.5;
+  margin: 0 0 10px;
+}
+.ring-a2hs-panel__btn {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 900;
+  cursor: pointer;
+  font-family: inherit;
+  margin-bottom: 8px;
+}
+.ring-a2hs-panel__btn--ghost {
+  background: var(--page-bg);
+  color: var(--text);
+  border: 2px solid var(--line);
+}
+.ring-a2hs-ios {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.55;
+  margin: 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
 }

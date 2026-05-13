@@ -2,7 +2,11 @@
  * 車のお薬手帳 - 統合コアスクリプト (app.js)
  */
 
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbzzthTmrSZAC6dEpaZHbJIAJ07-O4W8eTPYGpXN772jKP7s88oepUYyHerxDU3y0Mfsnw/exec';
+const RING_DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbzzthTmrSZAC6dEpaZHbJIAJ07-O4W8eTPYGpXN772jKP7s88oepUYyHerxDU3y0Mfsnw/exec';
+/** `app.js` より先に `window.__RING_GAS_URL_OVERRIDE__` をセットすると本番 URL を差し替え可能 */
+const GAS_URL = (typeof window !== 'undefined' && window.__RING_GAS_URL_OVERRIDE__)
+    ? String(window.__RING_GAS_URL_OVERRIDE__).trim()
+    : RING_DEFAULT_GAS_URL;
 /** ads/ads.js から fetch する際の参照用（別スクリプトでは const が見えないため） */
 if (typeof window !== 'undefined') window.__RING_GAS_URL__ = GAS_URL;
 
@@ -11,6 +15,34 @@ const DB_LOGS = "nappy_logs_v1";
 const DB_INSPECTIONS = "inspections_v1"; 
 const DB_CURRENT_USER = "nappy_current_user";  
 const DB_LEGACY_PROFILE = "nappy_profile_v1";
+/** GAS 失敗時の再送キュー（C-01） */
+const DB_RETRY_QUEUE = "ring_retry_queue_v1";
+
+/**
+ * localStorage JSON 破損対策（H-03）。失敗時は退避キーに生文字列を残す。
+ */
+function safeJsonParse(str, fallback) {
+    try {
+        if (str == null || str === '') return fallback;
+        return JSON.parse(str);
+    } catch (e) {
+        try {
+            localStorage.setItem('ring_corrupt_backup_' + Date.now(), String(str).slice(0, 50000));
+        } catch (e2) { /* ignore */ }
+        return fallback;
+    }
+}
+
+function readLogsArray() {
+    const v = safeJsonParse(localStorage.getItem(DB_LOGS), []);
+    return Array.isArray(v) ? v : [];
+}
+
+/** C-01: 再送キュー件数（ホーム表示用） */
+function getPendingRetryCount() {
+    const q = safeJsonParse(localStorage.getItem(DB_RETRY_QUEUE), []);
+    return Array.isArray(q) ? q.length : 0;
+}
 
 /**
  * ユーザー認証管理
@@ -22,10 +54,9 @@ function login(profile, authToken) {
     if (authToken) localStorage.setItem('ring_auth_token', authToken);
 }
 function getCurrentProfile() {
-    const current = localStorage.getItem(DB_CURRENT_USER);
-    if (current) return JSON.parse(current);
-    const legacy = localStorage.getItem(DB_LEGACY_PROFILE);
-    return JSON.parse(legacy || "null");
+    const current = safeJsonParse(localStorage.getItem(DB_CURRENT_USER), null);
+    if (current) return current;
+    return safeJsonParse(localStorage.getItem(DB_LEGACY_PROFILE), null);
 }
 function logout() {
     localStorage.removeItem(DB_CURRENT_USER);
@@ -35,11 +66,16 @@ function logout() {
 
 // ★ 全ページ共通のログアウト処理
 function logoutApp() {
-  if (confirm("ログアウトしてトップ画面に戻りますか？")) {
+  showRingConfirm({
+    title: 'ログアウト',
+    message: 'ログアウトしてトップ画面に戻りますか？',
+    okLabel: 'ログアウト',
+    cancelLabel: 'キャンセル'
+  }).then(function (ok) {
+    if (!ok) return;
     logout();
-    // ロゴ・タイトルのオープニング画面へ戻る
     location.href = 'splash.html';
-  }
+  });
 }
 
 /** デモログイン時に投入するデータの識別子（再ログインで古いデモだけ差し替え） */
@@ -347,7 +383,10 @@ function seedDemoEnvironment(role) {
 /**
  * 車両データ管理
  */
-function loadVehicles() { return JSON.parse(localStorage.getItem(DB_VEHICLES) || "[]"); }
+function loadVehicles() {
+    const v = safeJsonParse(localStorage.getItem(DB_VEHICLES), []);
+    return Array.isArray(v) ? v : [];
+}
 
 /**
  * 車台番号の正規化処理
@@ -361,22 +400,173 @@ function _normalize(v) {
 }
 
 /**
+ * C-04: 日常点検の対象となるよう、VIN がマイカー／自店管理車両に登録されているか
+ */
+function isVinRegisteredForInspection(vin, profile) {
+    if (!vin || !profile) return false;
+    const vehicles = loadVehicles();
+    const norm = _normalize(vin);
+    return vehicles.some((veh) => {
+        if (_normalize(veh.vin || "") !== norm) return false;
+        const st = String(profile.shopType || "");
+        if (st === "user") {
+            return String(veh.userId || "") === String(profile.userId || "");
+        }
+        return String(veh.shopId || "") === String(profile.shopId || "");
+    });
+}
+
+/**
+ * C-04: GAS から日常点検履歴を取得（認証失敗時は空配列）
+ */
+async function fetchDailyHistoryFromGas(vin) {
+    if (!vin) return [];
+    try {
+        const json = await sendToGAS_Safe("get_daily_history", { vin: String(vin).trim() });
+        return Array.isArray(json.history) ? json.history : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+/**
+ * C-04: ローカル inspections とサーバ履歴を log_id で重複排除マージ
+ */
+function mergeInspectionHistoryLocalAndServer(localList, serverList) {
+    const map = new Map();
+    function keyOf(item) {
+        const k = String(item.log_id || item.logId || "");
+        if (k) return "id:" + k;
+        return "fallback:" + String(item.createdAt || "") + ":" + String(item.date || "");
+    }
+    (localList || []).forEach((item) => {
+        map.set(keyOf(item), item);
+    });
+    (serverList || []).forEach((item) => {
+        const k = keyOf(item);
+        if (k.startsWith("fallback:")) return;
+        if (!map.has(k)) {
+            const copy = JSON.parse(JSON.stringify(item));
+            copy.type = copy.type || "inspection";
+            copy._fromServer = true;
+            map.set(k, copy);
+        }
+    });
+    return Array.from(map.values());
+}
+
+/**
+ * get_vehicles 応答1件をローカル車両オブジェクト形へ（kannsa: サーバ取得の配線）
+ */
+function mapGasVehicleRowToLocal(row) {
+    if (!row || !row.vin) return null;
+    const vin = String(row.vin).trim().toUpperCase();
+    return {
+        vin,
+        vClass: row.vClass || "",
+        usage: row.usage || "",
+        ownerType: row.ownerType || "",
+        nextShaken: row.nextShaken || "",
+        userId: row.userId || "",
+        shopId: row.shopId || "",
+        vehicleModel: row.vehicleModel || "",
+        engine: row.engine || "",
+        classification: row.classification || "",
+        category: row.classification || row.category || "",
+        typeDesignation: row.typeDesignation || "",
+        model: row.model || "",
+        vehicleCategory: row.vehicleCategory || "managed",
+        firstRegistration: row.firstRegistration || "",
+        createdAt: row.createdAt || ""
+    };
+}
+
+/**
+ * ローカル nappy_vehicles_v1 とサーバ一覧を VIN 単位でマージ
+ */
+function mergeVehiclesLocalAndServer(localList, serverList) {
+    const map = new Map();
+    (localList || []).forEach((car) => {
+        const k = _normalize(car.vin);
+        if (!k) return;
+        map.set(k, { ...car });
+    });
+    (serverList || []).forEach((row) => {
+        const loc = mapGasVehicleRowToLocal(row);
+        if (!loc) return;
+        const k = _normalize(loc.vin);
+        const prev = map.get(k) || {};
+        const merged = {
+            ...prev,
+            ...loc,
+            inspectMonths: prev.inspectMonths || 12,
+            lastMaint: prev.lastMaint,
+            nickname: prev.nickname,
+            shopName: prev.shopName,
+            shopType: prev.shopType
+        };
+        if (!merged.createdAt && prev.createdAt) merged.createdAt = prev.createdAt;
+        if (!merged.createdAt) merged.createdAt = new Date().toISOString();
+        map.set(k, merged);
+    });
+    return Array.from(map.values());
+}
+
+/**
+ * 車両一覧画面用: get_vehicles でサーバとローカルをマージして保存
+ */
+async function syncVehiclesFromServer() {
+    const token = localStorage.getItem("ring_auth_token");
+    if (!token) return loadVehicles();
+    try {
+        const json = await sendToGAS_Safe("get_vehicles", {});
+        if (!json || json.success === false || !Array.isArray(json.vehicles)) {
+            return loadVehicles();
+        }
+        const merged = mergeVehiclesLocalAndServer(loadVehicles(), json.vehicles);
+        localStorage.setItem(DB_VEHICLES, JSON.stringify(merged));
+        return merged;
+    } catch (e) {
+        return loadVehicles();
+    }
+}
+
+/**
+ * 整備履歴（History_Events 系）のみ。日常点検タイプは除外（C-04 / factory_history 用）
+ */
+function isMaintenanceLogType(log) {
+    const t = log && log.type;
+    if (t === "inspection" || t === "inspection_user") return false;
+    return true;
+}
+
+/**
  * 車両の追加・更新
  */
 async function addVehicle(v) {
     const list = loadVehicles();
     const i = list.findIndex(x => _normalize(x.vin) === _normalize(v.vin));
     const merged = i !== -1 ? { ...list[i], ...v } : { ...v };
+    merged.createdAt = merged.createdAt || new Date().toISOString();
     if (i !== -1) list[i] = merged; else list.push(merged);
     localStorage.setItem(DB_VEHICLES, JSON.stringify(list));
-    return sendToGAS_Safe('vehicle', merged);
+    try {
+        return await sendToGAS_Safe('vehicle', merged);
+    } catch (err) {
+        const msg = String(err.message || '');
+        if (/VIN_REQUIRED/i.test(msg)) {
+            return { success: false, error: msg, localSaved: true, serverSaved: false, queued: false };
+        }
+        enqueueRetry('vehicle', merged);
+        return { success: false, error: err.message, queued: true, localSaved: true, serverSaved: false };
+    }
 }
 
 /**
  * 整備ログの保存
  */
 async function saveLog(d) {
-    const list = JSON.parse(localStorage.getItem(DB_LOGS) || "[]");
+    const list = readLogsArray();
     const newLogId = d.log_id || `LOG-${Date.now()}`;
     const profile = getCurrentProfile() || {};
     const cleanVin = (d.vin || "").toUpperCase();
@@ -391,6 +581,7 @@ async function saveLog(d) {
         factoryType: d.factoryType || profile.factoryType || "",
         factoryNumber: d.factoryNumber || profile.factoryNumber || ""
     };
+    newEntry.createdAt = newEntry.createdAt || new Date().toISOString();
 
     list.push(newEntry);
     localStorage.setItem(DB_LOGS, JSON.stringify(list));
@@ -399,7 +590,12 @@ async function saveLog(d) {
         await sendToGAS_Safe('log', newEntry);
         return { logId: newLogId, localSaved: true, serverSaved: true };
     } catch (err) {
-        return { logId: newLogId, localSaved: true, serverSaved: false, error: err.message };
+        const msg = String(err && err.message ? err.message : err || '');
+        if (/VIN_REQUIRED|LOG_DATE_REQUIRED/i.test(msg)) {
+            return { logId: newLogId, localSaved: true, serverSaved: false, error: msg, queued: false };
+        }
+        enqueueRetry('log', newEntry);
+        return { logId: newLogId, localSaved: true, serverSaved: false, error: err.message, queued: true };
     }
 }
 
@@ -409,9 +605,45 @@ async function saveLog(d) {
  */
 function getLogsByVin(vin) { 
     const searchTarget = _normalize(vin);
-    return JSON.parse(localStorage.getItem(DB_LOGS) || "[]").filter(l => {
+    return readLogsArray().filter(l => {
         return _normalize(l.vin) === searchTarget;
     }).sort((a,b) => new Date(b.date)-new Date(a.date)); 
+}
+
+/** 整備履歴のみ（日常点検 type を除外）。C-04 */
+function getMaintenanceLogsByVin(vin) {
+    return getLogsByVin(vin).filter(isMaintenanceLogType);
+}
+
+/**
+ * GAS：fetch タイムアウト（H-01）
+ */
+async function fetchJsonWithTimeout(url, options, timeoutMs) {
+    const ms = timeoutMs != null ? timeoutMs : 20000;
+    if (typeof AbortController === 'undefined') {
+        const res = await fetch(url, options || {});
+        if (!res.ok) throw new Error('HTTP_' + res.status);
+        const text = await res.text();
+        try {
+            return JSON.parse(text);
+        } catch (e) {
+            throw new Error('INVALID_JSON');
+        }
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(function () { controller.abort(); }, ms);
+    try {
+        const res = await fetch(url, Object.assign({}, options || {}, { signal: controller.signal }));
+        if (!res.ok) throw new Error('HTTP_' + res.status);
+        const text = await res.text();
+        try {
+            return JSON.parse(text);
+        } catch (e) {
+            throw new Error('INVALID_JSON');
+        }
+    } finally {
+        clearTimeout(timer);
+    }
 }
 
 /**
@@ -427,20 +659,178 @@ async function sendToGAS_Safe(actionType, data) {
     if (actionType === 'log' && payload.partsPhoto && !payload.photoUrl) {
         payload.photoUrl = payload.partsPhoto;
     }
+    if (actionType === 'correct_log' && payload.partsPhoto && !payload.photoUrl) {
+        payload.photoUrl = payload.partsPhoto;
+    }
 
     const authToken = localStorage.getItem('ring_auth_token');
     if (authToken) payload.authToken = authToken;
 
-    const res = await fetch(GAS_URL, {
+    const json = await fetchJsonWithTimeout(GAS_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify(payload)
-    });
-    const json = await res.json();
+    }, 20000);
     if (!json || json.success !== true) {
         throw new Error((json && json.error) || 'GAS保存に失敗しました');
     }
     return json;
+}
+
+/**
+ * GAS 失敗分を再送キューへ（C-01）
+ */
+function enqueueRetry(action, payload) {
+    const queue = safeJsonParse(localStorage.getItem(DB_RETRY_QUEUE), []);
+    let key = action + ':' + (payload.log_id
+        ? payload.log_id
+        : (payload.originalLogId
+            ? payload.originalLogId
+            : (String(payload.vin || '') + ':' + String(payload.createdAt || ''))));
+    if (!payload.log_id && !payload.createdAt) {
+        key += ':' + Date.now();
+    }
+    if (queue.some((item) => item.key === key)) return;
+    const stored = JSON.parse(JSON.stringify(payload || {}));
+    delete stored.action;
+    queue.push({
+        key,
+        action,
+        payload: stored,
+        retryCount: 0,
+        queuedAt: new Date().toISOString()
+    });
+    localStorage.setItem(DB_RETRY_QUEUE, JSON.stringify(queue));
+    try { ringRefreshPendingSyncBanner(); } catch (eR) { /* ignore */ }
+}
+
+/**
+ * 日常点検を GAS へ送信。VIN/車両エラーはキューに載せず、それ以外は再送キューへ（C-04 続き）
+ */
+async function saveInspectionToGasWithRetry(payload) {
+    const data = payload && typeof payload === 'object'
+        ? JSON.parse(JSON.stringify(payload))
+        : {};
+    try {
+        await sendToGAS_Safe('save_inspection', data);
+        return { serverSaved: true };
+    } catch (err) {
+        const msg = String(err && err.message ? err.message : err || '');
+        if (/VEHICLE_NOT_REGISTERED|VIN_REQUIRED|INSPECTION_DATE_REQUIRED/i.test(msg)) {
+            return { serverSaved: false, hardFail: true, error: msg };
+        }
+        enqueueRetry('save_inspection', data);
+        return { serverSaved: false, queued: true, error: msg };
+    }
+}
+
+let __ringRetryFlushBusy = false;
+
+/**
+ * オンライン復帰などで再送キューを空に近づける（C-01）
+ */
+async function flushRetryQueue() {
+    if (__ringRetryFlushBusy) return;
+    __ringRetryFlushBusy = true;
+    try {
+        const queue = safeJsonParse(localStorage.getItem(DB_RETRY_QUEUE), []);
+        if (!queue.length) {
+            try { ringRefreshPendingSyncBanner(); } catch (eEmpty) { /* ignore */ }
+            return;
+        }
+        const remaining = [];
+        for (const item of queue) {
+            try {
+                await sendToGAS_Safe(item.action, item.payload);
+            } catch (e) {
+                item.retryCount = (item.retryCount || 0) + 1;
+                if (item.retryCount < 5) remaining.push(item);
+            }
+        }
+        localStorage.setItem(DB_RETRY_QUEUE, JSON.stringify(remaining));
+        try { ringRefreshPendingSyncBanner(); } catch (eR2) { /* ignore */ }
+    } finally {
+        __ringRetryFlushBusy = false;
+    }
+}
+
+/** 送信待ちバーを出さないページ（ログイン前など） */
+function ringShouldAttachPendingSyncBanner() {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return false;
+    const f = (window.location.pathname || '').split('/').pop() || '';
+    return !/^(login|user_login|register|biz_register|splash)\.html$/i.test(f);
+}
+
+/**
+ * GAS 再送キュー件数があるときトップに注意バーを出し、手動で flushRetryQueue 可能にする。
+ */
+function ringRefreshPendingSyncBanner() {
+    if (!ringShouldAttachPendingSyncBanner()) return;
+    var n = getPendingRetryCount();
+    var id = 'ring-pending-sync-banner';
+    var el = document.getElementById(id);
+    if (!n) {
+        if (el) el.remove();
+        return;
+    }
+    var label = '<strong class="ring-pending-sync-banner__badge">未送信</strong> ' +
+        '<span class="ring-pending-sync-banner__n">' + n + '</span> 件 … ネットワーク回復後に自動送信されます';
+    if (!el) {
+        var wrap = document.createElement('div');
+        wrap.className = 'ring-pending-sync-banner';
+        wrap.id = id;
+        wrap.setAttribute('role', 'status');
+        wrap.innerHTML =
+            '<div class="ring-pending-sync-banner__inner">' +
+            '<p class="ring-pending-sync-banner__text">' + label + '</p>' +
+            '<button type="button" class="ring-pending-sync-banner__btn" id="ring-pending-sync-send">今すぐ再送</button>' +
+            '</div>';
+        if (document.body) {
+            document.body.insertBefore(wrap, document.body.firstChild);
+            var btn = document.getElementById('ring-pending-sync-send');
+            if (btn) {
+                btn.addEventListener('click', function () {
+                    btn.disabled = true;
+                    flushRetryQueue().finally(function () {
+                        btn.disabled = false;
+                        ringRefreshPendingSyncBanner();
+                        var left = getPendingRetryCount();
+                        if (typeof showToast === 'function') {
+                            showToast(left ? 'warning' : 'success',
+                                left ? '一部がまだ未送信です。通信状況をご確認ください。' : '再送を試みました。');
+                        }
+                    });
+                });
+            }
+        }
+        return;
+    }
+    var textEl = el.querySelector('.ring-pending-sync-banner__text');
+    if (textEl) textEl.innerHTML = label;
+}
+
+if (typeof window !== 'undefined') {
+    window.addEventListener('online', () => {
+        flushRetryQueue().finally(function () {
+            try { ringRefreshPendingSyncBanner(); } catch (eOn) { /* ignore */ }
+        });
+    });
+    window.addEventListener('load', () => {
+        if (navigator.onLine) flushRetryQueue();
+        try { ringRefreshPendingSyncBanner(); } catch (eB) { /* ignore */ }
+    });
+    if (typeof document !== 'undefined') {
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden && navigator.onLine) {
+                flushRetryQueue().finally(function () {
+                    try { ringRefreshPendingSyncBanner(); } catch (eVis) { /* ignore */ }
+                });
+            }
+        });
+        document.addEventListener('DOMContentLoaded', () => {
+            try { ringRefreshPendingSyncBanner(); } catch (eC) { /* ignore */ }
+        });
+    }
 }
 
 /**
@@ -463,7 +853,7 @@ function safeText(value) {
  */
 function markLogVoided(logId, reason) {
     const profile = getCurrentProfile() || {};
-    const logs = JSON.parse(localStorage.getItem(DB_LOGS) || '[]');
+    const logs = readLogsArray();
     const next = logs.map(function (log) {
         if (log.log_id !== logId) return log;
         if (log.shopId && profile.shopId && log.shopId !== profile.shopId) return log;
@@ -556,8 +946,50 @@ function ringConfirmRow(label, value) {
 }
 
 /**
+ * 保存完了のフルスクリーン演出（成功／オフラインキュー）
+ * @param {{ variant?: 'success'|'queued', message?: string, durationMs?: number, onDone?: () => void }} opts
+ */
+function showRingSavedSplash(opts) {
+    opts = opts || {};
+    var variant = opts.variant === 'queued' ? 'queued' : 'success';
+    var msg = opts.message || (variant === 'queued'
+        ? '端末に保存しました。オンライン復帰時に自動送信します。'
+        : '保存しました');
+    var durationMs = opts.durationMs != null ? opts.durationMs : 1400;
+    var old = document.getElementById('ring-saved-splash');
+    if (old) old.remove();
+    var orbMark = variant === 'queued' ? '✓' : '✓';
+    var html = '<div class="ring-saved-splash ring-saved-splash--' + variant + '" id="ring-saved-splash">' +
+        '<div class="ring-saved-splash__orb" aria-hidden="true">' + orbMark + '</div>' +
+        '<div class="ring-saved-splash__msg">' + escapeHtml(msg) + '</div></div>';
+    document.body.insertAdjacentHTML('beforeend', html);
+    try {
+        if (navigator.vibrate) navigator.vibrate(80);
+    } catch (e) { /* ignore */ }
+    var el = document.getElementById('ring-saved-splash');
+    setTimeout(function () {
+        if (el && el.parentNode) el.remove();
+        if (typeof opts.onDone === 'function') opts.onDone();
+    }, durationMs);
+}
+
+function ringAttachVisualViewportCard(cardEl, syncFn) {
+    if (!cardEl || typeof syncFn !== 'function') return function () {};
+    var vv = window.visualViewport;
+    syncFn();
+    if (!vv) return function () {};
+    vv.addEventListener('resize', syncFn);
+    vv.addEventListener('scroll', syncFn);
+    return function () {
+        vv.removeEventListener('resize', syncFn);
+        vv.removeEventListener('scroll', syncFn);
+    };
+}
+
+/**
  * 整備入力・車両登録など共通：保存前確認オーバーレイ
- * @param {{ title?: string, bodyHtml: string, confirmLabel?: string, onConfirm: () => void, onCancel?: () => void }} opts
+ * @param {{ title?: string, lead?: string|null, bodyHtml: string, confirmLabel?: string, onConfirm: () => void, onCancel?: () => void }} opts
+ *        lead: 空文字ならリード文を出さない。未指定時は保存前確認のデフォルト文。
  */
 function showRingSaveConfirm(opts) {
     var id = 'ring-save-confirm';
@@ -565,11 +997,18 @@ function showRingSaveConfirm(opts) {
     if (old) old.remove();
     var title = opts.title || '保存前の確認';
     var confirmLabel = opts.confirmLabel || 'この内容で登録する';
+    var leadBlock = '';
+    if (opts.lead !== '') {
+        var leadText = (opts.lead !== undefined && opts.lead !== null)
+            ? opts.lead
+            : '個人情報・金額など誤りがないかご確認ください。問題なければ登録してください。';
+        leadBlock = '<p class="ring-save-confirm__lead">' + escapeHtml(leadText) + '</p>';
+    }
     var html = '<div class="ring-save-confirm" id="' + id + '">' +
         '<div class="ring-save-confirm__backdrop"></div>' +
         '<div class="ring-save-confirm__card">' +
         '<div class="ring-save-confirm__title">' + escapeHtml(title) + '</div>' +
-        '<p class="ring-save-confirm__lead">個人情報・金額など誤りがないかご確認ください。問題なければ登録してください。</p>' +
+        leadBlock +
         '<div class="ring-save-confirm__body">' + opts.bodyHtml + '</div>' +
         '<div class="ring-save-confirm__actions">' +
         '<button type="button" class="ring-save-confirm__btn ring-save-confirm__btn--secondary" data-ring-action="cancel">戻って修正</button>' +
@@ -577,33 +1016,368 @@ function showRingSaveConfirm(opts) {
         '</div></div></div>';
     document.body.insertAdjacentHTML('beforeend', html);
     var el = document.getElementById(id);
-    function close() { if (el && el.parentNode) el.remove(); }
+    var card = el.querySelector('.ring-save-confirm__card');
+    function syncCardMaxHeight() {
+        if (!card) return;
+        var vv = window.visualViewport;
+        var h = vv ? vv.height : window.innerHeight;
+        var reserve = 48;
+        var mx = Math.max(160, Math.min(h * 0.8, h - reserve));
+        card.style.maxHeight = mx + 'px';
+    }
+    var detachVv = ringAttachVisualViewportCard(card, syncCardMaxHeight);
+    function close() {
+        detachVv();
+        if (el && el.parentNode) el.remove();
+    }
     el.querySelector('[data-ring-action="cancel"]').onclick = function () { close(); if (opts.onCancel) opts.onCancel(); };
     el.querySelector('[data-ring-action="confirm"]').onclick = function () { close(); opts.onConfirm(); };
     el.querySelector('.ring-save-confirm__backdrop').onclick = function () { close(); if (opts.onCancel) opts.onCancel(); };
 }
 
 /**
- * 書類・車検証画像のAI読取。本番は画像認識APIに差し替え。現状はデモ用ダミー。
+ * 汎用確認（confirm 代替）。Promise で true / false を返す。
+ * @param {{ title?: string, message: string, okLabel?: string, cancelLabel?: string, danger?: boolean }} opts
+ */
+function showRingConfirm(opts) {
+    return new Promise(function (resolve) {
+        var id = 'ring-generic-confirm';
+        var prev = document.getElementById(id);
+        if (prev) prev.remove();
+        var title = opts.title || '確認';
+        var okLabel = opts.okLabel || 'OK';
+        var cancelLabel = opts.cancelLabel || 'キャンセル';
+        var okClass = opts.danger
+            ? 'ring-save-confirm__btn ring-save-confirm__btn--danger'
+            : 'ring-save-confirm__btn ring-save-confirm__btn--primary';
+        var html = '<div class="ring-save-confirm" id="' + id + '">' +
+            '<div class="ring-save-confirm__backdrop"></div>' +
+            '<div class="ring-save-confirm__card">' +
+            '<div class="ring-save-confirm__title">' + escapeHtml(title) + '</div>' +
+            '<p class="ring-save-confirm__lead" style="margin-top:0;white-space:pre-line">' + escapeHtml(opts.message || '') + '</p>' +
+            '<div class="ring-save-confirm__actions">' +
+            '<button type="button" class="ring-save-confirm__btn ring-save-confirm__btn--secondary" data-rc="cancel">' + escapeHtml(cancelLabel) + '</button>' +
+            '<button type="button" class="' + okClass + '" data-rc="ok">' + escapeHtml(okLabel) + '</button>' +
+            '</div></div></div>';
+        document.body.insertAdjacentHTML('beforeend', html);
+        var el = document.getElementById(id);
+        var card = el.querySelector('.ring-save-confirm__card');
+        function syncCardMaxHeight() {
+            if (!card) return;
+            var vv = window.visualViewport;
+            var h = vv ? vv.height : window.innerHeight;
+            var reserve = 48;
+            card.style.maxHeight = Math.max(160, Math.min(h * 0.8, h - reserve)) + 'px';
+        }
+        var detachVv = ringAttachVisualViewportCard(card, syncCardMaxHeight);
+        function finish(val) {
+            detachVv();
+            if (el && el.parentNode) el.remove();
+            resolve(val);
+        }
+        el.querySelector('[data-rc="cancel"]').onclick = function () { finish(false); };
+        el.querySelector('[data-rc="ok"]').onclick = function () { finish(true); };
+        el.querySelector('.ring-save-confirm__backdrop').onclick = function () { finish(false); };
+    });
+}
+
+/**
+ * OCR 用：画像を JPEG 化して長辺 maxSide 以下にし、base64（プレフィックスなし）を返す
+ */
+function fileToVisionBase64(file, maxSide) {
+    maxSide = maxSide || 2000;
+    return new Promise(function (resolve, reject) {
+        function fallbackRead() {
+            var r = new FileReader();
+            r.onload = function () {
+                var s = String(r.result || '');
+                var i = s.indexOf('base64,');
+                resolve(i >= 0 ? s.slice(i + 7) : '');
+            };
+            r.onerror = function () { reject(new Error('read_fail')); };
+            r.readAsDataURL(file);
+        }
+        if (typeof createImageBitmap === 'function' && typeof document !== 'undefined') {
+            createImageBitmap(file).then(function (bmp) {
+                try {
+                    var w = bmp.width;
+                    var h = bmp.height;
+                    var tw = w;
+                    var th = h;
+                    if (Math.max(w, h) > maxSide) {
+                        var sc = maxSide / Math.max(w, h);
+                        tw = Math.round(w * sc);
+                        th = Math.round(h * sc);
+                    }
+                    var c = document.createElement('canvas');
+                    c.width = tw;
+                    c.height = th;
+                    c.getContext('2d').drawImage(bmp, 0, 0, tw, th);
+                    bmp.close();
+                    var dataUrl = c.toDataURL('image/jpeg', 0.88);
+                    resolve((dataUrl.split(',')[1] || ''));
+                } catch (e) {
+                    try { bmp.close(); } catch (x) { /* ignore */ }
+                    fallbackRead();
+                }
+            }).catch(function () { fallbackRead(); });
+        } else {
+            fallbackRead();
+        }
+    });
+}
+
+var RING_OCR_FAIL_KEY = 'ring_ocr_consecutive_failures';
+
+function resetOcrFailureCount() {
+    try { sessionStorage.removeItem(RING_OCR_FAIL_KEY); } catch (e) { /* ignore */ }
+}
+
+function incrementOcrFailureCount() {
+    try {
+        var n = parseInt(sessionStorage.getItem(RING_OCR_FAIL_KEY) || '0', 10) + 1;
+        sessionStorage.setItem(RING_OCR_FAIL_KEY, String(n));
+        return n;
+    } catch (e) {
+        return 1;
+    }
+}
+
+var __ringOcrOverlayInterval = null;
+
+function hideOcrAnalyzingOverlay() {
+    if (__ringOcrOverlayInterval) {
+        clearInterval(__ringOcrOverlayInterval);
+        __ringOcrOverlayInterval = null;
+    }
+    var el = document.getElementById('ring-ocr-overlay');
+    if (el) {
+        el.classList.remove('show');
+        el.remove();
+    }
+}
+
+/**
+ * OCR 待機：プレビュー・段階メッセージ・キャンセル（解析 fetch は打ち切れないため結果だけ無視）
+ * @param {{ previewDataUrl?: string, messages?: string[], title?: string }} opts
+ */
+function showOcrAnalyzingOverlay(opts) {
+    opts = opts || {};
+    hideOcrAnalyzingOverlay();
+    if (typeof window !== 'undefined') window.__ringOcrCancelled = false;
+    var messages = opts.messages || ['画像を読み込み中…', 'AIが認識中…', '内容を整形しています…'];
+    var title = opts.title || '解析中';
+    var html = '<div class="ring-ocr-overlay show" id="ring-ocr-overlay">' +
+        '<div class="loading-arrows" aria-hidden="true">' +
+        '<div class="loading-arrow arrow-blue"></div>' +
+        '<div class="loading-arrow arrow-red"></div>' +
+        '<div class="loading-arrow arrow-yellow"></div>' +
+        '</div>' +
+        '<div class="ring-ocr-overlay__title">' + escapeHtml(title) + '</div>' +
+        '<div class="ring-ocr-overlay__sub" id="ring-ocr-overlay-sub">' + escapeHtml(messages[0]) + '</div>' +
+        '<button type="button" class="ring-ocr-overlay__cancel" id="ring-ocr-overlay-cancel">キャンセル（手入力へ）</button>' +
+        '</div>';
+    document.body.insertAdjacentHTML('beforeend', html);
+    var rootEl = document.getElementById('ring-ocr-overlay');
+    if (opts.previewDataUrl && rootEl) {
+        var pv = document.createElement('img');
+        pv.className = 'ring-ocr-overlay__preview';
+        pv.alt = '';
+        pv.src = opts.previewDataUrl;
+        rootEl.insertBefore(pv, rootEl.firstChild);
+    }
+    var subEl = document.getElementById('ring-ocr-overlay-sub');
+    var i = 0;
+    __ringOcrOverlayInterval = setInterval(function () {
+        i += 1;
+        if (subEl) subEl.textContent = messages[i % messages.length];
+    }, 850);
+    var cancelBtn = document.getElementById('ring-ocr-overlay-cancel');
+    if (cancelBtn) {
+        cancelBtn.onclick = function () {
+            if (typeof window !== 'undefined') window.__ringOcrCancelled = true;
+            hideOcrAnalyzingOverlay();
+        };
+    }
+}
+
+function wasOcrAnalyzingCancelled() {
+    return !!(typeof window !== 'undefined' && window.__ringOcrCancelled);
+}
+
+/**
+ * OCR 複数項目：チェックされたキーだけ applyFn に渡す（デモ全項目向け）
+ * @param {Record<string, *>} res
+ * @param {{ key: string, label: string, getCurrent?: () => string }[]} descriptors
+ * @param {(picked: Record<string, *>) => void} onApply
+ */
+function showOcrApplyConfirm(res, descriptors, onApply) {
+    if (!res || !res.vin) return;
+    var descByKey = {};
+    (descriptors || []).forEach(function (d) {
+        if (d && d.key) descByKey[d.key] = d;
+    });
+    var order = ['vin', 'shaken', 'firstRegistration', 'mileage', 'workTitle', 'parts', 'model', 'engine', 'class', 'typeDesignation'];
+    var keysToShow = [];
+    order.forEach(function (k) {
+        if (!descByKey[k]) return;
+        if (k === 'vin') {
+            keysToShow.push(k);
+            return;
+        }
+        var v = res[k];
+        if (v != null && String(v).trim() !== '') keysToShow.push(k);
+    });
+    if (keysToShow.length === 0) {
+        if (typeof onApply === 'function') onApply({});
+        return;
+    }
+    var rowsHtml = keysToShow.map(function (k) {
+        var d = descByKey[k];
+        var ocrVal = String(res[k] == null ? '' : res[k]);
+        var cur = typeof d.getCurrent === 'function' ? String(d.getCurrent() || '').trim() : '';
+        var overwrite = cur !== '' && cur !== String(ocrVal).trim();
+        var chkId = 'ring-ocr-chk-' + k;
+        return '<div class="ring-ocr-apply__row' + (overwrite ? ' ring-ocr-apply__row--warn' : '') + '">' +
+            '<label class="ring-ocr-apply__chkwrap" for="' + chkId + '">' +
+            '<input type="checkbox" id="' + chkId + '" class="ring-ocr-apply__chk" checked data-key="' + escapeHtml(k) + '">' +
+            '<span>' + escapeHtml(d.label || k) + '</span></label>' +
+            '<div class="ring-ocr-apply__vals">' +
+            '<div><span class="ring-ocr-apply__sub">読み取り</span> <span class="ring-ocr-apply__ocr">' + escapeHtml(ocrVal) + '</span></div>' +
+            '<div><span class="ring-ocr-apply__sub">現在の入力</span> <span class="ring-ocr-apply__cur">' + escapeHtml(cur || '—') + '</span></div>' +
+            (overwrite ? '<div class="ring-ocr-apply__warn">上書きします</div>' : '') +
+            '</div></div>';
+    }).join('');
+
+    var id = 'ring-ocr-apply';
+    var old = document.getElementById(id);
+    if (old) old.remove();
+    var html = '<div class="ring-save-confirm" id="' + id + '">' +
+        '<div class="ring-save-confirm__backdrop"></div>' +
+        '<div class="ring-save-confirm__card">' +
+        '<div class="ring-save-confirm__title">読み取り結果の確認</div>' +
+        '<p class="ring-save-confirm__lead">反映する項目だけチェックを付けたままにしてください。チェックを外した項目は入力欄を変更しません。</p>' +
+        '<div class="ring-save-confirm__body ring-ocr-apply__body">' + rowsHtml + '</div>' +
+        '<div class="ring-save-confirm__actions">' +
+        '<button type="button" class="ring-save-confirm__btn ring-save-confirm__btn--secondary" data-act="cancel">キャンセル</button>' +
+        '<button type="button" class="ring-save-confirm__btn ring-save-confirm__btn--primary" data-act="apply">選択した項目を反映</button>' +
+        '</div></div></div>';
+    document.body.insertAdjacentHTML('beforeend', html);
+    var el = document.getElementById(id);
+    var card = el.querySelector('.ring-save-confirm__card');
+    function syncCardMaxHeight() {
+        if (!card) return;
+        var vv = window.visualViewport;
+        var h = vv ? vv.height : window.innerHeight;
+        var reserve = 48;
+        card.style.maxHeight = Math.max(160, Math.min(h * 0.8, h - reserve)) + 'px';
+    }
+    var detachVv = ringAttachVisualViewportCard(card, syncCardMaxHeight);
+    function close() {
+        detachVv();
+        if (el && el.parentNode) el.remove();
+    }
+    el.querySelector('[data-act="cancel"]').onclick = function () { close(); };
+    el.querySelector('.ring-save-confirm__backdrop').onclick = function () { close(); };
+    el.querySelector('[data-act="apply"]').onclick = function () {
+        var out = {};
+        el.querySelectorAll('.ring-ocr-apply__chk:checked').forEach(function (c) {
+            var key = c.getAttribute('data-key');
+            if (key && Object.prototype.hasOwnProperty.call(res, key)) out[key] = res[key];
+        });
+        close();
+        if (typeof onApply === 'function') onApply(out);
+    };
+}
+
+/**
+ * C-05: OCR で得た結果を確認モーダル経由でだけ反映。デモ時は項目別チェック（showOcrApplyConfirm）。
+ * @param {Record<string, *>} res
+ * @param {(picked: Record<string, *>) => void} applyFn
+ * @param {{ key: string, label: string, getCurrent?: () => string }[]=} ocrFieldDescriptors
+ */
+function handleOcrVinResultForForm(res, applyFn, ocrFieldDescriptors) {
+    if (res && res.vin) {
+        var demo = typeof window !== 'undefined' && window.__RING_OCR_DEMO__ === true;
+        var extraKeys = ['shaken', 'firstRegistration', 'mileage', 'workTitle', 'parts', 'model', 'engine', 'class', 'typeDesignation'].filter(function (k) {
+            var v = res[k];
+            return v != null && String(v).trim() !== '';
+        });
+        var useGrid = demo && ocrFieldDescriptors && ocrFieldDescriptors.length && extraKeys.length > 0;
+        if (useGrid) {
+            showOcrApplyConfirm(res, ocrFieldDescriptors, function (picked) {
+                resetOcrFailureCount();
+                if (typeof applyFn === 'function') applyFn(picked);
+            });
+            return;
+        }
+        showRingSaveConfirm({
+            title: '読み取り結果の確認',
+            lead: 'OCRで読み取った車体番号です。お車の表示と一致するかご確認のうえ反映してください。',
+            bodyHtml: ringConfirmRow('車体番号', res.vin),
+            confirmLabel: '入力欄に反映する',
+            onConfirm: function () {
+                resetOcrFailureCount();
+                if (typeof applyFn === 'function') applyFn(res);
+            },
+            onCancel: function () {}
+        });
+        return;
+    }
+    var n = incrementOcrFailureCount();
+    if (typeof showToast === 'function') {
+        showToast('warning', '読み取れませんでした。再撮影してください。');
+        if (n >= 2) {
+            showToast('info', '手入力でも続行できます。車台番号欄に直接入力してください。');
+        }
+    }
+}
+
+/**
+ * 書類・車検証画像の OCR（C-05）。本番は GAS ocr_vin + Vision API。車体番号のみ返却。
+ * デモ用全項目は window.__RING_OCR_DEMO__ === true のときのみ（固定値）。
  * @param {File[]} files
  * @returns {Promise<null|{vin?: string, shaken?: string, mileage?: string, workTitle?: string, parts?: string, model?: string, engine?: string, class?: string, typeDesignation?: string}>}
  */
 async function analyzeDocument(files) {
     if (!files || !files[0]) return null;
-    await new Promise(function (r) { setTimeout(r, 900); });
-    // デモ用：プリウス（ZVW50）相当の車検証読取イメージ
-    return {
-        vin: 'ZVW50-5012847',
-        shaken: '2026-12-15',
-        firstRegistration: '2020-03',
-        mileage: '',
-        workTitle: '一般整備',
-        parts: '',
-        model: 'DBA-ZVW50',
-        engine: '2ZR-FXE',
-        class: '12001',
-        typeDesignation: '17456'
-    };
+    if (typeof window !== 'undefined' && window.__RING_OCR_DEMO__ === true) {
+        await delay(900);
+        return {
+            vin: 'ZVW50-5012847',
+            shaken: '2026-12-15',
+            firstRegistration: '2020-03',
+            mileage: '',
+            workTitle: '一般整備',
+            parts: '',
+            model: 'DBA-ZVW50',
+            engine: '2ZR-FXE',
+            class: '12001',
+            typeDesignation: '17456'
+        };
+    }
+    var b64;
+    try {
+        b64 = await fileToVisionBase64(files[0], 2000);
+    } catch (e) {
+        return null;
+    }
+    if (!b64) return null;
+    try {
+        var json = await sendToGAS_Safe('ocr_vin', { imageBase64: b64 });
+        if (json && json.vin) {
+            return { vin: String(json.vin).toUpperCase() };
+        }
+        return null;
+    } catch (e) {
+        var msg = String(e && e.message ? e.message : e || '');
+        if (/OCR_NOT_CONFIGURED|VIN_NOT_FOUND|VISION_API_ERROR|IMAGE_REQUIRED|AUTH_/.test(msg)) {
+            /* 読取失敗系：メッセージは handleOcrVinResultForForm 側 */
+        } else if (typeof showToast === 'function') {
+            showToast('error', '読み取り処理でエラーが発生しました。再撮影か手入力をお試しください。');
+        }
+        return null;
+    }
 }
 
 /**
@@ -686,7 +1460,7 @@ function createGlobalUI() {
             ? ''
             : (canManageStaff
                 ? '<li><a href="factory_admin.html">👑 スタッフ管理</a></li>'
-                : '<li><a href="#" onclick="alert(\'スタッフ管理はオーナー権限のみ利用できます\'); return false;">👑 スタッフ管理（オーナー専用）</a></li>');
+                : '<li><a href="#" onclick="event.preventDefault(); showToast(\'info\',\'スタッフ管理はオーナー権限のみ利用できます\'); return false;">👑 スタッフ管理（オーナー専用）</a></li>');
         const pwMenuItem = canManageStaff
             ? '<li><a href="change_password.html">🔑 パスワード変更</a></li>' : '';
         const bizMenuLabel = profile && profile.shopType === 'dealer' ? '事業者専用メニュー' : '店舗・工場専用メニュー';
@@ -964,27 +1738,71 @@ function injectLoadingOverlay() {
         <div class="loading-arrow arrow-yellow"></div>
       </div>
       <div class="loading-title" id="ring-loading-title">処理中</div>
+      <div class="loading-elapsed" id="ring-loading-elapsed" aria-live="polite"></div>
       <div class="loading-text" id="ring-loading-text">少々お待ちください</div>
+      <button type="button" class="loading-cancel-btn" id="ring-loading-cancel" style="display:none">キャンセル</button>
     </div>
     `;
     document.body.insertAdjacentHTML('beforeend', loadingHtml);
 }
 window.addEventListener('DOMContentLoaded', injectLoadingOverlay);
 
+var __ringLoadingTick = null;
+var __ringLoadingBaseText = '';
+
 /**
- * ローディング表示開始
+ * 共通ローディング表示
+ * @param {string} [title]
+ * @param {string} [text]
+ * @param {{ cancelable?: boolean, onCancel?: () => void }} [opts]
  */
-function showLoading(title = "通信中", text = "少々お待ちください...") {
+function showLoading(title = "通信中", text = "少々お待ちください...", opts) {
+    opts = opts || {};
     injectLoadingOverlay();
-    document.getElementById('ring-loading-title').textContent = title;
-    document.getElementById('ring-loading-text').textContent = text;
-    document.getElementById('ring-loading-overlay').classList.add('show');
+    hideLoading(true);
+    const overlay = document.getElementById('ring-loading-overlay');
+    const titleEl = document.getElementById('ring-loading-title');
+    const textEl = document.getElementById('ring-loading-text');
+    const elapsedEl = document.getElementById('ring-loading-elapsed');
+    const cancelBtn = document.getElementById('ring-loading-cancel');
+    if (titleEl) titleEl.textContent = title;
+    __ringLoadingBaseText = text || '';
+    if (textEl) textEl.textContent = __ringLoadingBaseText;
+    if (elapsedEl) elapsedEl.textContent = '';
+    if (overlay) overlay.classList.add('show');
+    var start = Date.now();
+    if (__ringLoadingTick) clearInterval(__ringLoadingTick);
+    __ringLoadingTick = setInterval(function () {
+        var sec = Math.floor((Date.now() - start) / 1000);
+        if (elapsedEl) elapsedEl.textContent = sec > 0 ? '経過 ' + sec + ' 秒' : '';
+        if (textEl) {
+            if (sec >= 15) {
+                textEl.textContent = '時間がかかっています。通信環境をご確認ください…';
+            } else if (sec >= 6) {
+                textEl.textContent = 'まだできない場合は、処理が重い可能性があります…';
+            } else {
+                textEl.textContent = __ringLoadingBaseText;
+            }
+        }
+    }, 400);
+    if (cancelBtn) {
+        cancelBtn.style.display = opts.cancelable ? 'inline-block' : 'none';
+        cancelBtn.onclick = opts.cancelable ? function () {
+            hideLoading();
+            if (typeof opts.onCancel === 'function') opts.onCancel();
+        } : null;
+    }
 }
 
 /**
- * ローディング表示終了
+ * @param {boolean} [silent] タイマーのみ解除（連続の showLoading 用。オーバーレイは閉じない）
  */
-function hideLoading() {
+function hideLoading(silent) {
+    if (__ringLoadingTick) {
+        clearInterval(__ringLoadingTick);
+        __ringLoadingTick = null;
+    }
+    if (silent) return;
     const el = document.getElementById('ring-loading-overlay');
     if (el) el.classList.remove('show');
 }
@@ -996,7 +1814,7 @@ function hideLoading() {
  * @param {number} duration ミリ秒（省略時: success=1500, error=3500）
  */
 function showToast(type, message, duration) {
-    const ms = duration !== undefined ? duration : (type === 'error' ? 3500 : 1500);
+    const ms = duration !== undefined ? duration : (type === 'error' ? 3500 : (type === 'warning' ? 2800 : 1500));
     let el = document.getElementById('ring-toast');
     if (!el) {
         el = document.createElement('div');

@@ -2,7 +2,13 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#4b5563" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="manifest" href="manifest.json">
   <title>業者アカウント登録 | 車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css">
@@ -161,6 +167,11 @@
       </div>
       
       <div class="field">
+        <span class="label">代表者名・ご担当者名 <span class="required">必須</span></span>
+        <input type="text" id="inRepresentativeName" placeholder="例：山田 太郎（日常点検などの入力者表示に使います）" autocomplete="name">
+      </div>
+      
+      <div class="field">
         <span class="label">会社共通パスワード <span class="required">必須</span></span>
         <div class="pw-wrap">
           <input type="password" id="inPassword" placeholder="スタッフ全員で使うパスワード">
@@ -180,20 +191,31 @@
      */
     async function registerShop() {
       const shopName = document.getElementById('inShopName').value.trim();
+      const representativeName = document.getElementById('inRepresentativeName').value.trim();
       const shopType = document.getElementById('inShopType').value;
       const password = document.getElementById('inPassword').value.trim();
       
       let factoryType = "";
       let fullFactoryNumber = "";
 
-      if (!shopName || !password) return alert("会社名とパスワードは必須です！");
+      if (!shopName || !password) {
+        if (typeof showToast === 'function') showToast('error', '会社名とパスワードは必須です');
+        return;
+      }
+      if (!representativeName) {
+        if (typeof showToast === 'function') showToast('error', '代表者名・ご担当者名を入力してください。');
+        return;
+      }
 
       if (shopType === 'factory') {
         factoryType = document.getElementById('inFactoryType').value;
         const bureau = document.getElementById('inTransportBureau').value;
         const fNum = document.getElementById('inFactoryNumber').value.trim();
         
-        if (!bureau || !fNum) return alert("管轄の運輸局を選択し、番号を入力してください！");
+        if (!bureau || !fNum) {
+          if (typeof showToast === 'function') showToast('error', '管轄の運輸局と番号を入力してください');
+          return;
+        }
         
         fullFactoryNumber = bureau + " " + fNum; 
       }
@@ -224,6 +246,7 @@
             action:        'register_shop',
             shopId:        shopId,
             shopName:      shopName,
+            representativeName: representativeName,
             shopType:      shopType,
             factoryType:   factoryType,
             factoryNumber: fullFactoryNumber,
@@ -240,6 +263,7 @@
           const profile = {
             shopId:      finalShopId,
             shopName:    shopName,
+            representativeName: representativeName,
             shopType:    shopType,
             factoryType: factoryType,
             staffId:     finalMasterId,

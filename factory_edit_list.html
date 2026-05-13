@@ -2,7 +2,13 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#4b5563" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="manifest" href="manifest.json">
   <title>入力履歴一覧 | 車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css">
@@ -139,8 +145,17 @@
       container.innerHTML = html;
     }
 
-    function voidLog(targetId) {
-      if (!confirm("この記録を取消しますか？\n※記録はサーバー上に残ります（不正防止のため物理削除はできません）。")) return;
+    async function voidLog(targetId) {
+      const ok = typeof showRingConfirm === 'function'
+        ? await showRingConfirm({
+            title: '記録の取消',
+            message: 'この記録を取消しますか？\n※記録はサーバー上に残ります（不正防止のため物理削除はできません）。',
+            okLabel: '取消する',
+            cancelLabel: '閉じる',
+            danger: true,
+          })
+        : confirm("この記録を取消しますか？\n※記録はサーバー上に残ります（不正防止のため物理削除はできません）。");
+      if (!ok) return;
 
       showLoading("取消処理中", "記録を取消しています...");
 

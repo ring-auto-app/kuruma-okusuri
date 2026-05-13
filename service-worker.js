@@ -1,8 +1,10 @@
-const CACHE_NAME = "car-nappy-v5";
+const CACHE_NAME = "car-nappy-v6";
+const OFFLINE_URL = "./offline.html";
 
 const PRECACHE_URLS = [
   "./",
   "./index.html",
+  "./offline.html",
   "./common.css",
   "./app.js",
   "./theme.js",
@@ -11,10 +13,26 @@ const PRECACHE_URLS = [
   "./icons/icon-512.png"
 ];
 
+function fetchWithTimeout(req, ms) {
+  const timeout = ms || 8000;
+  return Promise.race([
+    fetch(req),
+    new Promise(function (_, reject) {
+      setTimeout(function () { reject(new Error("TIMEOUT")); }, timeout);
+    })
+  ]);
+}
+
 self.addEventListener("install", event => {
   self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(PRECACHE_URLS))
+    caches.open(CACHE_NAME).then(async function (cache) {
+      for (const url of PRECACHE_URLS) {
+        try {
+          await cache.add(url);
+        } catch (e) { /* H-05: 1件失敗でも他を温存 */ }
+      }
+    })
   );
 });
 
@@ -33,24 +51,31 @@ self.addEventListener("fetch", event => {
   if (req.method !== "GET") return;
 
   const url = new URL(req.url);
-  const isAppShell = url.origin === location.origin &&
+  const isAppShell = url.origin === self.location.origin &&
     /\.(html|js|css|json)$/.test(url.pathname);
 
   if (isAppShell) {
-    // HTML/JS/CSS/JSON: network-first（常に最新コードを取得、失敗時キャッシュ）
-    event.respondWith(
-      fetch(req)
-        .then(res => {
-          const copy = res.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(req, copy));
-          return res;
-        })
-        .catch(() => caches.match(req))
-    );
-  } else {
-    // 画像など静的リソース: cache-first
-    event.respondWith(
-      caches.match(req).then(cached => cached || fetch(req))
-    );
+    event.respondWith((async function () {
+      try {
+        const res = await fetchWithTimeout(req, req.mode === "navigate" ? 5000 : 8000);
+        const copy = res.clone();
+        const cache = await caches.open(CACHE_NAME);
+        await cache.put(req, copy);
+        return res;
+      } catch (e) {
+        const cached = await caches.match(req);
+        if (cached) return cached;
+        if (req.mode === "navigate") {
+          const offline = await caches.match(OFFLINE_URL);
+          if (offline) return offline;
+        }
+        throw e;
+      }
+    })());
+    return;
   }
+
+  event.respondWith(
+    caches.match(req).then(cached => cached || fetch(req))
+  );
 });

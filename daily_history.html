@@ -2,7 +2,13 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#4b5563" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="manifest" href="manifest.json">
   <title>日常点検履歴 | 車のお薬手帳</title>
   <link rel="stylesheet" href="common.css">
   <script src="app.js"></script>
@@ -232,6 +238,10 @@
     let currentView = 'cal';
     let curYear, curMonth; // 0-indexed month
 
+    function normVinDaily(v) {
+      return typeof _normalize === 'function' ? _normalize(v) : String(v || '');
+    }
+
     // 点検項目定義
     const inspectionData = [
       { cat: "エンジン", items: [
@@ -263,19 +273,31 @@
 
     window.addEventListener('DOMContentLoaded', () => {
       showLoading("データ読込中", "点検履歴を取得しています...");
-      setTimeout(() => {
+      (async () => {
         document.getElementById('dispVin').textContent = `VIN: ${currentVin || '未指定'}`;
         const vehicles = JSON.parse(localStorage.getItem('nappy_vehicles_v1') || '[]');
-        const car = vehicles.find(v => v.vin === currentVin);
+        const car = vehicles.find(v => normVinDaily(v.vin) === normVinDaily(currentVin));
         document.getElementById('dispName').textContent = car ? (car.model || "名称未設定") : "車両名未設定";
-        fetchLocalHistory();
+        await fetchLocalHistory();
         hideLoading();
-      }, 300);
+      })();
     });
 
-    function fetchLocalHistory() {
+    async function fetchLocalHistory() {
       const allLogs = JSON.parse(localStorage.getItem('inspections_v1') || '[]');
-      fetchedData = allLogs.filter(log => log.vin === currentVin && log.type && log.type.startsWith('inspection'));
+      const vNorm = normVinDaily(currentVin);
+      const local = allLogs.filter(log =>
+        normVinDaily(log.vin) === vNorm && log.type && String(log.type).startsWith('inspection'));
+
+      let server = [];
+      if (typeof fetchDailyHistoryFromGas === 'function') {
+        server = await fetchDailyHistoryFromGas(currentVin);
+      }
+      if (typeof mergeInspectionHistoryLocalAndServer === 'function') {
+        fetchedData = mergeInspectionHistoryLocalAndServer(local, server);
+      } else {
+        fetchedData = local;
+      }
 
       const now = new Date();
       curYear  = now.getFullYear();
@@ -477,17 +499,23 @@
       }
     }
 
-    function deleteLog(logId, event) {
+    async function deleteLog(logId, event) {
       event.preventDefault(); event.stopPropagation();
-      if (!confirm("この点検履歴を削除しますか？")) return;
-      showLoading("削除中", "履歴データを消去しています...");
-      setTimeout(() => {
-        let all = JSON.parse(localStorage.getItem('inspections_v1') || '[]');
-        all = all.filter(log => log.log_id !== logId);
-        localStorage.setItem('inspections_v1', JSON.stringify(all));
-        fetchLocalHistory();
-        hideLoading();
-      }, 300);
+      const ok = typeof showRingConfirm === 'function'
+        ? await showRingConfirm({
+            title: '履歴の削除',
+            message: 'この点検履歴を削除しますか？',
+            okLabel: '削除する',
+            cancelLabel: 'キャンセル',
+            danger: true,
+          })
+        : confirm("この点検履歴を削除しますか？");
+      if (!ok) return;
+      let all = JSON.parse(localStorage.getItem('inspections_v1') || '[]');
+      all = all.filter(log => log.log_id !== logId);
+      localStorage.setItem('inspections_v1', JSON.stringify(all));
+      fetchLocalHistory();
+      if (typeof showToast === 'function') showToast('success', '一覧から削除しました（端末ローカルのみ／サーバー未同期時は運用ポリシーに従います）。');
     }
 
     // ─── 印刷 ───

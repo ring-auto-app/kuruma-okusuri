@@ -3,6 +3,16 @@
  * ユーザーの役割（role）に応じてCSS変数を動的に上書きし、UIの色を切り替えます。
  */
 
+/** <meta name="theme-color"> を CSS --accent と揃える（ui.ux L-008） */
+function syncThemeColorMeta() {
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (!meta) return;
+    try {
+        const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+        if (accent) meta.setAttribute('content', accent);
+    } catch (e) { /* ignore */ }
+}
+
 function applyRinGTheme() {
     // セッション情報の取得（app.jsの共通関数またはストレージから直接取得）
     const sessionRaw = localStorage.getItem("nappy_current_user") || localStorage.getItem("nappy_profile_v1");
@@ -62,6 +72,7 @@ function applyRinGTheme() {
     Object.keys(theme).forEach(key => {
         root.style.setProperty(key, theme[key]);
     });
+    syncThemeColorMeta();
 
     // 特定のIDを持つ要素（サブタイトル等）のテキストを役割に合わせて自動更新
     const subTitle = document.getElementById('profileSubTitle');

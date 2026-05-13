@@ -2,7 +2,13 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#4b5563" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="manifest" href="manifest.json">
   <title>履歴詳細 | 車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css">
@@ -42,16 +48,27 @@
       background: var(--page-bg); border: 1px dashed var(--line); border-radius: 10px; padding: 10px;
       white-space: pre-wrap;
     }
+
+    @media print {
+      body {
+        padding: 16px !important;
+        background: #fff !important;
+      }
+    }
   </style>
 </head>
 <body>
   <div class="container">
-    <div class="header">
+    <div class="header no-print">
       <a id="backBtn" class="back-link">◁ 戻る</a>
       <h1 class="title">履歴詳細</h1>
     </div>
 
     <div id="content"></div>
+
+    <button type="button" class="ring-btn-print-sheet no-print" onclick="window.print()">
+      この履歴を印刷／PDF出力
+    </button>
   </div>
 
   <script>

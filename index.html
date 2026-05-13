@@ -2,7 +2,12 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#4b5563" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
   <title>車のお薬手帳 | ホーム</title>
   
   <link rel="manifest" href="manifest.json">
@@ -213,6 +218,17 @@
 
     <div class="pwa-hint">PWA対応：ホーム画面に追加できます</div>
 
+    <div id="ringA2hsPanel" class="ring-a2hs-panel" style="display:none;">
+      <div class="ring-a2hs-panel__title">ホーム画面に追加</div>
+      <p class="ring-a2hs-panel__body" id="ringA2hsAndroidHint">Android の場合、次のボタンからインストールできます。</p>
+      <button type="button" class="ring-a2hs-panel__btn" id="ringA2hsAndroidBtn">ホームに追加</button>
+      <div id="ringA2hsIos" class="ring-a2hs-ios" style="display:none;">
+        <strong>iPhone / iPad（Safari）</strong><br>
+        画面下の「共有」から「ホーム画面に追加」を選んでください。
+      </div>
+      <button type="button" class="ring-a2hs-panel__btn ring-a2hs-panel__btn--ghost" id="ringA2hsDismiss">閉じる</button>
+    </div>
+
     <div class="demo-public" id="demoPublicBlock">
       <p class="demo-public-title">まず試してみる（デモ）</p>
       <p class="demo-public-note">登録なしで画面の流れを体験できます。サンプルの車両・履歴が表示されます。</p>
@@ -268,18 +284,15 @@
     document.addEventListener("DOMContentLoaded", () => {
       const profile = typeof getCurrentProfile === "function" ? getCurrentProfile() : null;
 
-      // ログイン済みは各ホームへ自動スキップ
+      // ログイン済みは各ホームへ即転送（全画面ローディングと遅延を挟まず二重体感を抑える）
       if (profile) {
-        showLoading("自動ログイン中", "前回のログイン情報を確認しています...");
-        setTimeout(() => {
-          if (profile.shopType === 'factory') {
-            location.replace("factory_home.html");
-          } else if (profile.shopType === 'dealer') {
-            location.replace("dealer_home.html");
-          } else {
-            location.replace("user_home.html");
-          }
-        }, 500);
+        if (profile.shopType === 'factory') {
+          location.replace("factory_home.html");
+        } else if (profile.shopType === 'dealer') {
+          location.replace("dealer_home.html");
+        } else {
+          location.replace("user_home.html");
+        }
         return;
       }
 
@@ -290,6 +303,60 @@
       }
 
       document.getElementById('mainMenu').style.display = 'flex';
+
+      (function setupRingA2hs() {
+        var IOS_KEY = 'ring_a2hs_ios_hint_v1';
+        function isIos() {
+          return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+            (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        }
+        function isStandalone() {
+          return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+        }
+        var panel = document.getElementById('ringA2hsPanel');
+        var iosEl = document.getElementById('ringA2hsIos');
+        var androidBtn = document.getElementById('ringA2hsAndroidBtn');
+        var dismiss = document.getElementById('ringA2hsDismiss');
+        var androidHint = document.getElementById('ringA2hsAndroidHint');
+
+        if (!panel) return;
+        if (isStandalone()) return;
+
+        if (dismiss) {
+          dismiss.onclick = function () {
+            panel.style.display = 'none';
+            try { localStorage.setItem(IOS_KEY, '1'); } catch (e) {}
+          };
+        }
+
+        window.addEventListener('beforeinstallprompt', function (e) {
+          e.preventDefault();
+          window.__ringDeferredPrompt = e;
+          panel.style.display = 'block';
+          if (iosEl) iosEl.style.display = 'none';
+          if (androidHint) androidHint.style.display = 'block';
+          if (androidBtn) androidBtn.style.display = 'block';
+        });
+
+        if (androidBtn) {
+          androidBtn.onclick = function () {
+            var dp = window.__ringDeferredPrompt;
+            if (!dp) return;
+            dp.prompt();
+            dp.userChoice.finally(function () {
+              window.__ringDeferredPrompt = null;
+              panel.style.display = 'none';
+            });
+          };
+        }
+
+        if (isIos() && !localStorage.getItem(IOS_KEY)) {
+          panel.style.display = 'block';
+          if (iosEl) iosEl.style.display = 'block';
+          if (androidHint) androidHint.style.display = 'none';
+          if (androidBtn) androidBtn.style.display = 'none';
+        }
+      })();
     });
 
     if ("serviceWorker" in navigator) {

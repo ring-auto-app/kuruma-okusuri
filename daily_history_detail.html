@@ -2,7 +2,13 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#4b5563" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="manifest" href="manifest.json">
   <title>点検詳細 | 車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css">
@@ -88,6 +94,11 @@
       <div class="detail-group">
         <div class="d-label">点検日 / タイトル</div>
         <div class="d-value" id="valTitle">読込中...</div>
+      </div>
+
+      <div class="detail-group" id="grpReporter" style="display:none;">
+        <div class="d-label">入力店舗・入力者</div>
+        <div class="d-value d-value-small" id="valReporter"></div>
       </div>
 
       <div id="inspectionForm" style="margin-bottom: 34px;"></div>
@@ -203,31 +214,47 @@
     });
 
     /**
-     * ローカルストレージから点検情報を読み込み表示する
+     * ローカルまたは GAS から点検情報を読み込み表示（C-04）
      */
-    function loadLocalDetail() {
-      // 掟3：読み込み開始時にローディングを表示
+    async function loadLocalDetail() {
       showLoading("データ取得中", "点検記録を読み込んでいます...");
 
-      setTimeout(() => {
+      try {
         const rawData = localStorage.getItem('inspections_v1') || '[]';
         const allLogs = JSON.parse(rawData);
-        
-        const targetLog = allLogs.find(log => log.log_id === logId || log.createdAt === logId);
 
+        let targetLog = allLogs.find(log => String(log.log_id) === String(logId) || String(log.logId) === String(logId));
+
+        if (!targetLog && typeof fetchDailyHistoryFromGas === 'function') {
+          const serverList = await fetchDailyHistoryFromGas(vin);
+          targetLog = serverList.find(log => String(log.log_id) === String(logId));
+        }
+
+        const grpReporter = document.getElementById('grpReporter');
         if (targetLog) {
           const dateStr = targetLog.date || "日付不明";
           const titleStr = targetLog.title || "タイトルなし";
           document.getElementById('valTitle').textContent = `${dateStr}\n${titleStr}`;
-          
+
+          if (targetLog.inputShopName || targetLog.inputStaffName) {
+            grpReporter.style.display = '';
+            document.getElementById('valReporter').textContent = [
+              targetLog.inputShopName ? ('店舗: ' + targetLog.inputShopName) : '',
+              targetLog.inputStaffName ? ('入力者: ' + targetLog.inputStaffName) : ''
+            ].filter(Boolean).join(' / ');
+          } else {
+            grpReporter.style.display = 'none';
+          }
+
           document.getElementById('valMemo').textContent = targetLog.memo || "（メモなし）";
-          
+
           document.getElementById('valSystem').innerHTML = `ログID: ${targetLog.log_id || logId}<br>VIN: ${vin}`;
 
           const formContainer = document.getElementById('inspectionForm');
           let htmlStr = "";
 
-          if (targetLog.type === 'inspection_user') {
+          const isUserStyle = targetLog.type === 'inspection_user' || /^INS-/i.test(String(targetLog.log_id || ''));
+          if (isUserStyle) {
             // ─── ユーザー点検：○/×形式で表示 ───
             htmlStr += `<h2 class="category-title" style="margin-top:0;">点検結果</h2>`;
 
@@ -285,11 +312,11 @@
           document.getElementById('valTitle').textContent = "データが見つかりません";
           document.getElementById('valMemo').textContent = "該当のログは保存されていません。";
           document.getElementById('valSystem').innerHTML = `ログID: ${logId}<br>VIN: ${vin}`;
+          document.getElementById('grpReporter').style.display = 'none';
         }
-        
-        // 掟4：完了時にローディングを解除
+      } finally {
         hideLoading();
-      }, 300);
+      }
     }
   </script>
 </body>

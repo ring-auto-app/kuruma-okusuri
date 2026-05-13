@@ -2,7 +2,13 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#4b5563" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="manifest" href="manifest.json">
   <title>整備詳細 | 車のお薬手帳</title>
   <link rel="stylesheet" href="common.css">
   <script src="app.js"></script>
@@ -62,13 +68,22 @@
     .check-val.v-ho  { color: #2563eb; background: #dbeafe; }
     .check-val.v-ko  { color: #d97706; background: #fef3c7; }
     .check-val.v-cho { color: #7c3aed; background: #ede9fe; }
+
+    @media print {
+      body {
+        padding: 16px !important;
+        background: #fff !important;
+      }
+    }
   </style>
 </head>
 <body>
   <div class="app">
-    <div class="header">
+    <div class="header no-print">
       <a id="backBtn" class="back-link">≪戻る</a>
       <h1 class="title">整備詳細</h1>
+    </div>
+    <div class="record-head">
       <div class="record-title" id="logTitle">---</div>
       <div class="record-date" id="logDate">---</div>
     </div>
@@ -103,6 +118,10 @@
       <span class="label" id="logCertTypeLabel" style="margin-top:8px;">指定/認証番号</span>
       <div class="value" id="logCertNumber" style="font-size:15px;"></div>
     </div>
+
+    <button type="button" class="ring-btn-print-sheet no-print" onclick="window.print()">
+      この整備記録を印刷／PDF出力
+    </button>
   </div>
 
   <script>

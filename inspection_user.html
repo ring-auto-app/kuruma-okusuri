@@ -2,7 +2,13 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#4b5563" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="manifest" href="manifest.json">
   <title>日常点検 (マイカー用) | 車のお薬手帳</title>
   <link rel="stylesheet" href="common.css">
   <script src="app.js"></script>
@@ -57,7 +63,7 @@
     .hidden-radio { display: none; }
 
     .btn-label {
-      flex: 1; min-height: var(--tap-secondary); padding: 10px 0;
+      flex: 1; min-height: var(--tap-min); padding: 10px 0;
       display: inline-flex; align-items: center; justify-content: center;
       text-align: center; font-size: 16px; font-weight: 900;
       border-radius: 12px; cursor: pointer; border: 2px solid var(--line); color: var(--muted);
@@ -79,6 +85,10 @@
       width: 100%; max-width: 400px; padding: 16px; background: var(--accent); color: white; border: none; 
       border-radius: 999px; font-size: 18px; font-weight: 900; box-shadow: 0 8px 25px var(--highlighter); cursor: pointer;
     }
+    .item-card.ring-inspection-unset {
+      border-color: #f59e0b;
+      box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.35);
+    }
   </style>
 </head>
 <body>
@@ -87,6 +97,7 @@
       <a id="backBtn" class="back-link">◁ 履歴へ戻る</a>
       <h1 class="title">日常点検</h1>
       <p class="sub-title">気になるところがあれば「×」を選んでメモを残しましょう。次回の点検時に役立ちます！</p>
+      <p class="sub-title" id="inspectionProgress" style="margin-top:4px;font-weight:900;color:var(--muted);">確認済み 0 / 全 9</p>
     </div>
 
     <div class="basic-info-card">
@@ -108,7 +119,7 @@
       <textarea id="inMemo" rows="3" placeholder="「いつ、どんな時に異変感じたか…」など、自由に書いてください！"></textarea>
     </div>
 
-    <div class="save-area"><button class="save-btn" id="saveBtn">手帳に記録する</button></div>
+    <div class="save-area ring-sticky-save-wrap"><button class="save-btn" id="saveBtn">手帳に記録する</button></div>
 
   </div> 
   <script>
@@ -158,8 +169,16 @@
         const vinInput = document.getElementById('inVin');
         vinInput.value = targetVin;
         vinInput.readOnly = true; 
+        const up = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+        if (up && typeof isVinRegisteredForInspection === 'function') {
+          if (!isVinRegisteredForInspection(targetVin, up)) {
+            if (typeof showToast === 'function') showToast('error', 'この車両はマイカーに登録されていません。');
+            location.replace('user_home.html');
+            return;
+          }
+        }
       } else {
-        alert("車両データが見つかりません。");
+        if (typeof showToast === 'function') showToast('error', '車両データが見つかりません。');
         location.replace("user_home.html");
       }
 
@@ -191,7 +210,7 @@
             <div class="item-desc">${item.desc}</div>
           </div>
           <div class="btn-group">
-            <input type="radio" name="${item.id}" id="${item.id}-ok" value="OK" class="hidden-radio ok-radio" checked>
+            <input type="radio" name="${item.id}" id="${item.id}-ok" value="OK" class="hidden-radio ok-radio">
             <label for="${item.id}-ok" class="btn-label">○ OK</label>
             
             <input type="radio" name="${item.id}" id="${item.id}-ng" value="NG" class="hidden-radio ng-radio">
@@ -204,6 +223,21 @@
     });
     formContainer.innerHTML = htmlStr;
 
+    function updateUserInspectionProgress() {
+      const total = userItems.length;
+      let done = 0;
+      userItems.forEach(item => {
+        if (document.querySelector(`input[name="${item.id}"]:checked`)) done++;
+      });
+      const el = document.getElementById('inspectionProgress');
+      if (el) el.textContent = '確認済み ' + done + ' / 全 ' + total;
+    }
+
+    formContainer.querySelectorAll('input[type="radio"]').forEach(r => {
+      r.addEventListener('change', updateUserInspectionProgress);
+    });
+    updateUserInspectionProgress();
+
     // 保存処理
     document.getElementById('saveBtn').addEventListener('click', function () {
       const saveBtn = document.getElementById('saveBtn');
@@ -212,7 +246,23 @@
         const date = document.getElementById('inDate').value;
         let memo = document.getElementById('inMemo').value.trim();
 
-        if (!vin) return alert("車台番号(VIN)がありません。");
+        if (!vin) {
+          if (typeof showToast === 'function') showToast('error', '車台番号(VIN)がありません。');
+          return;
+        }
+
+        userItems.forEach(item => {
+          document.querySelector(`#${item.id}-ok`).closest('.item-card').classList.remove('ring-inspection-unset');
+        });
+
+        const unsetItems = userItems.filter(item => !document.querySelector(`input[name="${item.id}"]:checked`));
+        if (unsetItems.length > 0) {
+          unsetItems.forEach(item => {
+            document.querySelector(`#${item.id}-ok`).closest('.item-card').classList.add('ring-inspection-unset');
+          });
+          if (typeof showToast === 'function') showToast('warning', 'すべての項目を確認してください（○ または × を選択）');
+          return;
+        }
 
         let hasIssue = false;
         const issues = [];
@@ -220,7 +270,7 @@
 
         userItems.forEach(item => {
           const checkedOpt = document.querySelector(`input[name="${item.id}"]:checked`);
-          const val = checkedOpt ? checkedOpt.value : 'OK';
+          const val = checkedOpt ? checkedOpt.value : '';
           userChecks[item.id] = val;
           if (val === 'NG') {
             hasIssue = true;
@@ -233,6 +283,13 @@
           let issueText = "【⚠️ 気になる項目】\n" + issues.join("\n");
           memo = memo ? issueText + "\n\n【全体メモ】\n" + memo : issueText;
         }
+
+        if (typeof window !== 'undefined' && window.__ringSaving) {
+          if (typeof showToast === 'function') showToast('info', '保存処理中です。完了までお待ちください。');
+          return;
+        }
+        if (typeof window !== 'undefined') window.__ringSaving = true;
+        try {
 
         showLoading("保存中", "手帳に記録しています...");
 
@@ -264,19 +321,45 @@
           localStorage.setItem('nappy_logs_v1', JSON.stringify(logs));
         }
 
-        // GASにも送信（No.005）
-        try {
-          await sendToGAS_Safe('save_inspection', {
-            log_id: newLogId, vin: vin, date: date, title: '日常点検',
-            memo: memo, photoUrl: '', createdAt: createdAt, mileage: mileage
-          });
-        } catch (e) { /* ローカル保存済みのため継続 */ }
+        const userProfile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+        const inputStaffName = userProfile
+          ? (userProfile.userName || userProfile.displayName || userProfile.loginId || 'ユーザー')
+          : 'ユーザー';
+
+        const gasPayload = {
+          log_id: newLogId, vin: vin, date: date, title: '日常点検',
+          memo: memo, photoUrl: '', createdAt: createdAt, mileage: mileage,
+          inputShopName: '',
+          inputStaffName: inputStaffName,
+          staffName: inputStaffName
+        };
+        const gasResult = await saveInspectionToGasWithRetry(gasPayload);
 
         hideLoading();
-        showToast('success', hasIssue ? '記録しました（整備履歴にも追加）' : '正常に登録されました');
-        setTimeout(() => {
-          location.replace(targetVin ? `user_inspection_history.html?vin=${encodeURIComponent(targetVin)}` : "user_home.html");
-        }, 1200);
+        if (gasResult.hardFail) {
+          showToast('error', 'サーバー上でこの車両が確認できません。車両登録後に再度お試しください。');
+          return;
+        }
+        const dest = targetVin ? `user_inspection_history.html?vin=${encodeURIComponent(targetVin)}` : "user_home.html";
+        const variant = gasResult.queued ? 'queued' : 'success';
+        const okMsg = hasIssue ? '記録しました（整備履歴にも追加）' : '正常に登録されました';
+        if (typeof showRingSavedSplash === 'function') {
+          showRingSavedSplash({
+            variant,
+            message: variant === 'queued' ? undefined : okMsg,
+            onDone: () => location.replace(dest),
+          });
+        } else {
+          if (gasResult.queued) {
+            showToast('info', '端末に保存しました。回線が復旧すると点検記録を自動でサーバーへ送信します。');
+          } else {
+            showToast('success', okMsg);
+          }
+          setTimeout(() => location.replace(dest), 1200);
+        }
+        } finally {
+          if (typeof window !== 'undefined') window.__ringSaving = false;
+        }
       });
     });
   </script>

@@ -2,7 +2,13 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#4b5563" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="manifest" href="manifest.json">
   <title>初回登録 | 車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css">
@@ -175,13 +181,18 @@
         const number = document.getElementById('facNumber').value.trim();
         const facType = document.querySelector('input[name="facType"]:checked').value;
 
-        if (!name) return alert("会社名/工場名を入力してください。");
+        if (!name) {
+          if (typeof showToast === 'function') showToast('error', '会社名／工場名を入力してください。');
+          return;
+        }
         
         if (!/^\d{2}$/.test(branch)) {
-          return alert("運輸支局コードは「半角数字2桁」で入力してください。\n（例：沖縄なら99、品川なら13など）");
+          if (typeof showToast === 'function') showToast('error', '運輸支局コードは半角数字2桁で入力してください。');
+          return;
         }
         if (!/^\d+$/.test(number)) {
-          return alert("一連番号は「半角数字」で入力してください。");
+          if (typeof showToast === 'function') showToast('error', '一連番号は半角数字で入力してください。');
+          return;
         }
 
         showLoading("登録中", "工場アカウントを作成しています...");
@@ -196,13 +207,18 @@
           localStorage.setItem('factoryCode', fullCode);
 
           hideLoading();
-          alert(`整備工場コード [${fullCode}] の形式を確認しました。\nようこそ、${name} さん！`);
+          if (typeof showToast === 'function') {
+            showToast('success', `工場コード「${fullCode}」を確認しました。ようこそ${name}さん！`, 2600);
+          }
           location.href = "factory_home.html"; 
         }, 500);
 
       } else if (selectedRole === 'dealer') {
         const name = document.getElementById('bizName').value.trim();
-        if (!name) return alert("会社名を入力してください。");
+        if (!name) {
+          if (typeof showToast === 'function') showToast('error', '会社名を入力してください。');
+          return;
+        }
         
         showLoading("登録中", "事業者アカウントを作成しています...");
 
@@ -215,7 +231,10 @@
 
       } else if (selectedRole === 'user') {
         const name = document.getElementById('userName').value.trim();
-        if (!name) return alert("お名前を入力してください。");
+        if (!name) {
+          if (typeof showToast === 'function') showToast('error', 'お名前を入力してください。');
+          return;
+        }
 
         showLoading("準備中", "マイカー手帳を作成しています...");
 

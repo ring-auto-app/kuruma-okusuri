@@ -2,7 +2,13 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#4b5563" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="manifest" href="manifest.json">
   <title>スタッフ管理 | 車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css">
@@ -72,6 +78,7 @@
     </div>
 
     <h2 class="section-title">スタッフ一覧</h2>
+    <p style="font-size: 12px; color: var(--muted); margin: -8px 0 12px; font-weight: 800; line-height: 1.5;">スタッフが未登録の店舗では、日常点検の入力者表示に「会社・工場情報」の代表者名が使われます。</p>
     <div class="table-wrap">
       <table>
         <thead>
@@ -258,7 +265,16 @@
      * スタッフの削除処理 — GAS成功後にlocalStorage更新
      */
     async function deleteStaff(loginId) {
-      if (!confirm(`本当にID「${loginId}」を削除しますか？`)) return;
+      const ok = typeof showRingConfirm === 'function'
+        ? await showRingConfirm({
+            title: 'スタッフの削除',
+            message: `本当にID「${loginId}」を削除しますか？`,
+            okLabel: '削除する',
+            cancelLabel: 'キャンセル',
+            danger: true,
+          })
+        : confirm(`本当にID「${loginId}」を削除しますか？`);
+      if (!ok) return;
 
       showLoading("削除中", "スタッフ情報を削除しています...");
 

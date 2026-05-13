@@ -2,7 +2,13 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#4b5563" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="manifest" href="manifest.json">
   <title>日常点検 | 車のお薬手帳</title>
   <link rel="stylesheet" href="common.css">
   <script src="app.js"></script>
@@ -75,6 +81,16 @@
     textarea { line-height: 24px; min-height: 72px; }
 
     .save-area { margin-top: 34px; display: flex; flex-direction: column; align-items: center; width: 100%; }
+
+    .item-row.ring-inspection-unset {
+      border-bottom-color: #f59e0b;
+      box-shadow: inset 0 -2px 0 0 rgba(245, 158, 11, 0.65);
+      border-radius: 8px;
+      padding-left: 8px;
+      padding-right: 8px;
+      margin-left: -8px;
+      margin-right: -8px;
+    }
   </style>
 </head>
 <body>
@@ -84,6 +100,7 @@
       <div>
         <h1 class="title">日常点検</h1>
         <p class="sub-title" id="profileSubTitle">整備記録</p>
+        <p class="sub-title" id="inspectionBizProgress" style="margin-top:4px;font-weight:900;">確認済み 0 / 全 0</p>
       </div>
     </div>
 
@@ -114,7 +131,7 @@
       <textarea id="inMemo" placeholder="メモを入力..."></textarea>
     </div>
 
-    <div class="save-area"><button class="save-btn" id="saveBtn">点検結果を保存する</button></div>
+    <div class="save-area ring-sticky-save-wrap"><button class="save-btn" id="saveBtn">点検結果を保存する</button></div>
   </div>
 
   <script>
@@ -146,7 +163,7 @@
 
     // viewer（閲覧のみ）は日常点検入力も不可
     if (profile && profile.role === 'viewer') {
-      alert('入力権限がありません。\nオーナーに権限設定をご確認ください。');
+      if (typeof showToast === 'function') showToast('error', '入力権限がありません。オーナーにご確認ください。');
       history.back();
     }
     
@@ -182,6 +199,13 @@
         const vinInput = document.getElementById('inVin');
         vinInput.value = targetVin;
         vinInput.readOnly = true; 
+        if (profile && typeof isVinRegisteredForInspection === 'function') {
+          if (!isVinRegisteredForInspection(targetVin, profile)) {
+            if (typeof showToast === 'function') showToast('error', 'この車両は管理車両に登録されていません。');
+            location.replace('vehicles.html');
+            return;
+          }
+        }
       }
     });
 
@@ -234,7 +258,7 @@
     inspectionData.forEach(group => {
       htmlStr += `<h2 class="category-title">【${group.cat}】</h2>`;
       group.items.forEach(item => {
-        htmlStr += `<div class="item-row"><div class="item-name">${item.name}</div><div class="options">`;
+        htmlStr += `<div class="item-row" data-inspection-row="${item.id}"><div class="item-name">${item.name}</div><div class="options">`;
         item.opts.forEach((opt, index) => {
           const optId = `${item.id}_${index}`;
           htmlStr += `
@@ -247,39 +271,86 @@
     });
     formContainer.innerHTML = htmlStr;
 
+    function countInspectionBizItems() {
+      let n = 0;
+      inspectionData.forEach(g => { n += g.items.length; });
+      return n;
+    }
+
+    function updateInspectionBizProgress() {
+      const total = countInspectionBizItems();
+      let done = 0;
+      inspectionData.forEach(group => {
+        group.items.forEach(item => {
+          if (document.querySelector(`input[name="${item.id}"]:checked`)) done++;
+        });
+      });
+      const el = document.getElementById('inspectionBizProgress');
+      if (el) el.textContent = '確認済み ' + done + ' / 全 ' + total;
+    }
+
+    formContainer.querySelectorAll('input[type="radio"]').forEach(r => {
+      r.addEventListener('change', updateInspectionBizProgress);
+    });
+    updateInspectionBizProgress();
+
     document.getElementById('allGoodBtn').addEventListener('click', () => {
       document.querySelectorAll('.opt-radio').forEach(radio => {
         if (radio.value === '良') radio.checked = true;
       });
+      updateInspectionBizProgress();
     });
 
     document.getElementById('saveBtn').addEventListener('click', function () {
       const saveBtn = document.getElementById('saveBtn');
       runOnce(saveBtn, async () => {
         const vin = document.getElementById('inVin').value.trim();
-        if (!vin) return alert("車台番号(VIN)がありません。");
+        if (!vin) {
+          if (typeof showToast === 'function') showToast('error', '車台番号(VIN)がありません。');
+          return;
+        }
 
-        const memo = document.getElementById('inMemo').value.trim();
-        let hasIssue = false;
+        document.querySelectorAll('[data-inspection-row]').forEach(el => el.classList.remove('ring-inspection-unset'));
+
         let unselectedCount = 0;
-        let checks = {};
-
         inspectionData.forEach(group => {
           group.items.forEach(item => {
             const checkedOpt = document.querySelector(`input[name="${item.id}"]:checked`);
             if (!checkedOpt) {
               unselectedCount++;
-            } else {
+              const row = document.querySelector(`[data-inspection-row="${item.id}"]`);
+              if (row) row.classList.add('ring-inspection-unset');
+            }
+          });
+        });
+
+        if (unselectedCount > 0) {
+          if (typeof showToast === 'function') showToast('warning', 'すべての項目を確認してください（未確認：' + unselectedCount + '件）');
+          return;
+        }
+
+        const memo = document.getElementById('inMemo').value.trim();
+        let hasIssue = false;
+        let checks = {};
+
+        inspectionData.forEach(group => {
+          group.items.forEach(item => {
+            const checkedOpt = document.querySelector(`input[name="${item.id}"]:checked`);
+            if (checkedOpt) {
               checks[item.id] = checkedOpt.value;
               if (checkedOpt.value !== '良' && checkedOpt.value !== '無') hasIssue = true;
             }
           });
         });
 
-        if (unselectedCount > 0) {
-          if (!confirm(`未選択の項目が ${unselectedCount} 件あります。このまま保存しますか？`)) return;
-        }
         if (memo !== "") hasIssue = true;
+
+        if (typeof window !== 'undefined' && window.__ringSaving) {
+          if (typeof showToast === 'function') showToast('info', '保存処理中です。完了までお待ちください。');
+          return;
+        }
+        if (typeof window !== 'undefined') window.__ringSaving = true;
+        try {
 
         showLoading("保存中", "点検記録を保存しています...");
 
@@ -308,17 +379,45 @@
           if (typeof saveLog === "function") await saveLog(logData);
         }
 
-        // GASにも送信（No.005）
-        try {
-          await sendToGAS_Safe('save_inspection', {
-            log_id: generatedLogId, vin: vin, date: date, title: '日常点検',
-            memo: memo, photoUrl: '', createdAt: createdAt, mileage: mileage
-          });
-        } catch (e) { /* ローカル保存済みのため継続 */ }
+        var staffDisp = profile ? (profile.displayName || profile.realName || profile.staffName || '').trim() : '';
+        if (!staffDisp && profile && profile.representativeName) staffDisp = String(profile.representativeName).trim();
+        const gasPayload = {
+          log_id: generatedLogId, vin: vin, date: date, title: '日常点検',
+          memo: memo, photoUrl: '', createdAt: createdAt, mileage: mileage,
+          shopName: profile ? (profile.shopName || '') : '',
+          inputShopName: profile ? (profile.shopName || '') : '',
+          inputStaffName: staffDisp,
+          staffName: staffDisp || (profile ? (profile.displayName || profile.realName || '') : '')
+        };
+        const gasResult = await saveInspectionToGasWithRetry(gasPayload);
 
         hideLoading();
-        showToast('success', hasIssue ? '点検を保存しました（整備履歴にも追加）' : '正常に登録されました');
-        setTimeout(() => location.replace("vehicles.html"), 1200);
+        if (gasResult.hardFail) {
+          showToast('error', 'この車両はサーバーに登録されていないため、点検を保存できませんでした。車両一覧を確認してください。');
+          return;
+        }
+        const dest = 'vehicles.html';
+        const variant = gasResult.queued ? 'queued' : 'success';
+        const okMsg = hasIssue ? '点検を保存しました（整備履歴にも追加）' : '正常に登録されました';
+        if (typeof showRingSavedSplash === 'function') {
+          showRingSavedSplash({
+            variant,
+            message: variant === 'queued' ? undefined : okMsg,
+            onDone: () => location.replace(dest),
+          });
+        } else {
+          if (gasResult.queued) {
+            showToast('info', '端末に保存しました。回線が復旧すると点検記録を自動でサーバーへ送信します。');
+          } else if (!gasResult.serverSaved) {
+            showToast('info', '端末に保存しました。サーバー送信に失敗しました。回線復旧後に再試行してください。');
+          } else {
+            showToast('success', okMsg);
+          }
+          setTimeout(() => location.replace(dest), 1200);
+        }
+        } finally {
+          if (typeof window !== 'undefined') window.__ringSaving = false;
+        }
       });
     });
   </script>

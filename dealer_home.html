@@ -2,7 +2,13 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#4b5563" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="manifest" href="manifest.json">
   <title>事業者ホーム | 車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css">
@@ -68,6 +74,10 @@
     .menu-text { display: flex; flex-direction: column; }
     .menu-name { font-size: 18px; font-weight: 900; color: var(--accent); margin: 0 0 4px; }
     .menu-desc { font-size: 12px; font-weight: 700; color: var(--muted); line-height: 1.5; }
+    .ring-pending-sync {
+      background: #fef3c7; border: 2px solid #f59e0b; border-radius: 12px;
+      padding: 12px 14px; margin-bottom: 20px; font-size: 13px; font-weight: 800; color: #92400e; line-height: 1.5;
+    }
   </style>
 </head>
 <body>
@@ -78,6 +88,8 @@
       <div class="shop-info" id="shopName">ログイン確認中...</div>
       <div class="fac-code" id="facCodeDisplay"></div>
     </header>
+
+    <div id="ringPendingSyncBar" class="ring-pending-sync" style="display:none;" role="status"></div>
 
     <div class="menu-grid">
       <a href="dealer_input.html" class="menu-card" id="btnInput">
@@ -127,6 +139,13 @@
 
         document.getElementById("shopName").innerText = "ログイン中: " + profile.shopName + " (担当: " + (profile.displayName || profile.staffId) + ")";
         document.getElementById("facCodeDisplay").innerText = "事業者ID: " + profile.shopId;
+
+        const pend = typeof getPendingRetryCount === 'function' ? getPendingRetryCount() : 0;
+        const pbar = document.getElementById('ringPendingSyncBar');
+        if (pbar && pend > 0) {
+          pbar.style.display = 'block';
+          pbar.textContent = '未送信のデータが ' + pend + ' 件あります。オンライン復帰時に自動送信します。';
+        }
 
         if (profile.role === 'viewer') {
           const btnInput = document.getElementById('btnInput');

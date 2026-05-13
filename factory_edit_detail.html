@@ -2,7 +2,13 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#4b5563" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="manifest" href="manifest.json">
   <title>整備記録の修正 | 車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css">
@@ -122,7 +128,7 @@
         return;
       }
 
-      const logs = JSON.parse(localStorage.getItem("nappy_logs_v1") || "[]");
+      const logs = typeof readLogsArray === 'function' ? readLogsArray() : JSON.parse(localStorage.getItem("nappy_logs_v1") || "[]");
       const targetLog = logs.find(l => l.log_id === logId && _normalize(l.vin) === _normalize(vin));
 
       if (!targetLog) {
@@ -177,22 +183,27 @@
       reader.readAsDataURL(file);
     });
 
-    document.getElementById("saveLogBtn").addEventListener("click", () => {
+    document.getElementById("saveLogBtn").addEventListener("click", async () => {
+      if (typeof window !== 'undefined' && window.__ringSaving) {
+        if (typeof showToast === 'function') showToast('info', '保存処理中です。');
+        return;
+      }
       const date = document.getElementById('inDate').value;
 
-      // 掟4：保存開始時にローディングを表示
       showLoading("保存中", "修正内容を上書き保存しています...");
 
-      setTimeout(() => {
-        const logs = JSON.parse(localStorage.getItem("nappy_logs_v1") || "[]");
+      if (typeof window !== 'undefined') window.__ringSaving = true;
+      try {
+        const logs = typeof readLogsArray === 'function' ? readLogsArray() : JSON.parse(localStorage.getItem("nappy_logs_v1") || "[]");
         const logIndex = logs.findIndex(l => l.log_id === logId);
 
         if (logIndex === -1) {
           hideLoading();
-          return showToast('error', '保存エラー：データが見つかりません。');
+          showToast('error', '保存エラー：データが見つかりません。');
+          return;
         }
 
-        logs[logIndex] = {
+        const updated = {
           ...logs[logIndex],
           date: date,
           mileage: document.getElementById('inMileage').value,
@@ -202,13 +213,56 @@
           partsPhoto: document.getElementById('inPartsPhotoBase64').value,
           createdAt: originalCreatedAt
         };
-
+        logs[logIndex] = updated;
         localStorage.setItem("nappy_logs_v1", JSON.stringify(logs));
 
+        const correctionPayload = {
+          originalLogId: logId,
+          vin: vin,
+          mileage: updated.mileage,
+          title: updated.title,
+          parts: updated.parts,
+          memo: updated.memo,
+          photoUrl: updated.partsPhoto || '',
+          partsPhoto: updated.partsPhoto || ''
+        };
+
+        try {
+          if (typeof sendToGAS_Safe === 'function') {
+            await sendToGAS_Safe('correct_log', correctionPayload);
+          } else {
+            throw new Error('NO_SENDER');
+          }
+          if (typeof showRingSavedSplash === 'function') {
+            showRingSavedSplash({
+              variant: 'success',
+              onDone: () => location.replace(`factory_detail.html?vin=${encodeURIComponent(vin)}&log_id=${logId}`),
+            });
+          } else {
+            showToast('success', '正常に登録されました');
+            setTimeout(() => location.replace(`factory_detail.html?vin=${encodeURIComponent(vin)}&log_id=${logId}`), 1200);
+          }
+        } catch (gasErr) {
+          if (typeof enqueueRetry === 'function') {
+            enqueueRetry('correct_log', correctionPayload);
+          }
+          if (typeof showRingSavedSplash === 'function') {
+            showRingSavedSplash({
+              variant: 'queued',
+              onDone: () => location.replace(`factory_detail.html?vin=${encodeURIComponent(vin)}&log_id=${logId}`),
+            });
+          } else if (typeof showToast === 'function') {
+            showToast('info', '端末に保存しました。サーバー反映は回線復旧後に自動で再試行されます。');
+            setTimeout(() => location.replace(`factory_detail.html?vin=${encodeURIComponent(vin)}&log_id=${logId}`), 1200);
+          }
+        }
+      } catch (err) {
+        console.error(err);
+        if (typeof showToast === 'function') showToast('error', '保存中にエラーが発生しました');
+      } finally {
         hideLoading();
-        showToast('success', '正常に登録されました');
-        setTimeout(() => location.replace(`factory_detail.html?vin=${encodeURIComponent(vin)}&log_id=${logId}`), 1200);
-      }, 500);
+        if (typeof window !== 'undefined') window.__ringSaving = false;
+      }
     });
   </script>
 </body>
