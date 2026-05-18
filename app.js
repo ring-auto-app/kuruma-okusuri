@@ -2,13 +2,170 @@
  * 車のお薬手帳 - 統合コアスクリプト (app.js)
  */
 
-const RING_DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbzzthTmrSZAC6dEpaZHbJIAJ07-O4W8eTPYGpXN772jKP7s88oepUYyHerxDU3y0Mfsnw/exec';
+const RING_DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbyhCvgY5yfduRDPxiIbGGwCpPMrDiwtKg57I28gHnWAcZexUgvd9r2PqnIm2-QSss4C/exec';
 /** `app.js` より先に `window.__RING_GAS_URL_OVERRIDE__` をセットすると本番 URL を差し替え可能 */
 const GAS_URL = (typeof window !== 'undefined' && window.__RING_GAS_URL_OVERRIDE__)
     ? String(window.__RING_GAS_URL_OVERRIDE__).trim()
     : RING_DEFAULT_GAS_URL;
 /** ads/ads.js から fetch する際の参照用（別スクリプトでは const が見えないため） */
 if (typeof window !== 'undefined') window.__RING_GAS_URL__ = GAS_URL;
+
+/** GIS renderButton の幅（付箋内・max-width420 のコンテンツ幅に合わせる） */
+const RING_GSI_BUTTON_WIDTH = 364;
+
+/** Google Sign-In の OAuth クライアント ID。HTML より前に window.__RING_GOOGLE_WEB_CLIENT_ID__ で上書き可 */
+const RING_GOOGLE_WEB_CLIENT_ID = (function () {
+  if (typeof window === 'undefined') return '';
+  if (window.__RING_GOOGLE_WEB_CLIENT_ID__) return String(window.__RING_GOOGLE_WEB_CLIENT_ID__).trim();
+  return '837629231147-n7tuh402iosbtva4tc5l523qjhvdg1uc.apps.googleusercontent.com';
+})();
+
+/** 一般ユーザー新規登録・Google 初回登録時の規約／ポリシー同意（sessionStorage） */
+const RING_USER_REG_CONSENT_KEY = 'nappy_user_reg_consent';
+/** クライアント・GAS で同一値であること（改版時は両方更新） */
+const RING_LEGAL_TERMS_VERSION = '1.0';
+const RING_LEGAL_PRIVACY_VERSION = '1.0';
+
+function ringReadUserRegConsent() {
+    try {
+        const raw = sessionStorage.getItem(RING_USER_REG_CONSENT_KEY);
+        if (!raw) return null;
+        const o = JSON.parse(raw);
+        if (!o || typeof o !== 'object') return null;
+        if (o.termsVersion !== RING_LEGAL_TERMS_VERSION || o.privacyVersion !== RING_LEGAL_PRIVACY_VERSION) return null;
+        if (!o.consentAt || typeof o.consentAt !== 'string') return null;
+        return o;
+    } catch (e) {
+        return null;
+    }
+}
+
+/** チェック済みであることを確認したうえで同意記録を保存（user_login / index のボタンから呼ぶ） */
+function ringSaveUserRegConsent() {
+    sessionStorage.setItem(RING_USER_REG_CONSENT_KEY, JSON.stringify({
+        consentAt: new Date().toISOString(),
+        termsVersion: RING_LEGAL_TERMS_VERSION,
+        privacyVersion: RING_LEGAL_PRIVACY_VERSION
+    }));
+}
+
+/**
+ * GIS が返す JWT のペイロードをデコードする（表示・送信補助用。真正な検証は GAS）。
+ */
+function ringDecodeGoogleCredentialJwt(credential) {
+    try {
+        const parts = String(credential || '').split('.');
+        if (parts.length < 2) return null;
+        let b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+        while (b64.length % 4 !== 0) b64 += '=';
+        const payload = JSON.parse(atob(b64));
+        return {
+            sub: String(payload.sub || ''),
+            email: String(payload.email || ''),
+            name: String(payload.name || '')
+        };
+    } catch (e) {
+        return null;
+    }
+}
+
+/**
+ * Google Identity Services の credential コールバック（名前・メール取得後 sendToGAS_Safe）。
+ */
+async function handleGoogleCredentialResponse(response) {
+    if (!response || !response.credential) return;
+
+    const decoded = ringDecodeGoogleCredentialJwt(response.credential);
+    if (typeof window !== 'undefined') {
+        window.__ringLastGoogleCredentialMeta = decoded || null;
+    }
+
+    showLoading('Googleで認証中', 'サーバーと通信しています...');
+    try {
+        const payload = { credential: response.credential };
+        if (decoded) {
+            if (decoded.email) payload.googleEmail = decoded.email;
+            if (decoded.name) payload.googleName = decoded.name;
+        }
+        const consent = ringReadUserRegConsent();
+        if (consent) {
+            payload.consentAt = consent.consentAt;
+            payload.termsVersion = consent.termsVersion;
+            payload.privacyVersion = consent.privacyVersion;
+        }
+
+        const data = await sendToGAS_Safe('user_google_auth', payload);
+        hideLoading();
+
+        if (data.profile && (data.profile.role === 'user' || data.profile.shopType === 'user')) {
+            try {
+                sessionStorage.removeItem(RING_USER_REG_CONSENT_KEY);
+            } catch (e1) { /* ignore */ }
+            const emailHint = decoded && decoded.email ? decoded.email : (data.profile.googleEmail || '');
+            if (emailHint) data.profile.googleEmail = emailHint;
+            login(data.profile, data.authToken);
+            location.replace('user_home.html');
+            return;
+        }
+
+        showToast('error', 'ユーザー用のアカウントではありません。');
+    } catch (err) {
+        hideLoading();
+        const msg = String(err && err.message ? err.message : err || '');
+        showToast('error', msg || '認証に失敗しました');
+        if (/規約|同意|新規登録/.test(msg)) {
+            if (typeof switchTab === 'function') {
+                try {
+                    switchTab('register');
+                    if (typeof syncRegisterConsentUI === 'function') syncRegisterConsentUI();
+                    ringBootGoogleSignIn(['googleSignInSlotLogin', 'googleSignInSlotRegister']);
+                } catch (e2) { /* ignore */ }
+            }
+        }
+    }
+}
+
+/**
+ * GIS のボタンを指定した要素 ID に描画する。
+ * @param {string[]} slotIds
+ */
+function ringBootGoogleSignIn(slotIds) {
+    const ids = Array.isArray(slotIds) ? slotIds : ['googleSignInSlotLogin', 'googleSignInSlotRegister'];
+    const cid = typeof RING_GOOGLE_WEB_CLIENT_ID !== 'undefined' ? String(RING_GOOGLE_WEB_CLIENT_ID).trim() : '';
+    ids.forEach(function (slotId) {
+        const el = document.getElementById(slotId);
+        if (!el) return;
+        el.classList.toggle('ring-google-visible', !!cid);
+        if (!cid) el.innerHTML = '';
+    });
+    if (!cid) return;
+    if (!window.google || !google.accounts || !google.accounts.id) {
+        setTimeout(function () { ringBootGoogleSignIn(ids); }, 120);
+        return;
+    }
+    if (!window.__ringGsiInited) {
+        google.accounts.id.initialize({
+            client_id: cid,
+            callback: handleGoogleCredentialResponse,
+            ux_mode: 'popup',
+            auto_select: false
+        });
+        window.__ringGsiInited = true;
+    }
+    ids.forEach(function (slotId) {
+        const el = document.getElementById(slotId);
+        if (!el || !el.classList.contains('ring-google-visible')) return;
+        el.innerHTML = '';
+        google.accounts.id.renderButton(el, {
+            theme: 'outline',
+            size: 'large',
+            text: 'signin_with',
+            shape: 'rectangular',
+            width: RING_GSI_BUTTON_WIDTH,
+            locale: 'ja'
+        });
+    });
+}
 
 const DB_VEHICLES = "nappy_vehicles_v1";
 const DB_LOGS = "nappy_logs_v1";
@@ -663,8 +820,10 @@ async function sendToGAS_Safe(actionType, data) {
         payload.photoUrl = payload.partsPhoto;
     }
 
-    const authToken = localStorage.getItem('ring_auth_token');
-    if (authToken) payload.authToken = authToken;
+    if (actionType !== 'user_google_auth') {
+        const authToken = localStorage.getItem('ring_auth_token');
+        if (authToken) payload.authToken = authToken;
+    }
 
     const json = await fetchJsonWithTimeout(GAS_URL, {
         method: 'POST',

@@ -23,7 +23,6 @@
       --text-sub: #7a7167;
       --neutral-action: #4b5563; 
       --neutral-light: rgba(75, 85, 99, 0.15);
-      --line-green: #06C755;
     }
 
     body {
@@ -119,27 +118,6 @@
 
     .tab-panel { display: none; }
     .tab-panel.active { display: block; }
-
-    /* LINEボタン */
-    .btn-line {
-      width: 100%;
-      padding: 16px;
-      background: var(--line-green);
-      color: white;
-      border: none;
-      border-radius: 12px;
-      font-size: 16px;
-      font-weight: 900;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-      box-shadow: 0 4px 12px rgba(6, 199, 85, 0.2);
-      margin-bottom: 24px;
-      transition: transform 0.1s;
-    }
-    .btn-line:active { transform: scale(0.98); }
 
     .divider {
       display: flex;
@@ -279,12 +257,6 @@
 
     <!-- ===== ログインタブ ===== -->
     <div class="tab-panel active" id="panelLogin">
-      <button class="btn-line" onclick="doLineLogin()">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="white" style="margin-bottom:-2px;"><path d="M24 10.304c0-4.636-5.383-8.404-12-8.404s-12 3.768-12 8.404c0 4.156 4.27 7.632 10.04 8.296.39.085.92.258 1.058.59.12.285.08.733.038 1.022l-.185 1.118c-.056.34-.27 1.33 1.163.725 1.432-.605 7.732-4.554 10.545-7.796 1.01-1.202 1.34-2.03 1.34-3.955z"/></svg>
-        LINEでログイン / 登録
-      </button>
-
-      <div class="divider">またはIDでログイン</div>
 
       <div class="field">
         <span class="label">ログインID</span>
@@ -318,12 +290,7 @@
 
     <!-- ===== 新規登録タブ ===== -->
     <div class="tab-panel" id="panelRegister">
-      <button class="btn-line" onclick="doLineLogin()">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="white" style="margin-bottom:-2px;"><path d="M24 10.304c0-4.636-5.383-8.404-12-8.404s-12 3.768-12 8.404c0 4.156 4.27 7.632 10.04 8.296.39.085.92.258 1.058.59.12.285.08.733.038 1.022l-.185 1.118c-.056.34-.27 1.33 1.163.725 1.432-.605 7.732-4.554 10.545-7.796 1.01-1.202 1.34-2.03 1.34-3.955z"/></svg>
-        LINEで登録する
-      </button>
-
-      <div class="divider">またはフォームで登録</div>
+      <div class="divider">新規登録はフォームから</div>
 
       <div class="register-card">
         <span class="icon">🏢</span>
@@ -347,11 +314,6 @@
       document.getElementById('tabRegister').classList.toggle('active', !isLogin);
       document.getElementById('panelLogin').classList.toggle('active', isLogin);
       document.getElementById('panelRegister').classList.toggle('active', !isLogin);
-    }
-
-    /* ===== LINE（将来実装） ===== */
-    function doLineLogin() {
-      showToast('info', 'LINE連携は近日公開予定です');
     }
 
     /* ===== パスワード表示切替 ===== */

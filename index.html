@@ -126,62 +126,6 @@
     .menu-desc { font-size: 11px; color: var(--text-sub); font-weight: 700; line-height: 1.4; }
 
     .pwa-hint { margin-top: 34px; font-size: 13px; color: var(--text-sub); font-weight: 800; }
-
-    /* トップの公開デモ（登録前のお試し） */
-    .demo-public {
-      margin-top: 28px;
-      width: 100%;
-      max-width: 340px;
-      padding-top: 22px;
-      border-top: 1px dashed rgba(47, 42, 36, 0.15);
-    }
-    .demo-public-title {
-      font-size: 14px;
-      font-weight: 900;
-      color: var(--text);
-      margin: 0 0 8px;
-      text-align: center;
-    }
-    .demo-public-note {
-      font-size: 11px;
-      font-weight: 700;
-      color: var(--muted);
-      margin: 0 0 14px;
-      text-align: center;
-      line-height: 1.55;
-    }
-    .demo-btn-row {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      width: 100%;
-    }
-    .demo-btn {
-      width: 100%;
-      padding: 14px 16px;
-      border-radius: 12px;
-      border: 2px dashed var(--accent);
-      background: var(--paper);
-      font-size: 15px;
-      font-weight: 900;
-      color: var(--text);
-      cursor: pointer;
-      box-sizing: border-box;
-      min-height: 48px;
-      font-family: inherit;
-    }
-    .demo-btn:active { transform: scale(0.98); }
-
-    .demo-preview-link-wrap { margin: 0 0 14px; text-align: center; }
-    .demo-preview-link {
-      display: inline-block;
-      font-size: 13px;
-      font-weight: 900;
-      color: var(--text);
-      text-decoration: underline;
-      text-underline-offset: 3px;
-    }
-    .demo-preview-link:active { opacity: 0.85; }
   </style>
 </head>
 
@@ -228,59 +172,9 @@
       </div>
       <button type="button" class="ring-a2hs-panel__btn ring-a2hs-panel__btn--ghost" id="ringA2hsDismiss">閉じる</button>
     </div>
-
-    <div class="demo-public" id="demoPublicBlock">
-      <p class="demo-public-title">まず試してみる（デモ）</p>
-      <p class="demo-public-note">登録なしで画面の流れを体験できます。サンプルの車両・履歴が表示されます。</p>
-      <p class="demo-preview-link-wrap">
-        <a href="demo_preview.html" class="demo-preview-link">📋 保存なし・サンプル一覧を見るだけ</a>
-      </p>
-      <div class="demo-btn-row">
-        <button type="button" class="demo-btn" onclick="startIndexDemo('factory')">工場デモで体験</button>
-        <button type="button" class="demo-btn" onclick="startIndexDemo('dealer')">事業者デモで体験</button>
-        <button type="button" class="demo-btn" onclick="startIndexDemo('user')">ユーザーデモで体験</button>
-      </div>
-    </div>
   </div>
 
   <script>
-    /**
-     * トップページから公開デモへ入る（login.html のデモと同じデータ・遷移）
-     */
-    function startIndexDemo(role) {
-      if (typeof showLoading === "function") {
-        showLoading("デモ準備中", "サンプルデータを読み込んでいます...");
-      }
-      setTimeout(function () {
-        var demoShopId = role === "factory" ? "SHOP-DEMO-F" : (role === "dealer" ? "SHOP-DEMO-D" : "");
-        var demoRole = (role === "factory" || role === "dealer") ? "master" : role;
-        var dummyProfile = {
-          userId: role === "factory" ? "F-DEMO01" : (role === "dealer" ? "D-DEMO01" : "U-DEMO01"),
-          userName: role === "user" ? "デモユーザー" : "デモ太郎",
-          shopName: role === "factory" ? "RinG Auto 整備工場" : (role === "dealer" ? "T.G販売店" : ""),
-          shopType: role,
-          role: demoRole,
-          shopId: demoShopId
-        };
-        if (role === "user") {
-          dummyProfile.loginId = "USR-DEMO-0000";
-        }
-        if (role === "factory") {
-          dummyProfile.factoryType = "指定工場";
-          dummyProfile.factoryNumber = "第11234号";
-        } else if (role === "dealer") {
-          dummyProfile.factoryType = "認証";
-          dummyProfile.factoryNumber = "第55678号";
-        }
-        if (typeof seedDemoEnvironment === "function") seedDemoEnvironment(role);
-        if (typeof login === "function") login(dummyProfile);
-        var target = "user_home.html";
-        if (role === "factory") target = "factory_home.html";
-        if (role === "dealer") target = "dealer_home.html";
-        location.replace(target);
-      }, 450);
-    }
-
     document.addEventListener("DOMContentLoaded", () => {
       const profile = typeof getCurrentProfile === "function" ? getCurrentProfile() : null;
 
