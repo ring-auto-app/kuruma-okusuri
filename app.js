@@ -10,6 +10,11 @@ const GAS_URL = (typeof window !== 'undefined' && window.__RING_GAS_URL_OVERRIDE
 /** ads/ads.js から fetch する際の参照用（別スクリプトでは const が見えないため） */
 if (typeof window !== 'undefined') window.__RING_GAS_URL__ = GAS_URL;
 
+/** LINE 認可の bot_prompt。aggressive は「友だち追加済み」のとき進めず戻るでフロー中断しやすいため normal を既定とする */
+const RING_LINE_BOT_PROMPT = (typeof window !== 'undefined' && window.__RING_LINE_BOT_PROMPT__)
+    ? String(window.__RING_LINE_BOT_PROMPT__).trim()
+    : 'normal';
+
 /** GIS renderButton の幅（付箋内・max-width420 のコンテンツ幅に合わせる） */
 const RING_GSI_BUTTON_WIDTH = 364;
 
@@ -20,7 +25,14 @@ const RING_GOOGLE_WEB_CLIENT_ID = (function () {
   return '837629231147-n7tuh402iosbtva4tc5l523qjhvdg1uc.apps.googleusercontent.com';
 })();
 
-/** 一般ユーザー新規登録・Google 初回登録時の規約／ポリシー同意（sessionStorage） */
+/** LINE Login のチャネル ID（HTML より前に `window.__RING_LINE_CHANNEL_ID__` で上書き可）。シークレットはサーバ（GAS）のみ。 */
+const RING_LINE_CHANNEL_ID = (function () {
+  if (typeof window === 'undefined') return '';
+  if (window.__RING_LINE_CHANNEL_ID__) return String(window.__RING_LINE_CHANNEL_ID__).trim();
+  return '2010137438';
+})();
+
+/** 一般ユーザー新規登録・Google 初回登録時の規約／プライバシーポリシー同意（sessionStorage） */
 const RING_USER_REG_CONSENT_KEY = 'nappy_user_reg_consent';
 /** クライアント・GAS で同一値であること（改版時は両方更新） */
 const RING_LEGAL_TERMS_VERSION = '1.0';
@@ -66,6 +78,116 @@ function ringDecodeGoogleCredentialJwt(credential) {
         };
     } catch (e) {
         return null;
+    }
+}
+
+/**
+ * LINE OAuth コールバック URL（`user_line_callback.html` をこのオリジン・サブパスに配置すること）
+ */
+function ringGetLineRedirectUri() {
+    if (typeof window === 'undefined') return '';
+    try {
+        return new URL('user_line_callback.html', window.location.href).href;
+    } catch (e) {
+        return '';
+    }
+}
+
+/**
+ * 規約同意後に呼ぶ。GAS で state を発行し、LINE 認可画面へ遷移（bot_prompt=aggressive, scope=profile openid email）。
+ * 外部ブラウザと LINE 内蔵ブラウザで sessionStorage が分断されるため、state はサーバ（Cache）で検証する。
+ */
+async function ringStartLineLogin() {
+    var cid = typeof RING_LINE_CHANNEL_ID !== 'undefined' ? String(RING_LINE_CHANNEL_ID).trim() : '';
+    if (!cid) {
+        showToast('error', 'LINEログインの設定が不完全です');
+        return;
+    }
+    var redirectUri = ringGetLineRedirectUri();
+    if (!redirectUri) {
+        showToast('error', 'コールバックURLを決定できません');
+        return;
+    }
+    showLoading('LINEログイン準備中', 'セッションを初期化しています…');
+    var state;
+    try {
+        var prep = await sendToGAS_Safe('user_line_oauth_prepare', { redirectUri: redirectUri });
+        state = prep && prep.state ? String(prep.state).trim() : '';
+        if (!state) {
+            throw new Error('state の取得に失敗しました');
+        }
+    } catch (ePrep) {
+        hideLoading();
+        showToast('error', String(ePrep && ePrep.message ? ePrep.message : ePrep) || '通信に失敗しました');
+        return;
+    }
+    hideLoading();
+    var params = new URLSearchParams({
+        response_type: 'code',
+        client_id: cid,
+        redirect_uri: redirectUri,
+        state: state,
+        scope: 'profile openid email',
+        bot_prompt: RING_LINE_BOT_PROMPT
+    });
+    window.location.href = 'https://access.line.me/oauth2/v2.1/authorize?' + params.toString();
+}
+
+/**
+ * `user_line_callback.html` で実行。認可コードを GAS に渡し、成功時は `user_home.html` へ。
+ */
+async function ringHandleLineOAuthCallback() {
+    function failAndReturnToLogin_() {
+        try {
+            showToast('error', 'ログインに失敗しました');
+        } catch (eToast) { /* ignore */ }
+        location.replace('user_login.html');
+    }
+
+    var params = new URLSearchParams(window.location.search);
+    var err = params.get('error');
+    var code = params.get('code');
+    var state = params.get('state');
+    if (err) {
+        failAndReturnToLogin_();
+        return;
+    }
+    if (!code || !state) {
+        failAndReturnToLogin_();
+        return;
+    }
+    var redirectUri = ringGetLineRedirectUri();
+    if (!redirectUri) {
+        failAndReturnToLogin_();
+        return;
+    }
+    showLoading('LINEで認証中', 'サーバーと通信しています...');
+    try {
+        var payload = { code: code, redirectUri: redirectUri, state: state };
+        var consent = typeof ringReadUserRegConsent === 'function' ? ringReadUserRegConsent() : null;
+        if (consent) {
+            payload.consentAt = consent.consentAt;
+            payload.termsVersion = consent.termsVersion;
+            payload.privacyVersion = consent.privacyVersion;
+        }
+        var data = await sendToGAS_Safe('user_line_auth', payload, { timeoutMs: 45000 });
+        hideLoading();
+        if (data.profile && (data.profile.role === 'user' || data.profile.shopType === 'user')) {
+            try {
+                sessionStorage.removeItem(RING_USER_REG_CONSENT_KEY);
+            } catch (e1) { /* ignore */ }
+            login(data.profile, data.authToken);
+            location.replace('user_home.html');
+            return;
+        }
+        failAndReturnToLogin_();
+    } catch (err) {
+        hideLoading();
+        failAndReturnToLogin_();
+    } finally {
+        try {
+            hideLoading();
+        } catch (eH) { /* ignore */ }
     }
 }
 
@@ -798,6 +920,11 @@ async function fetchJsonWithTimeout(url, options, timeoutMs) {
         } catch (e) {
             throw new Error('INVALID_JSON');
         }
+    } catch (e) {
+        if (e && e.name === 'AbortError') {
+            throw new Error('サーバー応答がタイムアウトしました。GASをデプロイ済みか・ネットワークを確認してください。');
+        }
+        throw e;
     } finally {
         clearTimeout(timer);
     }
@@ -805,8 +932,11 @@ async function fetchJsonWithTimeout(url, options, timeoutMs) {
 
 /**
  * GAS送信処理
+ * @param {string} actionType
+ * @param {object} [data]
+ * @param {{ timeoutMs?: number }} [opts]
  */
-async function sendToGAS_Safe(actionType, data) {
+async function sendToGAS_Safe(actionType, data, opts) {
     const payload = JSON.parse(JSON.stringify(data || {}));
     payload.action = actionType;
 
@@ -820,16 +950,17 @@ async function sendToGAS_Safe(actionType, data) {
         payload.photoUrl = payload.partsPhoto;
     }
 
-    if (actionType !== 'user_google_auth') {
+    if (actionType !== 'user_google_auth' && actionType !== 'user_line_auth' && actionType !== 'user_line_oauth_prepare') {
         const authToken = localStorage.getItem('ring_auth_token');
         if (authToken) payload.authToken = authToken;
     }
 
+    const timeoutMs = opts && opts.timeoutMs != null ? opts.timeoutMs : 20000;
     const json = await fetchJsonWithTimeout(GAS_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify(payload)
-    }, 20000);
+    }, timeoutMs);
     if (!json || json.success !== true) {
         throw new Error((json && json.error) || 'GAS保存に失敗しました');
     }
@@ -917,7 +1048,7 @@ async function flushRetryQueue() {
 function ringShouldAttachPendingSyncBanner() {
     if (typeof window === 'undefined' || typeof document === 'undefined') return false;
     const f = (window.location.pathname || '').split('/').pop() || '';
-    return !/^(login|user_login|register|biz_register|splash)\.html$/i.test(f);
+    return !/^(login|user_login|user_line_callback|register|biz_register|splash)\.html$/i.test(f);
 }
 
 /**
@@ -1549,7 +1680,7 @@ function createGlobalUI() {
     
     const isUserMode = path.includes('user_') || !profile; 
 
-    if (path.includes('login.html') || path.includes('user_login.html') || path.includes('register.html') || path.includes('biz_register.html') || path.endsWith('/') || path.endsWith('index.html')) {
+    if (path.includes('login.html') || path.includes('user_login.html') || path.includes('user_line_callback.html') || path.includes('register.html') || path.includes('biz_register.html') || path.endsWith('/') || path.endsWith('index.html')) {
         return;
     }
 

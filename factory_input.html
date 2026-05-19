@@ -232,6 +232,14 @@
       limitDate.setDate(limitDate.getDate() - 14); 
       document.getElementById('inDate').min = limitDate.toISOString().split('T')[0];
       document.getElementById('inDate').max = localToday.toISOString().split('T')[0];
+
+      const preVin = new URLSearchParams(location.search).get('vin');
+      if (preVin) {
+        const vinEl = document.getElementById('inVin');
+        vinEl.value = preVin.trim().toUpperCase();
+        vinEl.readOnly = true;
+        lookupVehicle(preVin);
+      }
     });
 
     const RING_OCR_FIELDS_FACTORY = [

@@ -257,6 +257,7 @@
         const historyLink      = (userRole === 'user') ? 'user_history.html'            : 'history.html';
         const inspectHistoryLink = (userRole === 'user') ? 'user_inspection_history.html' : 'daily_history.html';
         const inspectLink      = (userRole === 'user') ? 'inspection_user.html'          : 'inspection_biz.html';
+        const maintInputBase   = (userRole === 'factory') ? 'factory_input.html' : (userRole === 'dealer') ? 'dealer_input.html' : '';
 
         let html = "";
         vehicles.forEach(car => {
@@ -291,6 +292,7 @@
               </div>
               <div class="btn-group">
                 <a href="${historyLink}?vin=${encodeURIComponent(car.vin)}" class="vc-btn">📖 整備履歴</a>
+                ${maintInputBase ? `<a href="${maintInputBase}?vin=${encodeURIComponent(car.vin)}" class="vc-btn">🔧 整備入力</a>` : ''}
                 <a href="${inspectHistoryLink}?vin=${encodeURIComponent(car.vin)}" class="vc-btn">🔍 日常点検記録</a>
                 <a href="${inspectLink}?vin=${encodeURIComponent(car.vin)}" class="vc-btn">📋 日常点検入力</a>
               </div>

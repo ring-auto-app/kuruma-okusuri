@@ -276,7 +276,6 @@
       border-radius: 16px;
       text-align: center;
     }
-    .demo-title { font-size: 12px; font-weight: 900; color: var(--text-sub); margin-bottom: 12px; display: block; }
     .demo-links { display: flex; justify-content: center; gap: 20px; }
     .demo-links a { color: var(--text-main); font-size: 14px; font-weight: 900; text-decoration: underline; cursor: pointer; }
 
@@ -322,6 +321,102 @@
       margin-bottom: 8px;
     }
 
+    /* ログインタブ用：規約同意モーダル */
+    #legalConsentModalBackdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 10000;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      box-sizing: border-box;
+      background: rgba(35, 32, 28, 0.45);
+      -webkit-backdrop-filter: blur(3px);
+      backdrop-filter: blur(3px);
+    }
+    #legalConsentModalBackdrop.ring-legal-modal-open {
+      display: flex;
+    }
+    #legalConsentModalBackdrop .legal-modal-sheet {
+      width: 100%;
+      max-width: 380px;
+      max-height: min(88vh, 520px);
+      overflow: auto;
+      background: rgba(255,255,255,0.96);
+      border-radius: 18px;
+      padding: 22px;
+      box-sizing: border-box;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.18);
+      border: 2px dashed var(--neutral-light);
+      text-align: left;
+    }
+    #legalConsentModalBackdrop .legal-modal-sheet h2 {
+      margin: 0 0 12px;
+      font-size: 17px;
+      font-weight: 900;
+      line-height: 1.35;
+      color: var(--text-main);
+    }
+    .legal-modal-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 16px;
+    }
+    .legal-modal-actions button {
+      width: 100%;
+      padding: 15px;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 900;
+      font-family: inherit;
+      cursor: pointer;
+      border: none;
+    }
+    #legalConsentModalBackdrop .modal-consent-confirm {
+      background: var(--neutral-action);
+      color: #fff;
+    }
+    #legalConsentModalBackdrop .modal-consent-cancel {
+      background: var(--neutral-light);
+      color: var(--text-main);
+    }
+
+    /* Google SSO スタブ（未同意時、GIS と同サイズ感） */
+    .ring-google-login-stub-wrap {
+      display: flex;
+      width: 100%;
+      justify-content: center;
+      align-items: stretch;
+      min-height: var(--tap-min);
+    }
+    button.ring-google-stub-btn {
+      width: 100%;
+      margin: 0;
+      padding: 12px 16px;
+      min-height: 48px;
+      box-sizing: border-box;
+      border: none;
+      border-radius: 10px;
+      background: #fff;
+      color: #242424;
+      font-size: 16px;
+      font-weight: 700;
+      font-family: inherit;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.12);
+      -webkit-tap-highlight-color: transparent;
+    }
+    button.ring-google-stub-btn:active {
+      opacity: 0.92;
+      transform: scale(0.99);
+    }
+
   </style>
 </head>
 <body>
@@ -342,20 +437,6 @@
 
     <!-- ===== ログインタブ ===== -->
     <div class="tab-panel active" id="panelLogin">
-
-      <div class="ring-sso-stack">
-        <div class="ring-sso-fusen ring-sso-fusen--line">
-          <button type="button" class="ring-sso-line-btn" onclick="doLineLogin()">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="white" style="margin-bottom:-2px;" aria-hidden="true"><path d="M24 10.304c0-4.636-5.383-8.404-12-8.404s-12 3.768-12 8.404c0 4.156 4.27 7.632 10.04 8.296.39.085.92.258 1.058.59.12.285.08.733.038 1.022l-.185 1.118c-.056.34-.27 1.33 1.163.725 1.432-.605 7.732-4.554 10.545-7.796 1.01-1.202 1.34-2.03 1.34-3.955z"/></svg>
-            LINEでログイン / 登録
-          </button>
-        </div>
-        <div class="ring-sso-fusen ring-sso-fusen--google">
-          <div id="googleSignInSlotLogin" class="google-signin-slot"></div>
-        </div>
-      </div>
-
-      <div class="divider">またはIDでログイン</div>
 
       <div class="field">
         <span class="label">ログインID</span>
@@ -381,8 +462,28 @@
 
       <button class="btn-submit" id="loginBtn" onclick="doUserLogin()">ログインする</button>
 
+      <div class="divider">または LINE / Google でログイン</div>
+
+      <div class="ring-sso-stack">
+        <div class="ring-sso-fusen ring-sso-fusen--line">
+          <button type="button" class="ring-sso-line-btn" onclick="doLineLogin()">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="white" style="margin-bottom:-2px;" aria-hidden="true"><path d="M24 10.304c0-4.636-5.383-8.404-12-8.404s-12 3.768-12 8.404c0 4.156 4.27 7.632 10.04 8.296.39.085.92.258 1.058.59.12.285.08.733.038 1.022l-.185 1.118c-.056.34-.27 1.33 1.163.725 1.432-.605 7.732-4.554 10.545-7.796 1.01-1.202 1.34-2.03 1.34-3.955z"/></svg>
+            LINEでログイン
+          </button>
+        </div>
+        <div class="ring-sso-fusen ring-sso-fusen--google">
+          <div id="googleLoginStubWrap" class="ring-google-login-stub-wrap">
+            <button type="button" class="ring-google-stub-btn" id="googleLoginStubBtn"
+                    onclick="doGoogleLoginStubTap()" aria-label="Google でログイン">
+              <svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.82 7.14l7.73 6.01c4.52-4.18 7.13-10.34 7.13-17.62z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6.01c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/><path fill="none" d="M0 0h48v48H0z"/></svg>
+              Google でログイン
+            </button>
+          </div>
+          <div id="googleSignInSlotLogin" class="google-signin-slot"></div>
+        </div>
+      </div>
+
       <div class="demo-area">
-        <span class="demo-title">【開発用デモ】</span>
         <div class="demo-links">
           <a onclick="doDemoUserLogin()">デモで体験する</a>
         </div>
@@ -497,11 +598,115 @@
     </div>
   </div>
 
+  <!-- ログイン／LINE／Google での利用開始前同意（共通モーダル） -->
+  <div id="legalConsentModalBackdrop"
+       class="legal-consent-root"
+       aria-hidden="true"
+       onclick="if (event.target === this) dismissLegalConsentModal()">
+    <div class="legal-modal-sheet" role="dialog" aria-modal="true" aria-labelledby="modalConsentHeading"
+         onclick="event.stopPropagation();">
+      <h2 id="modalConsentHeading">ログインへ進むには同意が必要です</h2>
+      <p class="consent-lead" style="margin: 0 0 12px;">
+        利用規約とプライバシーポリシーを確認のうえ、同意してください。</p>
+      <ul class="consent-links" style="margin-bottom:14px;">
+        <li><a href="terms.html" target="_blank" rel="noopener noreferrer">利用規約を開く（別タブ）</a></li>
+        <li><a href="privacy.html" target="_blank" rel="noopener noreferrer">プライバシーポリシーを開く（別タブ）</a></li>
+      </ul>
+      <label class="consent-check">
+        <input type="checkbox" id="chkModalConsentTerms" autocomplete="off">
+        <span>利用規約の内容を確認し、同意します（現在バージョン1.0）</span>
+      </label>
+      <label class="consent-check">
+        <input type="checkbox" id="chkModalConsentPrivacy" autocomplete="off">
+        <span>プライバシーポリシーの内容を確認し、同意します（現在バージョン1.0）</span>
+      </label>
+      <div class="consent-err" id="modalConsentErr">両方にチェックを入れてください。</div>
+      <div class="legal-modal-actions">
+        <button type="button" class="modal-consent-confirm" onclick="submitLegalConsentModal()">同意して進む</button>
+        <button type="button" class="modal-consent-cancel" onclick="dismissLegalConsentModal()">キャンセル</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     function registerSuccessCardVisible() {
       const rc = document.getElementById('resultCard');
       if (!rc) return false;
       return window.getComputedStyle(rc).display !== 'none';
+    }
+
+    var pendingLegalConsentAction = null;
+
+    /** ログインタブ Google：同意なしではスタブ、同意済みでは GIS を描画。登録タブ用スロットは常に処理。 */
+    function refreshLoginGoogleConsentUI() {
+      var consent = typeof ringReadUserRegConsent === 'function' && !!ringReadUserRegConsent();
+      var stubWrap = document.getElementById('googleLoginStubWrap');
+      if (stubWrap) stubWrap.style.display = consent ? 'none' : 'flex';
+
+      var loginSlot = document.getElementById('googleSignInSlotLogin');
+      if (loginSlot && !consent) {
+        loginSlot.innerHTML = '';
+        loginSlot.classList.remove('ring-google-visible');
+      }
+
+      var slots = ['googleSignInSlotRegister'];
+      if (consent) slots.unshift('googleSignInSlotLogin');
+      if (typeof ringBootGoogleSignIn === 'function') ringBootGoogleSignIn(slots);
+    }
+
+    document.addEventListener('keydown', function legalModalEscape(ev) {
+      if (ev.key !== 'Escape') return;
+      var bd = document.getElementById('legalConsentModalBackdrop');
+      if (bd && bd.classList.contains('ring-legal-modal-open')) dismissLegalConsentModal();
+    });
+
+    function openLegalConsentModal(onConfirm) {
+      pendingLegalConsentAction = (typeof onConfirm === 'function') ? onConfirm : null;
+      var backdrop = document.getElementById('legalConsentModalBackdrop');
+      var t = document.getElementById('chkModalConsentTerms');
+      var p = document.getElementById('chkModalConsentPrivacy');
+      var err = document.getElementById('modalConsentErr');
+      if (t) { t.checked = false; }
+      if (p) { p.checked = false; }
+      if (err) { err.style.display = 'none'; }
+      if (!backdrop) return;
+      backdrop.classList.add('ring-legal-modal-open');
+      backdrop.setAttribute('aria-hidden', 'false');
+      document.documentElement.style.overflow = 'hidden';
+    }
+
+    function dismissLegalConsentModal() {
+      var backdrop = document.getElementById('legalConsentModalBackdrop');
+      if (backdrop) {
+        backdrop.classList.remove('ring-legal-modal-open');
+        backdrop.setAttribute('aria-hidden', 'true');
+      }
+      document.documentElement.style.overflow = '';
+      pendingLegalConsentAction = null;
+    }
+
+    function submitLegalConsentModal() {
+      var t = document.getElementById('chkModalConsentTerms');
+      var p = document.getElementById('chkModalConsentPrivacy');
+      var err = document.getElementById('modalConsentErr');
+      if (err) err.style.display = 'none';
+      if (!t || !p || !t.checked || !p.checked) {
+        if (err) err.style.display = 'block';
+        return;
+      }
+      try {
+        ringSaveUserRegConsent();
+      } catch (e) {
+        showToast('error', 'ブラウザの保存領域に書き込めませんでした。設定を確認してください。');
+        return;
+      }
+      var cb = pendingLegalConsentAction;
+      pendingLegalConsentAction = null;
+      dismissLegalConsentModal();
+      refreshLoginGoogleConsentUI();
+      if (cb) {
+        try { cb(); } catch (eCb) { /* ignore */ }
+      }
     }
 
     function syncRegisterConsentUI() {
@@ -538,18 +743,19 @@
         return;
       }
       syncRegisterConsentUI();
-      ringBootGoogleSignIn(['googleSignInSlotLogin', 'googleSignInSlotRegister']);
+      refreshLoginGoogleConsentUI();
     }
 
     /* ===== タブ切り替え ===== */
     function switchTab(tab) {
+      try { dismissLegalConsentModal(); } catch (e) { /* ignore */ }
       const isLogin = (tab === 'login');
       document.getElementById('tabLogin').classList.toggle('active', isLogin);
       document.getElementById('tabRegister').classList.toggle('active', !isLogin);
       document.getElementById('panelLogin').classList.toggle('active', isLogin);
       document.getElementById('panelRegister').classList.toggle('active', !isLogin);
-      if (!isLogin) syncRegisterConsentUI();
-      ringBootGoogleSignIn(['googleSignInSlotLogin', 'googleSignInSlotRegister']);
+      syncRegisterConsentUI();
+      refreshLoginGoogleConsentUI();
     }
 
     /* ===== バリデーション ===== */
@@ -595,9 +801,25 @@
       label.style.color   = lv.color;
     }
 
-    /* ===== LINEログイン（将来実装用プレースホルダー） ===== */
+    /* ===== LINEログイン（OAuth → user_line_callback → GAS） ===== */
     function doLineLogin() {
-      showToast('info', 'LINE連携は近日公開予定です');
+      if (typeof ringReadUserRegConsent === 'function' && ringReadUserRegConsent()) {
+        if (typeof ringStartLineLogin === 'function') ringStartLineLogin();
+        else showToast('error', 'LINE連携の準備中です');
+        return;
+      }
+      openLegalConsentModal(function () {
+        if (typeof ringStartLineLogin === 'function') ringStartLineLogin();
+        else showToast('error', 'LINE連携の準備中です');
+      });
+    }
+
+    function doGoogleLoginStubTap() {
+      if (typeof ringReadUserRegConsent === 'function' && ringReadUserRegConsent()) {
+        refreshLoginGoogleConsentUI();
+        return;
+      }
+      openLegalConsentModal(null);
     }
 
     /* ===== デモログイン ===== */
@@ -720,8 +942,8 @@
         location.replace('user_home.html');
         return;
       }
+      refreshLoginGoogleConsentUI();
       syncRegisterConsentUI();
-      ringBootGoogleSignIn(['googleSignInSlotLogin', 'googleSignInSlotRegister']);
     });
   </script>
 </body>

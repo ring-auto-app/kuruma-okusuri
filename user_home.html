@@ -104,7 +104,6 @@
       border-color: transparent transparent rgba(245, 230, 170, 0.95) transparent;
       filter: drop-shadow(-1px -1px 0 rgba(180, 150, 80, 0.2));
     }
-    .user-name { font-size: 18px; font-weight: 900; color: var(--muted); }
     .user-id   { font-size: 12px; font-weight: 700; color: var(--text); opacity: 0.78; }
 
     /* メインメニュー：付箋ノートカード */
@@ -170,7 +169,6 @@
 
     <!-- ユーザー情報 -->
     <div class="user-card">
-      <div class="user-name" id="userName">ゲストユーザー</div>
       <div class="user-id"  id="userId">ログインID：---</div>
       <div class="user-id"  id="userIdInner" style="margin-top:6px;">ユーザーID：---</div>
     </div>
@@ -220,10 +218,8 @@
         return;
       }
 
-      const nameEl = document.getElementById('userName');
       const idEl   = document.getElementById('userId');
       const idInner = document.getElementById('userIdInner');
-      if (nameEl) nameEl.textContent = profile.userName || 'ゲストユーザー';
       if (idEl)   idEl.textContent   = 'ログインID：' + (profile.loginId || profile.userId || '---');
       if (idInner) idInner.textContent = 'ユーザーID：' + (profile.userId || '---');
 
