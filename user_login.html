@@ -162,6 +162,7 @@
     .pw-wrap { position: relative; }
 
     input[type="text"],
+    input[type="email"],
     input[type="password"] {
       width: 100%;
       padding: 16px;
@@ -460,6 +461,10 @@
         <div class="err-msg" id="errLoginPw">⚠ パスワードを入力してください</div>
       </div>
 
+      <p style="margin: -6px 0 14px; text-align: right;">
+        <a href="forgot_password.html" style="font-size: 13px; font-weight: 800; color: var(--neutral-action); text-decoration: none;">パスワードをお忘れの方</a>
+      </p>
+
       <button class="btn-submit" id="loginBtn" onclick="doUserLogin()">ログインする</button>
 
       <div class="divider">または LINE / Google でログイン</div>
@@ -551,6 +556,13 @@
         <div class="field">
           <span class="label">ニックネーム <span class="optional">※任意</span></span>
           <input type="text" id="regName" placeholder="例：田中 太郎">
+        </div>
+
+        <div class="field">
+          <span class="label">メールアドレス</span>
+          <input type="email" id="regEmail" placeholder="例：you@example.com" autocomplete="email"
+                 oninput="clearErr('errRegEmail')">
+          <div class="err-msg" id="errRegEmail">⚠ 有効なメールアドレスを入力してください</div>
         </div>
 
         <div class="field">
@@ -860,7 +872,7 @@
         });
         const data = await res.json();
 
-        if (data.success && (data.profile.role === 'user' || data.profile.shopType === 'user')) {
+        if (data.success && (data.profile.role === 'user' || data.profile.shopType === 'user' || data.profile.role === 'admin')) {
           login(data.profile, data.authToken);
           location.replace('user_home.html');
         } else if (data.success) {
@@ -889,10 +901,13 @@
       }
 
       const name   = document.getElementById('regName').value.trim();
+      const email  = document.getElementById('regEmail').value.trim();
       const pw     = document.getElementById('regPw').value;
       const pwConf = document.getElementById('regPwConf').value;
       let hasErr = false;
-      clearErr('errRegPw'); clearErr('errRegPwConf');
+      clearErr('errRegPw'); clearErr('errRegPwConf'); clearErr('errRegEmail');
+      const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+      if (!emailOk) { showErr('errRegEmail'); hasErr = true; }
       if (!pw)         { showErr('errRegPw'); hasErr = true; }
       if (pw !== pwConf) { showErr('errRegPwConf'); hasErr = true; }
       if (hasErr) return;
@@ -908,6 +923,7 @@
           body: JSON.stringify({
             action: 'user_register',
             userName: name,
+            email: email,
             password: pw,
             consentAt: consent.consentAt,
             termsVersion: consent.termsVersion,
@@ -938,7 +954,7 @@
     /* ===== 既にログイン済みなら user_home.html へ ===== */
     window.addEventListener('DOMContentLoaded', () => {
       const profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
-      if (profile && (profile.shopType === 'user' || profile.role === 'user')) {
+      if (profile && (profile.shopType === 'user' || profile.role === 'user' || profile.role === 'admin')) {
         location.replace('user_home.html');
         return;
       }

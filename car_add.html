@@ -447,13 +447,40 @@
           vehRes = { success: true };
         }
 
+        if (vehRes && vehRes.success === false && !vehRes.queued &&
+            String(vehRes.error || '') === 'VIN_OWNED_BY_OTHER_USER' && !isBiz &&
+            typeof showRingConfirm === 'function') {
+          if (typeof hideLoading === 'function') hideLoading();
+          btn.disabled = false;
+          const ok = await showRingConfirm({
+            title: 'この車は別アカウントに登録されています',
+            message: '所有権をあなたのアカウントへ移して登録しますか？\n\n（同意した場合のみ反映されます）',
+            okLabel: '所有権を移して登録',
+            cancelLabel: 'キャンセル',
+            danger: true
+          });
+          if (!ok) {
+            return;
+          }
+          btn.disabled = true;
+          if (typeof showLoading === 'function') showLoading('登録中', '所有権を移しています...');
+          vehRes = await addVehicle(newVehicle, { transferOwnership: true });
+        }
+
         if (typeof hideLoading === 'function') hideLoading();
         btn.disabled = false;
 
         if (vehRes && vehRes.success === false && !vehRes.queued) {
-          showToast('error', /VIN_REQUIRED/i.test(String(vehRes.error || ''))
-            ? '車台番号（VIN）がサーバーで受理されませんでした'
-            : (vehRes.error || 'サーバーへの保存に失敗しました'));
+          const errStr = String(vehRes.error || '');
+          if (/VIN_REGISTERED_BY_SHOP/i.test(errStr)) {
+            showToast('error', 'この車台番号は事業者管理として登録済みです。お店へお問い合わせください。');
+          } else if (/VIN_OWNED_BY_OTHER_USER/i.test(errStr)) {
+            showToast('error', '登録を完了できませんでした。');
+          } else if (/VIN_REQUIRED/i.test(errStr)) {
+            showToast('error', '車台番号（VIN）がサーバーで受理されませんでした');
+          } else {
+            showToast('error', errStr || 'サーバーへの保存に失敗しました');
+          }
           return;
         }
 

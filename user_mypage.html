@@ -36,6 +36,13 @@
     .mini-item:last-child { border-bottom: none; }
     .mini-item:active { opacity: 0.85; }
     .mini-sub { font-size: 11px; font-weight: 700; color: var(--muted); margin-top: 4px; }
+    .nick-edit { margin-top: 14px; }
+    .nick-edit label { display: block; font-size: 12px; font-weight: 900; color: var(--muted); margin-bottom: 6px; }
+    .nick-edit input[type="text"] {
+      width: 100%; padding: 12px 14px; border: 2px solid var(--line); border-radius: 12px;
+      font-size: 16px; font-weight: 700; box-sizing: border-box; font-family: inherit;
+    }
+    .nick-save-wrap { margin-top: 10px; }
     .empty-hint { font-size: 12px; font-weight: 800; color: var(--muted); padding: 16px; text-align: center; }
   </style>
 </head>
@@ -49,9 +56,16 @@
     <div class="section">
       <div class="section-title">アカウント</div>
       <div class="id-box" id="profileBox">
-        <div class="row"><span class="k">お名前</span><span class="v" id="dispName">—</span></div>
+        <div class="row"><span class="k">ニックネーム</span><span class="v" id="dispName">—</span></div>
         <div class="row"><span class="k">ユーザーID</span><span class="v" id="dispUserId">—</span></div>
         <div class="row"><span class="k">ログインID</span><span class="v" id="dispLoginId">—</span></div>
+      </div>
+      <div class="nick-edit">
+        <label for="nickInput">ニックネームを変更</label>
+        <input type="text" id="nickInput" maxlength="50" placeholder="例：なっぴー" autocomplete="nickname">
+        <div class="nick-save-wrap">
+          <button type="button" class="btn btn-primary" id="nickSaveBtn">保存</button>
+        </div>
       </div>
       <div class="btn-stack">
         <a class="btn btn-primary" href="change_password.html">パスワード変更</a>
@@ -98,14 +112,51 @@
 
     window.addEventListener('DOMContentLoaded', function () {
       var profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
-      if (!profile || (profile.shopType !== 'user' && profile.role !== 'user')) {
+      if (!profile || profile.shopType !== 'user') {
+        location.replace('user_login.html');
+        return;
+      }
+      var r = String(profile.role || '');
+      if (r !== 'user' && r !== 'admin') {
         location.replace('user_login.html');
         return;
       }
 
-      document.getElementById('dispName').textContent = profile.userName || '—';
+      var dispNm = document.getElementById('dispName');
+      dispNm.textContent = (profile.userName && String(profile.userName).trim()) ? profile.userName : '未設定';
       document.getElementById('dispUserId').textContent = profile.userId || '—';
       document.getElementById('dispLoginId').textContent = profile.loginId || profile.userId || '—';
+
+      var nickInput = document.getElementById('nickInput');
+      nickInput.value = profile.userName ? String(profile.userName) : '';
+
+      document.getElementById('nickSaveBtn').onclick = async function () {
+        var v = nickInput.value.trim();
+        if (v.length > 50) {
+          if (typeof showToast === 'function') showToast('error', '50文字以内にしてください');
+          return;
+        }
+        var btn = document.getElementById('nickSaveBtn');
+        btn.disabled = true;
+        try {
+          if (typeof showLoading === 'function') showLoading('保存中', '');
+          var data = await sendToGAS_Safe('user_update_profile', { userName: v });
+          if (typeof hideLoading === 'function') hideLoading();
+          if (data.profile) {
+            var p = typeof getCurrentProfile === 'function' ? getCurrentProfile() : {};
+            Object.assign(p, data.profile);
+            var tok = localStorage.getItem('ring_auth_token');
+            if (typeof login === 'function') login(p, tok || undefined);
+          }
+          dispNm.textContent = v || '未設定';
+          if (typeof showToast === 'function') showToast('success', 'ニックネームを保存しました');
+        } catch (e) {
+          if (typeof hideLoading === 'function') hideLoading();
+          if (typeof showToast === 'function') showToast('error', (e && e.message) ? e.message : '保存に失敗しました');
+        } finally {
+          btn.disabled = false;
+        }
+      };
 
       var vehicles = getUserVehicles(profile);
       var vEl = document.getElementById('vehicleList');

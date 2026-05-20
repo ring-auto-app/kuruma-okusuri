@@ -22,7 +22,8 @@
       color: var(--text); padding: 34px 16px 102px; line-height: 34px;
     }
     .container { max-width: 600px; margin: 0 auto; }
-    .header { margin-bottom: 34px; display: flex; justify-content: space-between; align-items: flex-end;}
+    .header { margin-bottom: 34px; display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; flex-wrap: wrap;}
+    .ring-line-link-slot { display: flex; justify-content: flex-end; flex: 1; min-width: 120px; }
     .back-link { color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 800; display: inline-block; cursor: pointer; height: 34px; line-height: 34px; }
     .title { font-size: 26px; font-weight: 900; color: var(--text-main); margin: 0; position: relative; display: inline-block; width: max-content; }
     .title::after { content: ""; position: absolute; left: 0; right: 0; bottom: 2px; height: 10px; background: var(--highlighter); z-index: -1; border-radius: 4px; transform: rotate(-1deg); }
@@ -89,6 +90,7 @@
       <a id="backBtn" class="back-link">◁ ホームへ戻る</a>
       <div class="header">
         <h1 class="title" id="pageTitle">車両一覧</h1>
+        <div id="ringLineLinkSlot" class="ring-line-link-slot"></div>
       </div>
     </div>
     <!-- 車両区分タブ（工場・事業者のみ JS で表示） -->
@@ -149,6 +151,10 @@
       (async function () {
         if (profile && typeof syncVehiclesFromServer === 'function') {
           try { await syncVehiclesFromServer(); } catch (e) { /* オフライン等はローカルのみ */ }
+        }
+        var slot = document.getElementById('ringLineLinkSlot');
+        if (slot && profile && typeof ringMountLineLinkButton === 'function') {
+          ringMountLineLinkButton(slot, profile);
         }
         renderCars();
       })();

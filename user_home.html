@@ -52,6 +52,27 @@
       display: flex;
       justify-content: space-between;
       align-items: flex-end;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .header-titles { min-width: 0; }
+    .header-meta {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 8px;
+      max-width: 100%;
+    }
+    .ring-line-link-slot { display: flex; justify-content: flex-end; }
+    .ring-admin-dash-link {
+      display: inline-block;
+      margin-top: 6px;
+      font-size: 13px;
+      font-weight: 900;
+      color: var(--muted);
+      text-decoration: underline;
+      cursor: pointer;
+      line-height: 1.3;
     }
 
     .title {
@@ -163,14 +184,29 @@
 
     <!-- ヘッダー -->
     <div class="header">
-      <h1 class="title">ホーム</h1>
-      <span id="displayDate" style="font-size:12px; font-weight:800; color:var(--muted);"></span>
+      <div class="header-titles">
+        <h1 class="title">ホーム</h1>
+        <a href="admin_dashboard.html" id="ringAdminDashLink" class="ring-admin-dash-link" style="display:none;">管理者ダッシュボード</a>
+      </div>
+      <div class="header-meta">
+        <span id="displayDate" style="font-size:12px; font-weight:800; color:var(--muted);"></span>
+        <div id="ringLineLinkSlot" class="ring-line-link-slot"></div>
+      </div>
+    </div>
+
+    <div id="ringPwaInstallBanner" class="ring-pwa-banner" role="region" aria-label="アプリをホーム画面に追加">
+      <p>ホーム画面に追加すると、次回からすぐ開けます。</p>
+      <div class="ring-pwa-actions">
+        <button type="button" class="ring-pwa-primary" onclick="ringRunPwaInstallPrompt()">ホームに追加</button>
+        <button type="button" class="ring-pwa-secondary" onclick="ringDismissPwaInstallBanner()">あとで</button>
+      </div>
     </div>
 
     <!-- ユーザー情報 -->
     <div class="user-card">
-      <div class="user-id"  id="userId">ログインID：---</div>
-      <div class="user-id"  id="userIdInner" style="margin-top:6px;">ユーザーID：---</div>
+      <div class="user-id" id="userNickLine" style="font-size:15px;font-weight:900;opacity:1;margin-bottom:4px;">ニックネーム：---</div>
+      <div class="user-id" id="userId">ログインID：---</div>
+      <div class="user-id" id="userIdInner" style="margin-top:6px;">ユーザーID：---</div>
     </div>
 
     <div id="ringPendingSyncBar" class="ring-pending-sync" style="display:none;" role="status"></div>
@@ -220,6 +256,11 @@
 
       const idEl   = document.getElementById('userId');
       const idInner = document.getElementById('userIdInner');
+      const nickEl = document.getElementById('userNickLine');
+      if (nickEl) {
+        const nick = String(profile.userName || '').trim();
+        nickEl.textContent = 'ニックネーム：' + (nick ? nick : '未設定');
+      }
       if (idEl)   idEl.textContent   = 'ログインID：' + (profile.loginId || profile.userId || '---');
       if (idInner) idInner.textContent = 'ユーザーID：' + (profile.userId || '---');
 
@@ -231,6 +272,17 @@
       }
 
       if (typeof ringAdsInit === 'function') ringAdsInit('user_home');
+
+      var slot = document.getElementById('ringLineLinkSlot');
+      if (slot && typeof ringMountLineLinkButton === 'function') {
+        ringMountLineLinkButton(slot, profile);
+      }
+      var adl = document.getElementById('ringAdminDashLink');
+      if (adl && profile.role === 'admin') {
+        adl.style.display = 'inline-block';
+      }
+      if (typeof ringTryShowPwaInstallBanner === 'function') ringTryShowPwaInstallBanner();
+      if (typeof ringLogClientAccess === 'function') ringLogClientAccess('user_home');
     });
   </script>
 </body>

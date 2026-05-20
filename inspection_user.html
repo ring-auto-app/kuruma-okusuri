@@ -323,8 +323,8 @@
 
         const userProfile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
         const inputStaffName = userProfile
-          ? (userProfile.userName || userProfile.displayName || userProfile.loginId || 'ユーザー')
-          : 'ユーザー';
+          ? (String(userProfile.userName || '').trim() || userProfile.loginId || '未設定')
+          : '未設定';
 
         const gasPayload = {
           log_id: newLogId, vin: vin, date: date, title: '日常点検',

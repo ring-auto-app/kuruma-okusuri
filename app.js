@@ -32,6 +32,15 @@ const RING_LINE_CHANNEL_ID = (function () {
   return '2010137438';
 })();
 
+/** PWA 用: ブラウザのインストールプロンプトを保留 */
+var ringDeferredInstallPrompt = null;
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault();
+    ringDeferredInstallPrompt = e;
+  });
+}
+
 /** 一般ユーザー新規登録・Google 初回登録時の規約／プライバシーポリシー同意（sessionStorage） */
 const RING_USER_REG_CONSENT_KEY = 'nappy_user_reg_consent';
 /** クライアント・GAS で同一値であること（改版時は両方更新） */
@@ -164,6 +173,10 @@ async function ringHandleLineOAuthCallback() {
     showLoading('LINEで認証中', 'サーバーと通信しています...');
     try {
         var payload = { code: code, redirectUri: redirectUri, state: state };
+        try {
+            var existingTok = localStorage.getItem('ring_auth_token');
+            if (existingTok) payload.authToken = existingTok;
+        } catch (eT) { /* ignore */ }
         var consent = typeof ringReadUserRegConsent === 'function' ? ringReadUserRegConsent() : null;
         if (consent) {
             payload.consentAt = consent.consentAt;
@@ -172,7 +185,7 @@ async function ringHandleLineOAuthCallback() {
         }
         var data = await sendToGAS_Safe('user_line_auth', payload, { timeoutMs: 45000 });
         hideLoading();
-        if (data.profile && (data.profile.role === 'user' || data.profile.shopType === 'user')) {
+        if (data.profile && (data.profile.role === 'user' || data.profile.role === 'admin' || data.profile.shopType === 'user')) {
             try {
                 sessionStorage.removeItem(RING_USER_REG_CONSENT_KEY);
             } catch (e1) { /* ignore */ }
@@ -219,7 +232,7 @@ async function handleGoogleCredentialResponse(response) {
         const data = await sendToGAS_Safe('user_google_auth', payload);
         hideLoading();
 
-        if (data.profile && (data.profile.role === 'user' || data.profile.shopType === 'user')) {
+        if (data.profile && (data.profile.role === 'user' || data.profile.role === 'admin' || data.profile.shopType === 'user')) {
             try {
                 sessionStorage.removeItem(RING_USER_REG_CONSENT_KEY);
             } catch (e1) { /* ignore */ }
@@ -820,9 +833,85 @@ function isMaintenanceLogType(log) {
 }
 
 /**
- * 車両の追加・更新
+ * マイページ等: LINE 未連携の一般ユーザー向けに連携ボタンを親要素へ追加
  */
-async function addVehicle(v) {
+function ringMountLineLinkButton(container, profile) {
+    if (!container || !profile) return;
+    container.innerHTML = '';
+    var st = String(profile.shopType || '');
+    var role = String(profile.role || '');
+    if (st !== 'user' || role !== 'user') return;
+    if (profile.lineUserId) return;
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'ring-line-link-chip';
+    btn.textContent = 'LINEと連携して車検通知を受け取る 🟢';
+    btn.onclick = function () {
+        if (typeof ringStartLineLogin === 'function') ringStartLineLogin();
+    };
+    container.appendChild(btn);
+}
+
+/**
+ * PWA インストール案内（1回スキップ可能）
+ */
+function ringTryShowPwaInstallBanner() {
+    try {
+        if (localStorage.getItem('ring_pwa_install_dismissed') === '1') return;
+        var el = document.getElementById('ringPwaInstallBanner');
+        if (!el) return;
+        if (!ringDeferredInstallPrompt) return;
+        el.style.display = 'block';
+    } catch (e) { /* ignore */ }
+}
+
+function ringDismissPwaInstallBanner() {
+    try {
+        localStorage.setItem('ring_pwa_install_dismissed', '1');
+        var el = document.getElementById('ringPwaInstallBanner');
+        if (el) el.style.display = 'none';
+    } catch (e) { /* ignore */ }
+}
+
+function ringRunPwaInstallPrompt() {
+    if (!ringDeferredInstallPrompt) {
+        if (typeof showToast === 'function') showToast('info', 'このブラウザではホーム画面追加が利用できないか、既にインストール済みです。');
+        return;
+    }
+    ringDeferredInstallPrompt.prompt();
+    ringDeferredInstallPrompt.userChoice.finally(function () {
+        ringDeferredInstallPrompt = null;
+        ringDismissPwaInstallBanner();
+    });
+}
+
+/** 簡易アクセスログ（管理者ダッシュボード用） */
+function ringLogClientAccess(surface) {
+    try {
+        var p = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+        if (Math.random() > 0.06) return;
+        var payload = {
+            action: 'log_client_access',
+            surface: String(surface || ''),
+            userId: p && p.userId ? String(p.userId) : '',
+            role: p && p.role ? String(p.role) : '',
+            shopType: p && p.shopType ? String(p.shopType) : ''
+        };
+        fetch(GAS_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify(payload)
+        }).catch(function () { /* ignore */ });
+    } catch (e) { /* ignore */ }
+}
+
+/**
+ * 車両の追加・更新
+ * @param {object} v
+ * @param {{ transferOwnership?: boolean }} [options]
+ */
+async function addVehicle(v, options) {
+    const opt = options || {};
     const list = loadVehicles();
     const i = list.findIndex(x => _normalize(x.vin) === _normalize(v.vin));
     const merged = i !== -1 ? { ...list[i], ...v } : { ...v };
@@ -830,10 +919,11 @@ async function addVehicle(v) {
     if (i !== -1) list[i] = merged; else list.push(merged);
     localStorage.setItem(DB_VEHICLES, JSON.stringify(list));
     try {
-        return await sendToGAS_Safe('vehicle', merged);
+        const gasPayload = Object.assign({}, merged, opt.transferOwnership ? { transferOwnership: true } : {});
+        return await sendToGAS_Safe('vehicle', gasPayload);
     } catch (err) {
         const msg = String(err.message || '');
-        if (/VIN_REQUIRED/i.test(msg)) {
+        if (/VIN_REQUIRED|VIN_OWNED_BY_OTHER_USER|VIN_REGISTERED_BY_SHOP/i.test(msg)) {
             return { success: false, error: msg, localSaved: true, serverSaved: false, queued: false };
         }
         enqueueRetry('vehicle', merged);
