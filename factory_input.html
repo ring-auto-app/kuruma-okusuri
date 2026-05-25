@@ -32,6 +32,7 @@
     .doc-preview-area {
       display: none; margin-bottom: 34px; border: 2px solid var(--line); 
       border-radius: 12px; overflow: hidden; background: #fff;
+      position: relative;
     }
     .doc-preview-area img { width: 100%; display: block; filter: grayscale(50%); }
     
@@ -99,10 +100,10 @@
       <a href="factory_edit_list.html" class="edit-link">✏️ 過去7日間の入力履歴を編集する</a>
     </header>
     
-    <div class="scan-btn" onclick="document.getElementById('docInput').click()">📄 請求書・明細書をスキャン</div>
-    <input type="file" id="docInput" accept="image/*" hidden>
+    <div class="scan-btn" onclick="document.getElementById('docInput').click()">📄 請求書・明細書をスキャン（複数枚可）</div>
+    <input type="file" id="docInput" accept="image/*" multiple hidden>
 
-    <div class="doc-preview-area" id="docPreviewArea"><img id="docPreviewImg" src=""></div>
+    <div class="doc-preview-area" id="docPreviewArea"><img id="docPreviewImg" src=""><span class="doc-preview-more" id="docPreviewMore"></span></div>
     <div class="discard-notice" id="discardNotice" style="display:none;">※画像は保存されず破棄されます</div>
 
     <div class="note-card">
@@ -255,49 +256,34 @@
     ];
 
     document.getElementById('docInput').addEventListener('change', async (e) => {
-      const file = e.target.files[0]; if(!file) return;
-      let previewUrl = '';
-      try {
-        previewUrl = await new Promise((resolve, reject) => {
-          const r = new FileReader();
-          r.onload = () => resolve(String(r.result || ''));
-          r.onerror = reject;
-          r.readAsDataURL(file);
-        });
-      } catch (err) {
-        console.error(err);
-        return;
-      }
-      document.getElementById('docPreviewImg').src = previewUrl;
-      document.getElementById('docPreviewArea').style.display = 'block';
-      document.getElementById('discardNotice').style.display = 'block';
-
-      if (typeof showOcrAnalyzingOverlay === 'function') {
-        showOcrAnalyzingOverlay({ previewDataUrl: previewUrl, title: '書類を解析しています' });
-      } else {
-        showLoading("分析中", "AIが書類を読み取っています...");
-      }
-      let res = null;
-      try {
-        res = await analyzeDocument([file]);
-      } finally {
-        if (typeof hideOcrAnalyzingOverlay === 'function') hideOcrAnalyzingOverlay();
-        else hideLoading();
-      }
-      if (typeof wasOcrAnalyzingCancelled === 'function' && wasOcrAnalyzingCancelled()) return;
-
-      handleOcrVinResultForForm(res, function (r) {
-        if (r.vin) document.getElementById('inVin').value = String(r.vin).toUpperCase();
-        if (r.mileage) document.getElementById('inMileage').value = r.mileage;
-        if (r.workTitle) document.getElementById('inTitle').value = r.workTitle;
-        if (r.parts) document.getElementById('inParts').value = r.parts;
-        if (r.shaken) document.getElementById('inShaken').value = r.shaken;
-        if (r.model)  document.getElementById('inModel').value  = r.model;
-        if (r.engine) document.getElementById('inEngine').value = r.engine;
-        if (r.class)  document.getElementById('inClass').value  = r.class;
-        if (r.vin)    lookupVehicle(r.vin);
-        if (r.typeDesignation) document.getElementById('inTypeDesig').value = r.typeDesignation;
-      }, RING_OCR_FIELDS_FACTORY);
+      const files = e.target.files;
+      if (!files || !files.length) return;
+      e.target.value = '';
+      if (typeof ringHandleBatchDocumentScan !== 'function') return;
+      await ringHandleBatchDocumentScan({
+        files: files,
+        mode: 'factory',
+        saveBtnId: 'saveLogBtn',
+        previewArea: document.getElementById('docPreviewArea'),
+        previewImg: document.getElementById('docPreviewImg'),
+        discardNotice: document.getElementById('discardNotice'),
+        moreBadge: document.getElementById('docPreviewMore'),
+        onApply: function (r) {
+          if (r.vin) document.getElementById('inVin').value = String(r.vin).toUpperCase();
+          if (r.mileage) document.getElementById('inMileage').value = r.mileage;
+          if (r.workTitle) document.getElementById('inTitle').value = r.workTitle;
+          if (r.parts) document.getElementById('inParts').value = r.parts;
+          if (r.shaken) document.getElementById('inShaken').value = r.shaken;
+          if (r.model) document.getElementById('inModel').value = r.model;
+          if (r.engine) document.getElementById('inEngine').value = r.engine;
+          if (r.class) document.getElementById('inClass').value = r.class;
+          if (r.typeDesignation) document.getElementById('inTypeDesig').value = r.typeDesignation;
+          if (r.memo) document.getElementById('inMemo').value = r.memo;
+          if (r.vin) lookupVehicle(r.vin);
+          var det = document.querySelector('.note-card details');
+          if (det && (r.model || r.engine || r.class || r.typeDesignation)) det.open = true;
+        }
+      });
     });
 
     document.getElementById('partsPhotoInput').addEventListener('change', (e) => {
@@ -390,6 +376,7 @@
 
       const queued = !!(logResult.queued || vehQueued);
       const variant = queued ? 'queued' : 'success';
+      if (typeof ringMarkPageSaved === 'function') ringMarkPageSaved();
       if (typeof showRingSavedSplash === 'function') {
         showRingSavedSplash({
           variant,
@@ -460,8 +447,13 @@
         ringConfirmRow('写真', photoOn ? '添付あり' : '—');
 
       const saveLogBtn = document.getElementById("saveLogBtn");
+      var piiWarn = typeof ringBuildPiiWarningHtml_ === 'function'
+        ? ringBuildPiiWarningHtml_(['inParts', 'inMemo', 'inTitle'])
+        : '';
       showRingSaveConfirm({
         title: '整備記録の確認',
+        lead: typeof ringGetPreSaveLeadText === 'function' ? ringGetPreSaveLeadText() : undefined,
+        piiWarningHtml: piiWarn ? escapeHtml(piiWarn) : '',
         bodyHtml: bodyHtml,
         confirmLabel: 'この内容で登録する',
         onConfirm: function () { runOnce(saveLogBtn, performFactoryLogSave); }

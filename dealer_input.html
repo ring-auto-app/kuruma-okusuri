@@ -97,13 +97,14 @@
     </div>
 
     <div class="scan-btn" onclick="document.getElementById('docInput').click()">
-      📷 車検証・メーターから文字をスキャン
+      📷 車検証・請求書をスキャン（複数枚可）
     </div>
-    <input type="file" id="docInput" accept="image/*" hidden>
+    <input type="file" id="docInput" accept="image/*" multiple hidden>
 
     <div class="doc-preview-area" id="docPreviewArea">
       <div class="doc-preview-label">文字抽出用の一時画像</div>
       <img id="docPreviewImg" src="">
+      <span class="doc-preview-more" id="docPreviewMore"></span>
     </div>
     <div class="discard-notice" id="discardNotice" style="display:none;">
       ※情報漏洩防止のため、この書類画像は保存されず破棄されます。
@@ -240,49 +241,33 @@
       { key: 'shaken', label: '車検満了日', getCurrent: () => document.getElementById('inShaken').value },
     ];
 
-    // OCR解析処理
+    // OCR解析処理（複数枚バッチ）
     document.getElementById('docInput').addEventListener('change', async (e) => {
-      const file = e.target.files[0];
-      if(!file) return;
-      
-      let previewUrl = '';
-      try {
-        previewUrl = await new Promise((resolve, reject) => {
-          const r = new FileReader();
-          r.onload = () => resolve(String(r.result || ''));
-          r.onerror = reject;
-          r.readAsDataURL(file);
-        });
-      } catch (err) {
-        console.error(err);
-        return;
-      }
-      document.getElementById('docPreviewImg').src = previewUrl;
-      document.getElementById('docPreviewArea').style.display = 'block';
-      document.getElementById('discardNotice').style.display = 'block';
-
-      if (typeof showOcrAnalyzingOverlay === 'function') {
-        showOcrAnalyzingOverlay({ previewDataUrl: previewUrl, title: '書類を解析しています' });
-      } else {
-        showLoading("AI解析中", "車検証・メーターの文字を抽出しています...");
-      }
-
-      let res = null;
-      try {
-        res = await analyzeDocument([file]);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        if (typeof hideOcrAnalyzingOverlay === 'function') hideOcrAnalyzingOverlay();
-        else hideLoading();
-      }
-      if (typeof wasOcrAnalyzingCancelled === 'function' && wasOcrAnalyzingCancelled()) return;
-
-      handleOcrVinResultForForm(res, function (r) {
-        if (r.vin && !document.getElementById('inVin').readOnly) document.getElementById('inVin').value = String(r.vin).toUpperCase();
-        if (r.mileage) document.getElementById('inMileage').value = r.mileage;
-        if (r.shaken)  document.getElementById('inShaken').value  = r.shaken;
-      }, RING_OCR_FIELDS_DEALER);
+      const files = e.target.files;
+      if (!files || !files.length) return;
+      e.target.value = '';
+      if (typeof ringHandleBatchDocumentScan !== 'function') return;
+      await ringHandleBatchDocumentScan({
+        files: files,
+        mode: 'dealer',
+        saveBtnId: 'saveBtn',
+        previewArea: document.getElementById('docPreviewArea'),
+        previewImg: document.getElementById('docPreviewImg'),
+        discardNotice: document.getElementById('discardNotice'),
+        moreBadge: document.getElementById('docPreviewMore'),
+        onApply: function (r) {
+          if (r.vin && !document.getElementById('inVin').readOnly) {
+            document.getElementById('inVin').value = String(r.vin).toUpperCase();
+          }
+          if (r.mileage) document.getElementById('inMileage').value = r.mileage;
+          if (r.shaken) document.getElementById('inShaken').value = r.shaken;
+          if (r.workTitle) document.getElementById('inTitle').value = r.workTitle;
+          if (r.memo) {
+            var memoEl = document.getElementById('inMemo');
+            memoEl.value = memoEl.value ? (memoEl.value + '\n' + r.memo) : r.memo;
+          }
+        }
+      });
     });
 
     // アコーディオンの開閉制御
@@ -383,6 +368,7 @@
         const dest = `factory_edit_list.html?vin=${encodeURIComponent(vin)}&log_id=${result.logId || ''}`;
         const queued = !!(result && result.queued);
         const variant = queued ? 'queued' : 'success';
+        if (typeof ringMarkPageSaved === 'function') ringMarkPageSaved();
         if (typeof showRingSavedSplash === 'function') {
           showRingSavedSplash({ variant, onDone: () => location.replace(dest) });
         } else {

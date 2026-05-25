@@ -633,6 +633,116 @@ textarea { line-height: 24px; min-height: 88px; }
   color: #b45309;
 }
 
+/* 複数枚 OCR 進捗 */
+.ring-ocr-batch__count {
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--accent);
+  margin-bottom: 10px;
+}
+.ring-ocr-batch__barwrap {
+  width: 100%;
+  max-width: 280px;
+  height: 10px;
+  background: var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+.ring-ocr-batch__bar {
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width 0.25s ease;
+}
+.ring-ocr-batch__fail {
+  font-size: 12px;
+  font-weight: 800;
+  color: #b45309;
+  margin-bottom: 10px;
+}
+.ring-ocr-batch__queue {
+  width: 100%;
+  max-width: 320px;
+  margin-bottom: 16px;
+}
+.ring-ocr-batch__qi {
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--line);
+  line-height: 1.4;
+}
+.ring-ocr-batch__qi--processing { color: var(--accent); }
+.ring-ocr-batch__qi--fail { color: #b45309; }
+
+/* OCR バッチレビュー */
+.ring-ocr-review__card .ring-save-confirm__body { overflow-y: auto; }
+.ring-ocr-review__body { padding-bottom: 8px; }
+.ring-ocr-review__row { margin-bottom: 12px; }
+.ring-ocr-review__lbl {
+  display: block;
+  font-size: 12px;
+  font-weight: 900;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.ring-ocr-review__src { font-size: 11px; font-weight: 700; color: var(--accent); }
+.ring-ocr-review__src--none { color: var(--muted); }
+.ring-ocr-review__input {
+  width: 100%;
+  min-height: var(--tap-min);
+  padding: 10px 12px;
+  border: 2px solid var(--line);
+  border-radius: 10px;
+  box-sizing: border-box;
+  font-size: 16px;
+  font-family: inherit;
+}
+.ring-ocr-review__section {
+  font-size: 13px;
+  font-weight: 900;
+  color: var(--text);
+  margin: 16px 0 8px;
+  padding-top: 8px;
+  border-top: 2px solid var(--line);
+}
+.ring-ocr-review__cands { margin-bottom: 8px; }
+.ring-ocr-review__rad {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 6px;
+  min-height: 44px;
+}
+.ring-save-confirm__pii-warn {
+  margin: 0 18px 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fef2f2;
+  border: 2px solid #f87171;
+  color: #b91c1c;
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1.45;
+  flex-shrink: 0;
+}
+
+.doc-preview-more {
+  display: none;
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  background: rgba(0,0,0,0.65);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 4px 10px;
+  border-radius: 8px;
+}
+
 /* =========================================
    保存前確認（整備入力・車両登録共通）
 ========================================= */

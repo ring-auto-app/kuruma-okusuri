@@ -988,6 +988,139 @@ function ringRunPwaInstallPrompt() {
     });
 }
 
+/** 運用監視ログ（System_Logs / GAS system_log） */
+function ringParseBrowserName_(ua) {
+    ua = String(ua || '');
+    if (/Line\//i.test(ua)) return 'LINE';
+    if (/Edg\//i.test(ua)) return 'Edge';
+    if (/Chrome\//i.test(ua) && !/Edg\//i.test(ua)) return 'Chrome';
+    if (/CriOS\//i.test(ua)) return 'Chrome(iOS)';
+    if (/Safari\//i.test(ua) && !/Chrome\//i.test(ua)) return 'Safari';
+    if (/Firefox\//i.test(ua)) return 'Firefox';
+    return 'Other';
+}
+
+function ringGetSystemLogContext() {
+    var page = '';
+    var device = 'desktop';
+    try {
+        page = String(window.location.pathname || '');
+        var w = window.innerWidth || 0;
+        if (w > 0 && w < 768) device = 'mobile';
+        else if (w > 0 && w < 1024) device = 'tablet';
+    } catch (eP) { /* ignore */ }
+    var network = 'unknown';
+    try {
+        var conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+        if (conn && conn.effectiveType) network = String(conn.effectiveType);
+    } catch (eN) { /* ignore */ }
+    var user_id = '';
+    var shop_id = '';
+    try {
+        var p = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+        if (p) {
+            user_id = String(p.userId || p.staffId || '');
+            shop_id = String(p.shopId || '');
+        }
+    } catch (eU) { /* ignore */ }
+    return {
+        page: page,
+        device: device,
+        browser: ringParseBrowserName_(typeof navigator !== 'undefined' ? navigator.userAgent : ''),
+        network: network,
+        user_id: user_id,
+        shop_id: shop_id
+    };
+}
+
+function ringBuildSystemLogPayload(logAction, opts) {
+    opts = opts || {};
+    var ctx = ringGetSystemLogContext();
+    var body = {
+        action: 'system_log',
+        logAction: logAction,
+        page: opts.page != null ? String(opts.page) : ctx.page,
+        device: ctx.device,
+        browser: ctx.browser,
+        network: ctx.network,
+        user_id: ctx.user_id,
+        shop_id: ctx.shop_id,
+        error_message: String(opts.error_message || opts.errorMessage || '').slice(0, 2000),
+        payload: opts.payload || {}
+    };
+    try {
+        var tok = localStorage.getItem('ring_auth_token');
+        if (tok) body.authToken = tok;
+    } catch (eT) { /* ignore */ }
+    return body;
+}
+
+function ringLogSystemEvent(logAction, opts, useBeacon) {
+    try {
+        if (!logAction || typeof GAS_URL === 'undefined') return;
+        var body = ringBuildSystemLogPayload(logAction, opts || {});
+        var json = JSON.stringify(body);
+        if (useBeacon && typeof navigator !== 'undefined' && navigator.sendBeacon) {
+            navigator.sendBeacon(GAS_URL, new Blob([json], { type: 'text/plain' }));
+            return;
+        }
+        fetch(GAS_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body: json,
+            keepalive: !!useBeacon
+        }).catch(function () { /* ignore */ });
+    } catch (e) { /* ignore */ }
+}
+
+var __ringUiExitState = { startedAt: 0, saved: false, sent: false, hadInteraction: false, page: '' };
+
+function ringInitUiExitWatch(pageId) {
+    __ringUiExitState = {
+        startedAt: Date.now(),
+        saved: false,
+        sent: false,
+        hadInteraction: false,
+        page: pageId || ringGetSystemLogContext().page
+    };
+    function onInteract() { __ringUiExitState.hadInteraction = true; }
+    document.addEventListener('click', onInteract, { passive: true });
+    document.addEventListener('input', onInteract, { passive: true });
+    function tryExit(trigger) {
+        if (__ringUiExitState.saved || __ringUiExitState.sent) return;
+        var dwellMs = Date.now() - __ringUiExitState.startedAt;
+        if (dwellMs < 3000) return;
+        __ringUiExitState.sent = true;
+        ringLogSystemEvent('UI_EXIT', {
+            payload: {
+                dwellMs: dwellMs,
+                exitTrigger: trigger,
+                hadInteraction: __ringUiExitState.hadInteraction,
+                page: __ringUiExitState.page
+            }
+        }, true);
+    }
+    window.addEventListener('pagehide', function () { tryExit('pagehide'); });
+    document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'hidden') tryExit('visibility');
+    });
+}
+
+function ringMarkPageSaved() {
+    __ringUiExitState.saved = true;
+}
+
+function ringInitSystemMonitoring() {
+    var fn = '';
+    try {
+        fn = String(window.location.pathname || '').split('/').pop() || '';
+    } catch (e) { return; }
+    var watchPages = ['factory_input.html', 'dealer_input.html', 'car_add.html'];
+    if (watchPages.indexOf(fn) !== -1) {
+        ringInitUiExitWatch(fn.replace('.html', ''));
+    }
+}
+
 /** 簡易アクセスログ（管理者ダッシュボード用） */
 function ringLogClientAccess(surface) {
     try {
@@ -1027,6 +1160,10 @@ async function addVehicle(v, options) {
     } catch (err) {
         const msg = String(err.message || '');
         if (/VIN_REQUIRED|VIN_OWNED_BY_OTHER_USER|VIN_REGISTERED_BY_SHOP/i.test(msg)) {
+            ringLogSystemEvent('SAVE_FAIL', {
+                error_message: msg,
+                payload: { gasAction: 'vehicle', queued: false }
+            });
             return { success: false, error: msg, localSaved: true, serverSaved: false, queued: false };
         }
         enqueueRetry('vehicle', merged);
@@ -1064,6 +1201,10 @@ async function saveLog(d) {
     } catch (err) {
         const msg = String(err && err.message ? err.message : err || '');
         if (/VIN_REQUIRED|LOG_DATE_REQUIRED/i.test(msg)) {
+            ringLogSystemEvent('SAVE_FAIL', {
+                error_message: msg,
+                payload: { gasAction: 'log', queued: false }
+            });
             return { logId: newLogId, localSaved: true, serverSaved: false, error: msg, queued: false };
         }
         enqueueRetry('log', newEntry);
@@ -1130,6 +1271,7 @@ async function fetchJsonWithTimeout(url, options, timeoutMs) {
  * @param {{ timeoutMs?: number }} [opts]
  */
 async function sendToGAS_Safe(actionType, data, opts) {
+    try {
     const payload = JSON.parse(JSON.stringify(data || {}));
     payload.action = actionType;
 
@@ -1155,9 +1297,21 @@ async function sendToGAS_Safe(actionType, data, opts) {
         body: JSON.stringify(payload)
     }, timeoutMs);
     if (!json || json.success !== true) {
+        if (actionType === 'ocr_vin' && json && json.ocrText) {
+            return json;
+        }
         throw new Error((json && json.error) || 'GAS保存に失敗しました');
     }
     return json;
+    } catch (err) {
+        if (actionType !== 'system_log' && !(actionType === 'ocr_vin' && /VIN_NOT_FOUND/i.test(String(err && err.message ? err.message : '')))) {
+            ringLogSystemEvent('GAS_ERROR', {
+                error_message: String(err && err.message ? err.message : err || ''),
+                payload: { gasAction: actionType }
+            });
+        }
+        throw err;
+    }
 }
 
 /**
@@ -1185,6 +1339,10 @@ function enqueueRetry(action, payload) {
     });
     localStorage.setItem(DB_RETRY_QUEUE, JSON.stringify(queue));
     try { ringRefreshPendingSyncBanner(); } catch (eR) { /* ignore */ }
+    ringLogSystemEvent('SAVE_FAIL', {
+        error_message: 'retry_queued',
+        payload: { gasAction: action, queued: true, key: key }
+    });
 }
 
 /**
@@ -1200,6 +1358,10 @@ async function saveInspectionToGasWithRetry(payload) {
     } catch (err) {
         const msg = String(err && err.message ? err.message : err || '');
         if (/VEHICLE_NOT_REGISTERED|VIN_REQUIRED|INSPECTION_DATE_REQUIRED/i.test(msg)) {
+            ringLogSystemEvent('SAVE_FAIL', {
+                error_message: msg,
+                payload: { gasAction: 'save_inspection', queued: false }
+            });
             return { serverSaved: false, hardFail: true, error: msg };
         }
         enqueueRetry('save_inspection', data);
@@ -1484,13 +1646,15 @@ function showRingSaveConfirm(opts) {
     if (opts.lead !== '') {
         var leadText = (opts.lead !== undefined && opts.lead !== null)
             ? opts.lead
-            : '個人情報・金額など誤りがないかご確認ください。問題なければ登録してください。';
+            : (typeof ringGetPreSaveLeadText === 'function' ? ringGetPreSaveLeadText() : '個人情報・金額など誤りがないかご確認ください。問題なければ登録してください。');
         leadBlock = '<p class="ring-save-confirm__lead">' + escapeHtml(leadText) + '</p>';
     }
+    var piiBlock = opts.piiWarningHtml ? ('<div class="ring-save-confirm__pii-warn">' + opts.piiWarningHtml + '</div>') : '';
     var html = '<div class="ring-save-confirm" id="' + id + '">' +
         '<div class="ring-save-confirm__backdrop"></div>' +
         '<div class="ring-save-confirm__card">' +
         '<div class="ring-save-confirm__title">' + escapeHtml(title) + '</div>' +
+        piiBlock +
         leadBlock +
         '<div class="ring-save-confirm__body">' + opts.bodyHtml + '</div>' +
         '<div class="ring-save-confirm__actions">' +
@@ -1808,12 +1972,535 @@ function handleOcrVinResultForForm(res, applyFn, ocrFieldDescriptors) {
         return;
     }
     var n = incrementOcrFailureCount();
+    ringLogSystemEvent('OCR_FAIL', {
+        error_message: res ? 'vin_not_found' : 'ocr_no_result',
+        payload: { consecutiveFailures: n }
+    });
     if (typeof showToast === 'function') {
         showToast('warning', '読み取れませんでした。再撮影してください。');
         if (n >= 2) {
             showToast('info', '手入力でも続行できます。車台番号欄に直接入力してください。');
         }
     }
+}
+
+var RING_OCR_BATCH_MAX = 10;
+
+function ringShortFileName(name) {
+    var s = String(name || 'image');
+    return s.length > 22 ? s.slice(0, 10) + '…' + s.slice(-8) : s;
+}
+
+function isPiiOrBillingMetaLine_(line) {
+    var t = String(line || '').trim();
+    if (!t) return true;
+    if (/¥|円\s*$|合計|小計|税込|請求額|御請求|(?:\d{1,3}(?:,\d{3})+|\d{4,})\s*円/.test(t)) return true;
+    if (/TEL|FAX|Tel|℡|電話/i.test(t)) return true;
+    if (/\(?0\d{1,4}\)?[-‐－]?\d{1,4}[-‐－]?\d{3,4}/.test(t)) return true;
+    if (/〒|都道府県|[都道府県]$|市区町村|丁目|番地|号室|住所|所在地|ビル|マンション/.test(t)) return true;
+    if (/請求先|御中|連絡先|メール|@|E-mail|e-mail/i.test(t)) return true;
+    if (/口座|振込|銀行|支店|普通預金|当座/.test(t)) return true;
+    if (/お客様|顧客名|氏名|ご住所|様\s*$/.test(t) && t.length < 40) return true;
+    return false;
+}
+
+function isInvoiceExcludeLine_(line) {
+    var t = String(line || '').trim();
+    if (!t) return true;
+    return /工賃|諸費用|廃棄|印紙|消費税|値引|リサイクル|法定費用|車検代|重量税|自賠責/.test(t);
+}
+
+function normalizePartName_(s) {
+    var t = String(s || '').trim();
+    if (!t) return '';
+    t = t.replace(/^[\d\s.]+/, '').trim();
+    if (/^E\/G\s*オイル|^EGオイル/i.test(t)) return 'エンジンオイル';
+    if (/^LLC$/i.test(t)) return 'ロングライフクーラント';
+    return t;
+}
+
+function parseJapaneseDateToIso_(raw) {
+    var s = String(raw || '').trim();
+    if (!s) return '';
+    var m = s.match(/(\d{4})[\/\-.年](\d{1,2})[\/\-.月](\d{1,2})/);
+    if (m) {
+        return m[1] + '-' + String(m[2]).padStart(2, '0') + '-' + String(m[3]).padStart(2, '0');
+    }
+    var rm = s.match(/(?:令和|R)\s*(\d{1,2})[\/\-.年](\d{1,2})[\/\-.月](\d{1,2})/i);
+    if (rm) {
+        var y = 2018 + parseInt(rm[1], 10);
+        return y + '-' + String(rm[2]).padStart(2, '0') + '-' + String(rm[3]).padStart(2, '0');
+    }
+    var hm = s.match(/(?:平成|H)\s*(\d{1,2})[\/\-.年](\d{1,2})[\/\-.月](\d{1,2})/i);
+    if (hm) {
+        var y2 = 1988 + parseInt(hm[1], 10);
+        return y2 + '-' + String(hm[2]).padStart(2, '0') + '-' + String(hm[3]).padStart(2, '0');
+    }
+    return '';
+}
+
+function parseLabelValue_(line, labels) {
+    var t = String(line || '').trim();
+    for (var i = 0; i < labels.length; i++) {
+        var re = new RegExp('^' + labels[i] + '[\\s:：]*(.+)$', 'i');
+        var m = t.match(re);
+        if (m && m[1]) return m[1].trim();
+    }
+    return '';
+}
+
+function parseInvoiceLabelsFromOcrText(ocrText, sourceFileName, gasVin) {
+    var src = sourceFileName || 'image';
+    var out = { work: [], parts: [] };
+    if (gasVin) out.vin = { value: String(gasVin).toUpperCase(), source: src };
+    if (!ocrText) return out;
+    var lines = String(ocrText).split(/[\n\r]+/);
+    var skipNext = 0;
+    var inParts = false;
+    var inWork = false;
+    for (var li = 0; li < lines.length; li++) {
+        if (skipNext > 0) { skipNext--; continue; }
+        var line = lines[li].trim();
+        if (!line || isPiiOrBillingMetaLine_(line)) {
+            inParts = false;
+            inWork = false;
+            if (/お客様|顧客名|氏名|ご住所|請求先/.test(line)) skipNext = 2;
+            continue;
+        }
+        if (/^部品|^品名|^パーツ|^交換部品/.test(line)) { inParts = true; inWork = false; continue; }
+        if (/^作業内容|^整備内容|^摘要/.test(line)) { inWork = true; inParts = false; continue; }
+        var vinVal = parseLabelValue_(line, ['車体番号', '車台番号', 'VIN']);
+        if (vinVal && !isPiiOrBillingMetaLine_(vinVal)) {
+            out.vin = { value: vinVal.replace(/\s/g, '').toUpperCase(), source: src };
+        }
+        var mileVal = parseLabelValue_(line, ['走行距離', '走行', 'ODO', 'ｵﾄﾞ', 'オドメータ']);
+        if (!mileVal && /走行|ODO|ｵﾄﾞ|km/i.test(line)) mileVal = line;
+        if (mileVal && !isPiiOrBillingMetaLine_(mileVal)) {
+            var mn = mileVal.replace(/[^\d]/g, '');
+            if (mn && mn.length >= 3 && mn.length <= 7) out.mileage = { value: parseInt(mn, 10), source: src };
+        }
+        var modelVal = parseLabelValue_(line, ['型式', '自動車型式', 'MODEL']);
+        if (modelVal && !isPiiOrBillingMetaLine_(modelVal)) out.model = { value: modelVal, source: src };
+        var engVal = parseLabelValue_(line, ['原動機型式', 'エンジン型式', '原動機']);
+        if (engVal && !isPiiOrBillingMetaLine_(engVal)) out.engine = { value: engVal, source: src };
+        var clsVal = parseLabelValue_(line, ['類別区分番号', '類別区分', '類別', '類別型式']);
+        if (clsVal && !isPiiOrBillingMetaLine_(clsVal)) {
+            var cn = clsVal.replace(/[^\d]/g, '');
+            if (cn) out.class = { value: cn, source: src };
+        }
+        var tdVal = parseLabelValue_(line, ['型式指定番号', '型式指定']);
+        if (tdVal && !isPiiOrBillingMetaLine_(tdVal)) {
+            var tn = tdVal.replace(/[^\d]/g, '');
+            if (tn) out.typeDesignation = { value: tn, source: src };
+        }
+        var shRaw = parseLabelValue_(line, ['車検満了日', '車検満期', '満了日', '車検有効', '有効期限']);
+        if (!shRaw && /車検.*(?:満了|満期)/.test(line)) shRaw = line;
+        if (shRaw) {
+            var iso = parseJapaneseDateToIso_(shRaw);
+            if (iso) out.shaken = { value: iso, source: src };
+        }
+        if (inParts && !isInvoiceExcludeLine_(line)) {
+            var pn = normalizePartName_(line);
+            if (pn && pn.length >= 2 && !isPiiOrBillingMetaLine_(pn)) out.parts.push({ value: pn, source: src });
+        }
+        if (inWork && !isInvoiceExcludeLine_(line)) {
+            var wn = line.replace(/^[\d\s.]+/, '').trim();
+            if (wn && wn.length >= 2 && !isPiiOrBillingMetaLine_(wn)) out.work.push({ value: wn, source: src });
+        }
+    }
+    return out;
+}
+
+function mergeOCRResults(pageResults) {
+    var merged = {
+        vin: null, vinCandidates: [],
+        mileage: null, shaken: null, model: null, engine: null, class: null, typeDesignation: null,
+        work: [], parts: [],
+        stats: { total: pageResults.length, successCount: 0, failCount: 0, failedFiles: [] }
+    };
+    var partKeys = {};
+    var workKeys = {};
+    var mileMax = -1;
+    pageResults.forEach(function (pr) {
+        var p = pr.parsed || {};
+        var hasData = !!(p.vin || p.mileage || p.shaken || p.model || p.engine || p.class || p.typeDesignation ||
+            (p.work && p.work.length) || (p.parts && p.parts.length));
+        if (pr.ok || hasData) merged.stats.successCount++;
+        else {
+            merged.stats.failCount++;
+            merged.stats.failedFiles.push(pr.fileName);
+        }
+        if (p.vin) {
+            merged.vinCandidates.push(p.vin);
+            if (!merged.vin) merged.vin = p.vin;
+        }
+        if (p.mileage && p.mileage.value != null) {
+            var mv = Number(p.mileage.value);
+            if (!isNaN(mv) && mv > mileMax) { mileMax = mv; merged.mileage = p.mileage; }
+        }
+        ['shaken', 'model', 'engine', 'class', 'typeDesignation'].forEach(function (k) {
+            if (p[k] && !merged[k]) merged[k] = p[k];
+        });
+        (p.work || []).forEach(function (w) {
+            var nk = normalizePartName_(w.value).toLowerCase();
+            if (!workKeys[nk]) { workKeys[nk] = true; merged.work.push(w); }
+        });
+        (p.parts || []).forEach(function (pt) {
+            var pk = normalizePartName_(pt.value).toLowerCase();
+            if (!partKeys[pk]) { partKeys[pk] = true; merged.parts.push(pt); }
+        });
+    });
+    if (merged.vinCandidates.length > 1) {
+        var uniq = {};
+        merged.vinCandidates = merged.vinCandidates.filter(function (v) {
+            var k = v.value;
+            if (uniq[k]) return false;
+            uniq[k] = true;
+            return true;
+        });
+    }
+    return merged;
+}
+
+function ringMergedToFlatApply_(merged) {
+    var flat = {};
+    if (merged.vin) flat.vin = merged.vin.value;
+    if (merged.mileage) flat.mileage = String(merged.mileage.value);
+    if (merged.shaken) flat.shaken = merged.shaken.value;
+    if (merged.model) flat.model = merged.model.value;
+    if (merged.engine) flat.engine = merged.engine.value;
+    if (merged.class) flat.class = merged.class.value;
+    if (merged.typeDesignation) flat.typeDesignation = merged.typeDesignation.value;
+    if (merged.work.length) flat.workTitle = merged.work.map(function (w) { return w.value; }).join('、');
+    if (merged.parts.length) flat.parts = merged.parts.map(function (p) { return p.value; }).join('\n');
+    return flat;
+}
+
+async function analyzeDocumentSingle(file, fileIndex) {
+    var fileName = file.name || ('image_' + (fileIndex + 1));
+    if (typeof window !== 'undefined' && window.__RING_OCR_DEMO__ === true) {
+        await delay(700);
+        var stubs = [
+            { vin: 'ZVW50-5012847', shaken: '2026-12-15', mileage: '124000', workTitle: 'オイル交換', parts: 'オイルエレメント', model: 'DBA-ZVW50', engine: '2ZR-FXE', class: '12001', typeDesignation: '17456' },
+            { mileage: '124000', parts: 'ワイパーゴム\nエアフィルター', workTitle: '12ヶ月点検' },
+            { shaken: '2026-12-15', model: 'DBA-ZVW50' }
+        ];
+        var stub = stubs[fileIndex % stubs.length] || stubs[0];
+        var parsed = { work: [], parts: [] };
+        if (stub.vin) parsed.vin = { value: String(stub.vin).toUpperCase(), source: fileName };
+        if (stub.mileage) parsed.mileage = { value: parseInt(stub.mileage, 10), source: fileName };
+        if (stub.shaken) parsed.shaken = { value: stub.shaken, source: fileName };
+        if (stub.model) parsed.model = { value: stub.model, source: fileName };
+        if (stub.engine) parsed.engine = { value: stub.engine, source: fileName };
+        if (stub.class) parsed.class = { value: stub.class, source: fileName };
+        if (stub.typeDesignation) parsed.typeDesignation = { value: stub.typeDesignation, source: fileName };
+        if (stub.workTitle) {
+            stub.workTitle.split(/[、,]/).forEach(function (w) {
+                if (w.trim()) parsed.work.push({ value: w.trim(), source: fileName });
+            });
+        }
+        if (stub.parts) {
+            stub.parts.split(/[\n,]/).forEach(function (p) {
+                if (p.trim()) parsed.parts.push({ value: p.trim(), source: fileName });
+            });
+        }
+        return { fileName: fileName, ok: true, partial: false, parsed: parsed };
+    }
+    var b64;
+    try {
+        b64 = await fileToVisionBase64(file, 2000);
+    } catch (e) {
+        return { fileName: fileName, ok: false, partial: false, parsed: { work: [], parts: [] } };
+    }
+    if (!b64) return { fileName: fileName, ok: false, partial: false, parsed: { work: [], parts: [] } };
+    try {
+        var json = await sendToGAS_Safe('ocr_vin', { imageBase64: b64 });
+        var ocrText = json && json.ocrText ? String(json.ocrText) : '';
+        var gasVin = json && json.vin ? String(json.vin).toUpperCase() : '';
+        var parsed = parseInvoiceLabelsFromOcrText(ocrText, fileName, gasVin);
+        ocrText = '';
+        var hasData = !!(parsed.vin || parsed.mileage || parsed.shaken || parsed.model || parsed.engine ||
+            parsed.class || parsed.typeDesignation || parsed.work.length || parsed.parts.length);
+        if (hasData) return { fileName: fileName, ok: true, partial: !gasVin && hasData, parsed: parsed };
+        ringLogSystemEvent('OCR_FAIL', {
+            error_message: (json && json.error) || 'VIN_NOT_FOUND',
+            payload: { stage: 'batch_page', fileName: fileName }
+        });
+        return { fileName: fileName, ok: false, partial: false, parsed: parsed };
+    } catch (e) {
+        var msg = String(e && e.message ? e.message : e || '');
+        ringLogSystemEvent('OCR_FAIL', {
+            error_message: msg,
+            payload: { stage: 'batch_request', fileName: fileName }
+        });
+        return { fileName: fileName, ok: false, partial: false, parsed: { work: [], parts: [] } };
+    }
+}
+
+function hideOcrBatchProgressOverlay() {
+    hideOcrAnalyzingOverlay();
+    var el = document.getElementById('ring-ocr-batch-overlay');
+    if (el) el.remove();
+    if (typeof window !== 'undefined') {
+        window.__ringOcrRunning = false;
+        window.removeEventListener('beforeunload', ringOcrBeforeUnload_);
+    }
+}
+
+function ringOcrBeforeUnload_(e) {
+    e.preventDefault();
+    e.returnValue = '';
+}
+
+function updateOcrBatchProgressOverlay(state) {
+    var sub = document.getElementById('ring-ocr-batch-sub');
+    var bar = document.getElementById('ring-ocr-batch-bar');
+    var queue = document.getElementById('ring-ocr-batch-queue');
+    var failEl = document.getElementById('ring-ocr-batch-fail');
+    if (sub) sub.textContent = (state.current || 0) + ' / ' + (state.total || 0) + ' 枚';
+    if (bar && state.total) bar.style.width = Math.round(((state.current || 0) / state.total) * 100) + '%';
+    if (failEl) failEl.textContent = '読み取りできなかった枚数: ' + (state.failCount || 0);
+    if (queue && state.items) {
+        queue.innerHTML = state.items.map(function (it) {
+            var icon = it.status === 'done' ? '☑' : (it.status === 'processing' ? '🔄' : (it.status === 'fail' ? '✕' : '⏳'));
+            var cls = 'ring-ocr-batch__qi ring-ocr-batch__qi--' + it.status;
+            return '<div class="' + cls + '">' + icon + ' ' + escapeHtml(ringShortFileName(it.name)) + '</div>';
+        }).join('');
+    }
+}
+
+function showOcrBatchProgressOverlay(opts) {
+    opts = opts || {};
+    hideOcrBatchProgressOverlay();
+    if (typeof window !== 'undefined') {
+        window.__ringOcrCancelled = false;
+        window.__ringOcrRunning = true;
+        window.addEventListener('beforeunload', ringOcrBeforeUnload_);
+    }
+    var html = '<div class="ring-ocr-overlay show" id="ring-ocr-batch-overlay">' +
+        '<div class="ring-ocr-overlay__title">OCR解析中</div>' +
+        '<div class="ring-ocr-batch__count" id="ring-ocr-batch-sub">0 / 0 枚</div>' +
+        '<div class="ring-ocr-batch__barwrap"><div class="ring-ocr-batch__bar" id="ring-ocr-batch-bar"></div></div>' +
+        '<div class="ring-ocr-batch__fail" id="ring-ocr-batch-fail"></div>' +
+        '<div class="ring-ocr-batch__queue" id="ring-ocr-batch-queue"></div>' +
+        '<button type="button" class="ring-ocr-overlay__cancel" id="ring-ocr-batch-cancel">キャンセル（手入力へ）</button>' +
+        '</div>';
+    document.body.insertAdjacentHTML('beforeend', html);
+    var cancelBtn = document.getElementById('ring-ocr-batch-cancel');
+    if (cancelBtn) {
+        cancelBtn.onclick = function () {
+            if (typeof window !== 'undefined') window.__ringOcrCancelled = true;
+            hideOcrBatchProgressOverlay();
+        };
+    }
+    updateOcrBatchProgressOverlay(opts.state || { current: 0, total: opts.total || 0, failCount: 0, items: [] });
+}
+
+async function runBatchOcrPipeline(files, onProgress) {
+    var results = [];
+    var failCount = 0;
+    var items = files.map(function (f, i) {
+        return { name: f.name, status: i === 0 ? 'processing' : 'waiting' };
+    });
+    for (var i = 0; i < files.length; i++) {
+        if (wasOcrAnalyzingCancelled()) break;
+        items[i].status = 'processing';
+        if (onProgress) onProgress({ current: i, total: files.length, failCount: failCount, items: items.slice(), fileName: files[i].name });
+        var pr = await analyzeDocumentSingle(files[i], i);
+        if (!pr.ok) failCount++;
+        results.push(pr);
+        items[i].status = pr.ok ? 'done' : 'fail';
+        if (onProgress) onProgress({ current: i + 1, total: files.length, failCount: failCount, items: items.slice(), fileName: files[i].name });
+    }
+    return { pageResults: results, failCount: failCount };
+}
+
+function showOcrBatchReviewModal(merged, opts) {
+    opts = opts || {};
+    var mode = opts.mode || 'factory';
+    var id = 'ring-ocr-batch-review';
+    var old = document.getElementById(id);
+    if (old) old.remove();
+    var flat = ringMergedToFlatApply_(merged);
+    var vinCands = merged.vinCandidates || [];
+    var vinRadio = '';
+    if (vinCands.length > 1) {
+        vinRadio = '<div class="ring-ocr-review__cands">' + vinCands.map(function (v, idx) {
+            return '<label class="ring-ocr-review__rad"><input type="radio" name="ringVinPick" value="' + escapeHtml(v.value) + '"' +
+                (idx === 0 ? ' checked' : '') + '> ' + escapeHtml(v.value) + ' <span class="ring-ocr-review__src">(' + escapeHtml(ringShortFileName(v.source)) + ')</span></label>';
+        }).join('') + '</div>';
+    }
+    function fieldRow(key, label, type, val, source) {
+        var srcHint = source ? ('<span class="ring-ocr-review__src">' + escapeHtml(ringShortFileName(source)) + ' より</span>') : '<span class="ring-ocr-review__src ring-ocr-review__src--none">未検出</span>';
+        var inpType = type === 'date' ? 'date' : (type === 'number' ? 'number' : 'text');
+        var tag = type === 'textarea' ? ('<textarea class="ring-ocr-review__input" data-key="' + key + '" rows="3">' + escapeHtml(val || '') + '</textarea>') :
+            ('<input class="ring-ocr-review__input" data-key="' + key + '" type="' + inpType + '" value="' + escapeHtml(val || '') + '">');
+        return '<div class="ring-ocr-review__row"><label class="ring-ocr-review__lbl">' + escapeHtml(label) + ' ' + srcHint + '</label>' + tag + '</div>';
+    }
+    var body = '';
+    body += '<div class="ring-ocr-review__row"><label class="ring-ocr-review__lbl">車台番号 (VIN)</label>' + vinRadio +
+        '<input class="ring-ocr-review__input" data-key="vin" type="text" value="' + escapeHtml(flat.vin || '') + '"></div>';
+    if (mode === 'factory') {
+        body += fieldRow('shaken', '車検満了日', 'date', flat.shaken, merged.shaken && merged.shaken.source);
+        body += fieldRow('mileage', '走行距離 (km)', 'number', flat.mileage, merged.mileage && merged.mileage.source);
+        body += fieldRow('workTitle', '整備区分', 'text', flat.workTitle, merged.work[0] && merged.work[0].source);
+        body += fieldRow('parts', '交換部品', 'textarea', flat.parts, merged.parts[0] && merged.parts[0].source);
+        body += '<div class="ring-ocr-review__section">車両詳細（任意）</div>';
+        body += fieldRow('model', '型式', 'text', flat.model, merged.model && merged.model.source);
+        body += fieldRow('engine', '原動機型式', 'text', flat.engine, merged.engine && merged.engine.source);
+        body += fieldRow('class', '類別区分番号', 'text', flat.class, merged.class && merged.class.source);
+        body += fieldRow('typeDesignation', '型式指定番号', 'text', flat.typeDesignation, merged.typeDesignation && merged.typeDesignation.source);
+        body += fieldRow('memo', '整備メモ', 'textarea', '', null);
+    } else {
+        body += fieldRow('shaken', '車検満了日', 'date', flat.shaken, merged.shaken && merged.shaken.source);
+        body += fieldRow('mileage', '走行距離 (km)', 'number', flat.mileage, merged.mileage && merged.mileage.source);
+        body += fieldRow('workTitle', '整備区分', 'text', flat.workTitle, merged.work[0] && merged.work[0].source);
+        body += fieldRow('memo', '作業メモ（部品候補）', 'textarea', flat.parts || '', merged.parts[0] && merged.parts[0].source);
+    }
+    var stats = merged.stats || {};
+    var lead = '';
+    if (stats.failCount > 0 && stats.successCount > 0) {
+        lead = stats.total + '枚中' + stats.failCount + '枚を読み取れませんでした。読み取れた内容を確認のうえ、足りない項目は手入力してください。';
+    } else if (stats.successCount === 0) {
+        lead = '読み取りできなかったため手動入力へ切り替えました。';
+    } else {
+        lead = '読み取り結果を確認・修正してから反映してください。保存はこの画面では行いません。';
+    }
+    var html = '<div class="ring-save-confirm" id="' + id + '">' +
+        '<div class="ring-save-confirm__backdrop"></div>' +
+        '<div class="ring-save-confirm__card ring-ocr-review__card">' +
+        '<div class="ring-save-confirm__title">OCR確認</div>' +
+        '<p class="ring-save-confirm__lead">' + escapeHtml(lead) + '</p>' +
+        '<div class="ring-save-confirm__body ring-ocr-review__body">' + body + '</div>' +
+        '<div class="ring-save-confirm__actions">' +
+        '<button type="button" class="ring-save-confirm__btn ring-save-confirm__btn--secondary" data-act="cancel">キャンセル</button>' +
+        '<button type="button" class="ring-save-confirm__btn ring-save-confirm__btn--primary" data-act="apply">内容を確認して反映</button>' +
+        '</div></div></div>';
+    document.body.insertAdjacentHTML('beforeend', html);
+    var el = document.getElementById(id);
+    var card = el.querySelector('.ring-save-confirm__card');
+    function syncCardMaxHeight() {
+        if (!card) return;
+        var vv = window.visualViewport;
+        var h = vv ? vv.height : window.innerHeight;
+        card.style.maxHeight = Math.max(160, Math.min(h * 0.85, h - 48)) + 'px';
+    }
+    var detachVv = ringAttachVisualViewportCard(card, syncCardMaxHeight);
+    function close() { detachVv(); if (el && el.parentNode) el.remove(); }
+    function collectPayload() {
+        var out = {};
+        el.querySelectorAll('.ring-ocr-review__input').forEach(function (inp) {
+            var k = inp.getAttribute('data-key');
+            if (k) out[k] = inp.value.trim();
+        });
+        var vinPick = el.querySelector('input[name="ringVinPick"]:checked');
+        if (vinPick) out.vin = vinPick.value.trim();
+        else if (out.vin) out.vin = out.vin.toUpperCase();
+        return out;
+    }
+    el.querySelector('[data-act="cancel"]').onclick = close;
+    el.querySelector('.ring-save-confirm__backdrop').onclick = close;
+    el.querySelector('[data-act="apply"]').onclick = function () {
+        var payload = collectPayload();
+        close();
+        if (typeof window !== 'undefined') window.__ringOcrAppliedThisSession = true;
+        resetOcrFailureCount();
+        if (typeof opts.onApply === 'function') opts.onApply(payload);
+    };
+    if (stats.successCount === 0 && typeof opts.onApply === 'function') {
+        /* 全失敗でも手入力へ — モーダルは閉じず lead のみ。ユーザーがキャンセル可 */
+    }
+}
+
+function ringApplyOcrPayloadNonEmpty_(payload, applyFn) {
+    var picked = {};
+    Object.keys(payload || {}).forEach(function (k) {
+        var v = payload[k];
+        if (v != null && String(v).trim() !== '') picked[k] = v;
+    });
+    if (typeof applyFn === 'function') applyFn(picked);
+}
+
+function ringGetPreSaveLeadText() {
+    if (typeof window !== 'undefined' && window.__ringOcrAppliedThisSession) {
+        return 'OCRで読み取った内容を含みます。氏名・住所・電話番号・金額など個人情報や請求書情報が混ざっていないか、登録前にもう一度ご確認ください。';
+    }
+    return '個人情報・金額など誤りがないかご確認ください。問題なければ登録してください。';
+}
+
+function ringScanFormFieldsForPii_(fieldIds) {
+    var hits = [];
+    (fieldIds || []).forEach(function (fid) {
+        var el = document.getElementById(fid);
+        if (!el) return;
+        String(el.value || '').split(/[\n\r]+/).forEach(function (line) {
+            if (isPiiOrBillingMetaLine_(line)) hits.push({ field: fid, line: line.slice(0, 60) });
+        });
+    });
+    return hits;
+}
+
+function ringBuildPiiWarningHtml_(fieldIds) {
+    var hits = ringScanFormFieldsForPii_(fieldIds);
+    if (!hits.length) return '';
+    return '⚠ 個人情報の可能性がある文字列が含まれています。削除または修正してください。';
+}
+
+async function ringHandleBatchDocumentScan(opts) {
+    opts = opts || {};
+    var files = Array.from(opts.files || []).slice(0, RING_OCR_BATCH_MAX);
+    if (!files.length) return;
+    if (files.length < (opts.files || []).length && typeof showToast === 'function') {
+        showToast('info', '一度に読み取れるのは最大' + RING_OCR_BATCH_MAX + '枚です。');
+    }
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        if (typeof showToast === 'function') showToast('warning', 'オフラインのため読み取れません。手入力で続行してください。');
+        return;
+    }
+    var saveBtn = opts.saveBtnId ? document.getElementById(opts.saveBtnId) : null;
+    if (saveBtn) saveBtn.disabled = true;
+    var previewUrl = '';
+    try {
+        previewUrl = await new Promise(function (resolve, reject) {
+            var r = new FileReader();
+            r.onload = function () { resolve(String(r.result || '')); };
+            r.onerror = reject;
+            r.readAsDataURL(files[0]);
+        });
+    } catch (e) { /* ignore */ }
+    if (opts.previewImg && previewUrl) {
+        opts.previewImg.src = previewUrl;
+        if (opts.previewArea) opts.previewArea.style.display = 'block';
+    }
+    if (opts.discardNotice) opts.discardNotice.style.display = 'block';
+    if (opts.moreBadge) {
+        opts.moreBadge.textContent = files.length > 1 ? ('他 ' + (files.length - 1) + ' 枚') : '';
+        opts.moreBadge.style.display = files.length > 1 ? 'inline-block' : 'none';
+    }
+    var queueItems = files.map(function (f, i) {
+        return { name: f.name, status: i === 0 ? 'processing' : 'waiting' };
+    });
+    showOcrBatchProgressOverlay({ total: files.length, state: { current: 0, total: files.length, failCount: 0, items: queueItems } });
+    var batchResult;
+    try {
+        batchResult = await runBatchOcrPipeline(files, function (st) {
+            updateOcrBatchProgressOverlay(st);
+        });
+    } finally {
+        hideOcrBatchProgressOverlay();
+        if (saveBtn) saveBtn.disabled = false;
+    }
+    if (wasOcrAnalyzingCancelled()) return;
+    var merged = mergeOCRResults(batchResult.pageResults);
+    showOcrBatchReviewModal(merged, {
+        mode: opts.mode || 'factory',
+        onApply: function (payload) {
+            ringApplyOcrPayloadNonEmpty_(payload, opts.onApply);
+            if (typeof showToast === 'function' && merged.stats.successCount > 0) {
+                showToast('success', '読み取り内容を入力欄に反映しました。内容を確認してから登録してください。');
+            }
+        }
+    });
 }
 
 /**
@@ -1849,11 +2536,33 @@ async function analyzeDocument(files) {
     try {
         var json = await sendToGAS_Safe('ocr_vin', { imageBase64: b64 });
         if (json && json.vin) {
-            return { vin: String(json.vin).toUpperCase() };
+            var flat = { vin: String(json.vin).toUpperCase() };
+            if (json.ocrText) {
+                var parsed = parseInvoiceLabelsFromOcrText(json.ocrText, files[0].name || 'image', json.vin);
+                var merged = mergeOCRResults([{ fileName: files[0].name, ok: true, parsed: parsed }]);
+                Object.assign(flat, ringMergedToFlatApply_(merged));
+            }
+            return flat;
         }
+        if (json && json.ocrText) {
+            var parsedOnly = parseInvoiceLabelsFromOcrText(json.ocrText, files[0].name || 'image', '');
+            var hasAny = !!(parsedOnly.vin || parsedOnly.mileage || parsedOnly.parts.length || parsedOnly.work.length);
+            if (hasAny) {
+                var m2 = mergeOCRResults([{ fileName: files[0].name, ok: true, parsed: parsedOnly }]);
+                return ringMergedToFlatApply_(m2);
+            }
+        }
+        ringLogSystemEvent('OCR_FAIL', {
+            error_message: 'VIN_NOT_FOUND',
+            payload: { stage: 'ocr_vin_response' }
+        });
         return null;
     } catch (e) {
         var msg = String(e && e.message ? e.message : e || '');
+        ringLogSystemEvent('OCR_FAIL', {
+            error_message: msg,
+            payload: { stage: 'ocr_vin_request' }
+        });
         if (/OCR_NOT_CONFIGURED|VIN_NOT_FOUND|VISION_API_ERROR|IMAGE_REQUIRED|AUTH_/.test(msg)) {
             /* 読取失敗系：メッセージは handleOcrVinResultForForm 側 */
         } else if (typeof showToast === 'function') {
@@ -2229,6 +2938,9 @@ function injectLoadingOverlay() {
     document.body.insertAdjacentHTML('beforeend', loadingHtml);
 }
 window.addEventListener('DOMContentLoaded', injectLoadingOverlay);
+window.addEventListener('DOMContentLoaded', function () {
+    if (typeof ringInitSystemMonitoring === 'function') ringInitSystemMonitoring();
+});
 
 var __ringLoadingTick = null;
 var __ringLoadingBaseText = '';

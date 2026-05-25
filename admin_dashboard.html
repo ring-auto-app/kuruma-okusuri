@@ -86,6 +86,55 @@
       margin-top: 6px;
       line-height: 1.35;
     }
+    .stat-card--alert {
+      border-color: #f87171;
+      background: #fef2f2;
+    }
+    .stat-card--alert .stat-val {
+      color: #dc2626;
+    }
+    .monitor-section {
+      margin-bottom: 24px;
+      border: 2px solid #334155;
+    }
+    .monitor-section h2 {
+      color: #0f172a;
+    }
+    .monitor-sub {
+      font-size: 12px;
+      font-weight: 600;
+      color: #64748b;
+      margin: 0 0 14px;
+    }
+    .monitor-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      font-weight: 600;
+      margin-top: 12px;
+    }
+    .monitor-table th, .monitor-table td {
+      border: 1px solid #e2e8f0;
+      padding: 8px 10px;
+      text-align: left;
+    }
+    .monitor-table th {
+      background: #f8fafc;
+      color: #475569;
+      width: 40%;
+    }
+    .monitor-recent {
+      margin-top: 16px;
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 1.5;
+    }
+    .monitor-recent-item {
+      padding: 8px 0;
+      border-bottom: 1px dashed #e2e8f0;
+    }
+    .monitor-recent-item:last-child { border-bottom: none; }
+    .monitor-recent-meta { color: #64748b; font-size: 11px; }
     .section {
       background: #fff;
       border: 1px solid #e2e8f0;
@@ -219,6 +268,13 @@
     </div>
 
     <div id="dashMain" style="display:none;">
+    <div class="section monitor-section">
+      <h2>即時監視（本日・JST）</h2>
+      <p class="monitor-sub">System_Logs から当日分を集計。事故検知を最優先に表示します。</p>
+      <div class="admin-grid" id="monitorGrid"></div>
+      <div id="monitorBreakdown"></div>
+      <div class="monitor-recent" id="monitorRecent"></div>
+    </div>
     <div class="admin-grid" id="statGrid"></div>
 
     <div class="section">
@@ -241,6 +297,65 @@
     function configLabelJa(key) {
       var k = String(key || '');
       return RING_ADMIN_CONFIG_LABELS[k] || k;
+    }
+
+    function renderMonitoring(mon) {
+      var g = document.getElementById('monitorGrid');
+      if (!g) return;
+      if (!mon) {
+        g.innerHTML = '<div class="stat-card"><div class="stat-val">—</div><div class="stat-lbl">データなし</div></div>';
+        return;
+      }
+      var items = [
+        ['OCR失敗（今日）', mon.ocrFailToday, 3],
+        ['保存失敗（今日）', mon.saveFailToday, 3],
+        ['再送キュー投入（今日）', mon.retryPendingToday, 1],
+        ['GASエラー（今日）', mon.gasErrorToday, 1]
+      ];
+      g.innerHTML = items.map(function (x) {
+        var alertCls = (typeof x[2] === 'number' && Number(x[1]) >= x[2]) ? ' stat-card--alert' : '';
+        return '<div class="stat-card' + alertCls + '"><div class="stat-val">' + String(x[1] != null ? x[1] : 0) +
+          '</div><div class="stat-lbl">' + x[0] + '</div></div>';
+      }).join('');
+
+      var bd = document.getElementById('monitorBreakdown');
+      if (bd) {
+        var devRows = (mon.topDevices || []).map(function (d) {
+          return '<tr><th>' + escHtml(d.label) + '</th><td>' + d.count + ' 件</td></tr>';
+        }).join('');
+        var brRows = (mon.topBrowsers || []).map(function (b) {
+          return '<tr><th>' + escHtml(b.label) + '</th><td>' + b.count + ' 件</td></tr>';
+        }).join('');
+        bd.innerHTML =
+          '<table class="monitor-table"><caption style="caption-side:top;text-align:left;font-weight:700;margin-bottom:6px;">エラー多発端末 Top5</caption>' +
+          (devRows || '<tr><td colspan="2">本日のエラーなし</td></tr>') +
+          '</table>' +
+          '<table class="monitor-table"><caption style="caption-side:top;text-align:left;font-weight:700;margin:16px 0 6px;">エラー多発ブラウザ Top5</caption>' +
+          (brRows || '<tr><td colspan="2">本日のエラーなし</td></tr>') +
+          '</table>';
+      }
+
+      var rc = document.getElementById('monitorRecent');
+      if (rc) {
+        var errs = mon.recentErrors || [];
+        if (!errs.length) {
+          rc.innerHTML = '<div class="monitor-recent-item">直近のエラーはありません</div>';
+        } else {
+          rc.innerHTML = errs.map(function (e) {
+            var ts = e.timestamp ? String(e.timestamp).replace('T', ' ').slice(0, 19) : '—';
+            return '<div class="monitor-recent-item"><strong>' + escHtml(e.action || '') + '</strong> ' +
+              escHtml(e.page || '') + '<div class="monitor-recent-meta">' + escHtml(ts) + ' — ' +
+              escHtml(e.error_message || '') + '</div></div>';
+          }).join('');
+        }
+      }
+    }
+
+    function escHtml(s) {
+      if (s == null) return '';
+      return String(s).replace(/[&<>"']/g, function (c) {
+        return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+      });
     }
 
     function renderStats(sum) {
@@ -358,6 +473,7 @@
         var dash = await sendToGAS_Safe('get_admin_dashboard', {});
         var cfg = await sendToGAS_Safe('get_admin_config', {});
         if (typeof hideLoading === 'function') hideLoading();
+        renderMonitoring(dash.monitoring);
         renderStats(dash.summary);
         renderConfig(cfg.config);
       } catch (e) {

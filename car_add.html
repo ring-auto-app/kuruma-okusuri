@@ -486,6 +486,7 @@
 
         const queued = !!(vehRes && vehRes.queued);
         const variant = queued ? 'queued' : 'success';
+        if (typeof ringMarkPageSaved === 'function') ringMarkPageSaved();
         if (typeof showRingSavedSplash === 'function') {
           showRingSavedSplash({ variant, onDone: () => goBackHome() });
         } else {
