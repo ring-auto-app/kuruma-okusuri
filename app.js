@@ -2,7 +2,7 @@
  * 車のお薬手帳 - 統合コアスクリプト (app.js)
  */
 
-const RING_DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbyhCvgY5yfduRDPxiIbGGwCpPMrDiwtKg57I28gHnWAcZexUgvd9r2PqnIm2-QSss4C/exec';
+const RING_DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxG14jv9GXf4f9lFt5n7lAKqGmnqqnzW_S74H3ixePc3f21HJ8F7C49qFIBISQzAg63/exec';
 /** `app.js` より先に `window.__RING_GAS_URL_OVERRIDE__` をセットすると本番 URL を差し替え可能 */
 const GAS_URL = (typeof window !== 'undefined' && window.__RING_GAS_URL_OVERRIDE__)
     ? String(window.__RING_GAS_URL_OVERRIDE__).trim()
@@ -228,6 +228,10 @@ async function handleGoogleCredentialResponse(response) {
             payload.termsVersion = consent.termsVersion;
             payload.privacyVersion = consent.privacyVersion;
         }
+        try {
+            const existingTok = localStorage.getItem('ring_auth_token');
+            if (existingTok) payload.authToken = existingTok;
+        } catch (eT) {}
 
         const data = await sendToGAS_Safe('user_google_auth', payload);
         hideLoading();
@@ -239,7 +243,14 @@ async function handleGoogleCredentialResponse(response) {
             const emailHint = decoded && decoded.email ? decoded.email : (data.profile.googleEmail || '');
             if (emailHint) data.profile.googleEmail = emailHint;
             login(data.profile, data.authToken);
-            location.replace('user_home.html');
+            var pn = '';
+            try {
+                pn = String(window.location.pathname || '');
+            } catch (eP) {
+                /* ignore */
+            }
+            if (pn.indexOf('user_mypage.html') !== -1) window.location.reload();
+            else window.location.replace('user_home.html');
             return;
         }
 
@@ -302,6 +313,61 @@ function ringBootGoogleSignIn(slotIds) {
     });
 }
 
+/**
+ * 非表示にした GIS の renderButton を、カスタム UI から起動するときに使う。
+ * @param {string} slotId goog.accounts.id.renderButton が描画した要素の id（子孫からクリック可能ノードを探す）
+ * @returns {boolean} クリック処理を試したら true（ポップアップ成否まで保証しない）
+ */
+function ringTriggerGoogleSignInSlot(slotId) {
+    const root = typeof slotId === 'string' ? document.getElementById(slotId) : slotId;
+    if (!root) return false;
+
+    function synthClick(node) {
+        if (!node) return false;
+        try {
+            node.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+            node.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
+        } catch (e0) { /* ignore */ }
+        try {
+            if (typeof node.click === 'function') node.click();
+            return true;
+        } catch (e1) {
+            return false;
+        }
+    }
+
+    /** GIS の DOM 並びが変わってもなるべく外側から試す（iframe は最終手段） */
+    const selectors = ['div[role="button"]', 'div[id^="gsi"] button', '.nsm7Bb-HzV7-LgbsSe', 'button', 'iframe'];
+    let i = 0;
+    for (i = 0; i < selectors.length; i++) {
+        var el = root.querySelector(selectors[i]);
+        if (el && synthClick(el)) return true;
+    }
+    return false;
+}
+
+/**
+ * GIS の iframe が遅れて載るとき向けに数回リトライする。
+ * @param {function(boolean):void} [done] いずれかの試行でクリック処理に成功したら true
+ */
+function ringTriggerGoogleSignInSlotWithRetries(slotId, maxAttempts, done) {
+    const max = typeof maxAttempts === 'number' ? maxAttempts : 12;
+    let n = 0;
+    function step() {
+        n++;
+        if (ringTriggerGoogleSignInSlot(slotId)) {
+            if (typeof done === 'function') done(true);
+            return;
+        }
+        if (n >= max) {
+            if (typeof done === 'function') done(false);
+            return;
+        }
+        setTimeout(step, 120);
+    }
+    setTimeout(step, 80);
+}
+
 const DB_VEHICLES = "nappy_vehicles_v1";
 const DB_LOGS = "nappy_logs_v1";
 const DB_INSPECTIONS = "inspections_v1"; 
@@ -340,6 +406,9 @@ function getPendingRetryCount() {
  * ユーザー認証管理
  */
 function login(profile, authToken) {
+    if (!isRingDemoProfile(profile)) {
+      purgeRingDemoLocalData();
+    }
     const raw = JSON.stringify(profile);
     localStorage.setItem(DB_CURRENT_USER, raw);
     localStorage.setItem(DB_LEGACY_PROFILE, raw);
@@ -351,6 +420,7 @@ function getCurrentProfile() {
     return safeJsonParse(localStorage.getItem(DB_LEGACY_PROFILE), null);
 }
 function logout() {
+    purgeRingDemoLocalData();
     localStorage.removeItem(DB_CURRENT_USER);
     localStorage.removeItem(DB_LEGACY_PROFILE);
     localStorage.removeItem('ring_auth_token');
@@ -378,6 +448,39 @@ var DEMO_DATA_TAG = 'ringAutoDemo';
  */
 function stripDemoTagged(arr) {
   return (arr || []).filter(function (x) { return x && x.__demoTag !== DEMO_DATA_TAG; });
+}
+
+/**
+ * デモ用プロフィールか（seedDemoEnvironment + デモログインで投入したセッション）
+ */
+function isRingDemoProfile(profile) {
+  if (!profile) return false;
+  var uid = String(profile.userId || '');
+  var lid = String(profile.loginId || '');
+  var sid = String(profile.shopId || '');
+  if (/DEMO/i.test(uid) || /DEMO/i.test(lid)) return true;
+  if (lid === 'USR-DEMO-0000') return true;
+  if (sid === 'SHOP-DEMO-F' || sid === 'SHOP-DEMO-D') return true;
+  return false;
+}
+
+/**
+ * localStorage からデモシードデータ（__demoTag）だけ削除。本番ログイン・ログアウト後に実データへ混ざらないようにする。
+ */
+function purgeRingDemoLocalData() {
+  function writeIfChanged(key) {
+    var arr = safeJsonParse(localStorage.getItem(key), []);
+    if (!Array.isArray(arr)) return;
+    var next = stripDemoTagged(arr);
+    if (next.length !== arr.length) {
+      localStorage.setItem(key, JSON.stringify(next));
+    }
+  }
+  writeIfChanged('nappy_shops_v1');
+  writeIfChanged(DB_VEHICLES);
+  writeIfChanged(DB_LOGS);
+  writeIfChanged(DB_INSPECTIONS);
+  writeIfChanged('nappy_fav_shops_v1');
 }
 
 /**
