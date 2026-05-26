@@ -282,19 +282,14 @@
             discardNotice: document.getElementById('discardNotice')
           },
           onApply: function (r) {
-            if (r.vin) document.getElementById('inVin').value = String(r.vin).toUpperCase();
-            if (r.mileage) document.getElementById('inMileage').value = r.mileage;
-            if (r.workTitle) document.getElementById('inTitle').value = r.workTitle;
-            if (r.parts) document.getElementById('inParts').value = r.parts;
-            if (r.shaken) document.getElementById('inShaken').value = r.shaken;
-            if (r.model) document.getElementById('inModel').value = r.model;
-            if (r.engine) document.getElementById('inEngine').value = r.engine;
-            if (r.class) document.getElementById('inClass').value = r.class;
-            if (r.typeDesignation) document.getElementById('inTypeDesig').value = r.typeDesignation;
-            if (r.memo) document.getElementById('inMemo').value = r.memo;
-            if (r.vin) lookupVehicle(r.vin);
-            var det = document.querySelector('.note-card details');
-            if (det && (r.model || r.engine || r.class || r.typeDesignation)) det.open = true;
+            ringApplyOcrToForm('factory', r, {
+              clearMemoryOpts: {
+                previewImg: document.getElementById('docPreviewImg'),
+                previewArea: document.getElementById('docPreviewArea'),
+                moreBadge: document.getElementById('docPreviewMore'),
+                discardNotice: document.getElementById('discardNotice')
+              }
+            });
           }
         }
       });

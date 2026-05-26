@@ -267,11 +267,7 @@
       if (typeof wasOcrAnalyzingCancelled === 'function' && wasOcrAnalyzingCancelled()) return;
 
       handleOcrVinResultForForm(res, function (r) {
-        if (r.vin && !document.getElementById('inVin').readOnly) {
-          document.getElementById('inVin').value = String(r.vin).toUpperCase();
-        }
-        if (r.mileage) document.getElementById('inMileage').value = r.mileage;
-        if (r.shaken) document.getElementById('inShaken').value = r.shaken;
+        ringApplyOcrToForm('dealer', r);
       }, RING_OCR_FIELDS_DEALER);
     });
 

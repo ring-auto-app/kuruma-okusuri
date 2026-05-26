@@ -591,16 +591,14 @@
       if (typeof wasOcrAnalyzingCancelled === 'function' && wasOcrAnalyzingCancelled()) return;
 
       handleOcrVinResultForForm(res, function (r) {
-        if (r.vin)              document.getElementById('inVin').value      = String(r.vin).toUpperCase();
-        if (r.shaken)           document.getElementById('inExpiry').value   = r.shaken;
-        if (r.firstRegistration) document.getElementById('inFirstReg').value = r.firstRegistration;
-        if (r.model)            document.getElementById('inModel').value    = r.model;
-        if (r.engine)           document.getElementById('inEngine').value   = r.engine;
-        if (r.class)            document.getElementById('inCategory').value = r.class;
-        if (r.typeDesignation)  document.getElementById('inTypeDesig').value = r.typeDesignation;
-        const det = document.querySelector('.card details');
-        if (det && (r.model || r.engine || r.class || r.typeDesignation)) det.open = true;
-        updateSchedule();
+        ringApplyOcrToForm('car', r, {
+          clearMemoryOpts: {
+            previewImg: document.getElementById('docPreviewImg'),
+            previewArea: document.getElementById('docPreviewArea'),
+            discardNotice: document.getElementById('discardNotice')
+          },
+          onAfter: function () { updateSchedule(); }
+        });
       }, RING_OCR_FIELDS_CAR);
     });
   </script>
