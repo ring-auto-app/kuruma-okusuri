@@ -375,7 +375,7 @@
         welcome: '整備工場ログイン',
         accountType: 'shop',
         hintPrefix: '初めてご利用の方は',
-        hintText: '事業者新規登録',
+        hintText: '工場・事業者新規登録',
         hintAction: 'biz_register',
         showForgotPw: false,
         personaNote: 'オーナーから配られたIDでログインしてください'
@@ -392,6 +392,22 @@
       }
     };
 
+    function isShopLoginPersona(persona) {
+      persona = persona || loginPersonaLocked;
+      return persona === 'factory' || persona === 'dealer';
+    }
+
+    function getBizRegisterUrl(persona) {
+      persona = persona || loginPersonaLocked;
+      if (persona === 'factory') return 'biz_register.html?type=factory';
+      if (persona === 'dealer') return 'biz_register.html?type=dealer';
+      return 'biz_register.html';
+    }
+
+    function goBizRegister() {
+      location.href = getBizRegisterUrl();
+    }
+
     function resolveLoginPersona(tab) {
       if (!tab || tab === 'register') return null;
       if (tab === 'user') return 'user';
@@ -405,7 +421,7 @@
       if (action === 'register') {
         hintLink.onclick = function () { switchMainTab('register'); };
       } else if (action === 'biz_register') {
-        hintLink.onclick = function () { location.href = 'biz_register.html'; };
+        hintLink.onclick = function () { location.href = getBizRegisterUrl(); };
       }
     }
 
@@ -453,6 +469,10 @@
     }
 
     function switchMainTab(tab) {
+      if (tab === 'register' && isShopLoginPersona()) {
+        goBizRegister();
+        return;
+      }
       var isLogin = tab === 'login';
       document.getElementById('tabLogin').classList.toggle('active', isLogin);
       document.getElementById('tabRegister').classList.toggle('active', !isLogin);
@@ -668,7 +688,13 @@
         applyLoginChameleonUI(persona);
       }
 
-      if (tab === 'register') switchMainTab('register');
+      if (tab === 'register') {
+        if (isShopLoginPersona(persona)) {
+          location.replace(getBizRegisterUrl(persona));
+          return;
+        }
+        switchMainTab('register');
+      }
 
       if (typeof ringBootAuth === 'function') {
         var boot = await ringBootAuth();

@@ -189,10 +189,30 @@
       <button class="save-btn" onclick="registerShop()">この内容で登録する</button>
     </div>
     
-    <div class="login-link">すでに登録済みの方は <a href="login.html?tab=business">こちらからログイン</a></div>
+    <div class="login-link">すでに登録済みの方は <a id="bizRegisterLoginLink" href="login.html?tab=business">こちらからログイン</a></div>
   </div>
 
   <script>
+    function applyBizRegisterTypeFromUrl() {
+      var params = new URLSearchParams(window.location.search);
+      var type = params.get('type');
+      var sel = document.getElementById('inShopType');
+      var factoryArea = document.getElementById('factoryArea');
+      var loginLink = document.getElementById('bizRegisterLoginLink');
+      if (!sel) return;
+      if (type === 'factory') {
+        sel.value = 'factory';
+        if (factoryArea) factoryArea.style.display = 'block';
+        if (loginLink) loginLink.href = 'login.html?tab=factory';
+      } else if (type === 'dealer') {
+        sel.value = 'dealer';
+        if (factoryArea) factoryArea.style.display = 'none';
+        if (loginLink) loginLink.href = 'login.html?tab=business';
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', applyBizRegisterTypeFromUrl);
+
     /**
      * アカウント登録処理：GASとの通信およびプロフィールの保存
      */
@@ -273,6 +293,7 @@
           const finalShopId    = result.shopId        || shopId;
           const finalMasterId  = result.masterLoginId || (finalShopId + '-0000');
           const savedEmail = loginEmail;
+          const loginTab = shopType === 'factory' ? 'factory' : 'business';
 
           hideLoading();
 
@@ -288,7 +309,7 @@
                 <div style="background:#f0fdf4;border:2px solid #86efac;border-radius:12px;padding:12px;margin-bottom:20px;font-size:13px;font-weight:700;color:#166534;">
                   上記メールと登録時のパスワードでログインできます。
                 </div>
-                <button onclick="location.replace('login.html?tab=business')"
+                <button onclick="location.replace('login.html?tab=${loginTab}')"
                   style="width:100%;padding:16px;background:#16a34a;color:#fff;border:none;border-radius:12px;font-size:16px;font-weight:900;cursor:pointer;">
                   ログイン画面へ →
                 </button>
