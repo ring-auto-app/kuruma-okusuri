@@ -316,6 +316,7 @@ function ringBootAuthForOcrPage(expectedMode) {
         }
     }
     ringResolveActiveAuthToken();
+    if (typeof window !== 'undefined') window.__ringSessionVerified = false;
 }
 
 function ringApplyActiveSession(slot, mode) {
@@ -608,7 +609,13 @@ async function ringEnsureAuthForOcr() {
     if (typeof window !== 'undefined' && window.__ringSessionVerified === true) return;
     var v = await ringVerifySession(tok);
     if (!v || (v.success !== true && !v.offline)) {
-        throw new Error(v && v.error || 'AUTH_REQUIRED');
+        var errCode = (v && v.error) || 'AUTH_REQUIRED';
+        if (typeof showToast === 'function') {
+            showToast('error', errCode === 'AUTH_EXPIRED'
+                ? 'ログインの有効期限が切れました。再度ログインしてください。'
+                : '認証に失敗しました。再度ログインしてください。');
+        }
+        throw new Error(errCode);
     }
     if (v.profile) {
         var activeMode = ringGetActiveMode();
@@ -688,6 +695,45 @@ function isRingDemoProfile(profile) {
   if (lid === 'USR-DEMO-0000') return true;
   if (sid === 'SHOP-DEMO-F' || sid === 'SHOP-DEMO-D') return true;
   return false;
+}
+
+/** 本番 OCR は GAS 必須。デモ stub はデモプロフィールかつ明示フラグ両方のときのみ */
+function ringIsOcrDemoMode_() {
+    if (typeof window === 'undefined' || window.__RING_OCR_DEMO__ !== true) return false;
+    var p = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+    return isRingDemoProfile(p);
+}
+
+/**
+ * OCR 中断時の明示報告（console + toast + 監視ログ）。サイレント abort 禁止。
+ * @param {string} stage
+ * @param {*} err
+ * @param {{ userMessage?: string, toast?: boolean, payload?: object }} [opts]
+ */
+function ringReportOcrAbort_(stage, err, opts) {
+    opts = opts || {};
+    var msg = String(err && err.message ? err.message : err || 'OCR_ABORT');
+    console.error('[OCR abort]', stage, msg, opts.payload || '');
+    var userMsg = opts.userMessage;
+    if (userMsg == null) {
+        if (/AUTH_REQUIRED/i.test(msg)) {
+            userMsg = 'セッションが切れました。再度ログインしてください。';
+        } else if (/AUTH_EXPIRED/i.test(msg)) {
+            userMsg = 'ログインの有効期限が切れました。再度ログインしてください。';
+        } else if (/IMAGE_ENCODE|read_fail|IMAGE_REQUIRED/i.test(msg)) {
+            userMsg = '画像の読み込みに失敗しました。別の写真をお試しください。';
+        } else {
+            userMsg = '読み取りを開始できませんでした（' + msg + '）。手入力で続行できます。';
+        }
+    }
+    if (opts.toast !== false && userMsg && typeof showToast === 'function') {
+        showToast('error', userMsg);
+    }
+    var logAction = /AUTH_/i.test(msg) ? 'AUTH_ERROR' : 'OCR_FAIL';
+    ringLogSystemEvent(logAction, {
+        error_message: msg,
+        payload: Object.assign({ stage: stage }, opts.payload || {})
+    });
 }
 
 /**
@@ -2030,6 +2076,33 @@ function fileToVisionBase64(file, maxSide) {
     });
 }
 
+/**
+ * 単枚 OCR の GAS 送信コア（リサイズ → 認証 → ocr_vin）
+ * @param {File|Blob} file
+ * @param {string=} fileName
+ */
+async function ringOcrVinRequest_(file, fileName) {
+    fileName = fileName || (file && file.name) || 'image';
+    var b64;
+    try {
+        b64 = await fileToVisionBase64(file, 2000);
+    } catch (e) {
+        ringReportOcrAbort_('image_encode', e, { payload: { fileName: fileName }, toast: false });
+        throw e;
+    }
+    if (!b64) {
+        var emptyErr = new Error('IMAGE_ENCODE_EMPTY');
+        ringReportOcrAbort_('image_encode', emptyErr, { payload: { fileName: fileName }, toast: false });
+        throw emptyErr;
+    }
+    try {
+        await ringEnsureAuthForOcr();
+        return await sendToGAS_Safe('ocr_vin', { imageBase64: b64 });
+    } finally {
+        b64 = null;
+    }
+}
+
 var RING_OCR_FAIL_KEY = 'ring_ocr_consecutive_failures';
 
 function resetOcrFailureCount() {
@@ -2328,7 +2401,7 @@ function handleOcrVinResultForForm(res, applyFn, ocrFieldDescriptors) {
 
     var payload = ringNormalizeOcrResultPayload_(res);
     var ocrStatus = res && res.ocrStatus ? res.ocrStatus : null;
-    var demo = typeof window !== 'undefined' && window.__RING_OCR_DEMO__ === true;
+    var demo = ringIsOcrDemoMode_();
     var extraKeys = ['shaken', 'firstRegistration', 'mileage', 'workTitle', 'parts', 'model', 'engine', 'class', 'typeDesignation'].filter(function (k) {
         var v = payload[k];
         return v != null && String(v).trim() !== '';
@@ -2693,7 +2766,7 @@ function ringMergedToFlatApply_(merged) {
 
 async function analyzeDocumentSingle(file, fileIndex) {
     var fileName = file.name || ('image_' + (fileIndex + 1));
-    if (typeof window !== 'undefined' && window.__RING_OCR_DEMO__ === true) {
+    if (ringIsOcrDemoMode_()) {
         await delay(700);
         var stubs = [
             { vin: 'ZVW50-5012847', shaken: '2026-12-15', mileage: '124000', workTitle: 'オイル交換', parts: 'オイルエレメント', model: 'DBA-ZVW50', engine: '2ZR-FXE', class: '12001', typeDesignation: '17456' },
@@ -2721,17 +2794,8 @@ async function analyzeDocumentSingle(file, fileIndex) {
         }
         return { fileName: fileName, ok: true, partial: false, parsed: parsed };
     }
-    var b64;
     try {
-        b64 = await fileToVisionBase64(file, 2000);
-    } catch (e) {
-        return { fileName: fileName, ok: false, partial: false, parsed: { work: [], parts: [] } };
-    }
-    if (!b64) return { fileName: fileName, ok: false, partial: false, parsed: { work: [], parts: [] } };
-    try {
-        await ringEnsureAuthForOcr();
-        var json = await sendToGAS_Safe('ocr_vin', { imageBase64: b64 });
-        b64 = null;
+        var json = await ringOcrVinRequest_(file, fileName);
         var gasVin = json && json.vin ? String(json.vin).toUpperCase() : '';
         var parsed;
         if (json && json.fields) {
@@ -2752,21 +2816,12 @@ async function analyzeDocumentSingle(file, fileIndex) {
         });
         return { fileName: fileName, ok: false, partial: false, parsed: parsed };
     } catch (e) {
+        ringReportOcrAbort_('batch_page', e, {
+            payload: { fileName: fileName },
+            toast: fileIndex === 0 && !/AUTH_/i.test(String(e && e.message ? e.message : e || ''))
+        });
         var msg = String(e && e.message ? e.message : e || '');
-        if (/AUTH_/i.test(msg)) {
-            ringLogSystemEvent('AUTH_ERROR', {
-                error_message: msg,
-                payload: { stage: 'batch_request', fileName: fileName }
-            });
-        } else {
-            ringLogSystemEvent('OCR_FAIL', {
-                error_message: msg,
-                payload: { stage: 'batch_request', fileName: fileName }
-            });
-        }
         return { fileName: fileName, ok: false, partial: false, parsed: { work: [], parts: [] }, authError: /AUTH_/i.test(msg) };
-    } finally {
-        b64 = null;
     }
 }
 
@@ -3001,10 +3056,11 @@ async function ringHandleBatchDocumentScan(opts) {
         if (typeof showToast === 'function') showToast('warning', 'オフラインのため読み取れません。手入力で続行してください。');
         return;
     }
-    if (!(typeof window !== 'undefined' && window.__RING_OCR_DEMO__ === true)) {
+    if (!ringIsOcrDemoMode_()) {
         try {
             await ringEnsureAuthForOcr();
         } catch (e) {
+            ringReportOcrAbort_('batch_auth_preflight', e, { payload: { mode: opts.mode || 'factory' }, toast: false });
             return;
         }
     }
@@ -3037,10 +3093,16 @@ async function ringHandleBatchDocumentScan(opts) {
         batchResult = await runBatchOcrPipeline(files, function (st) {
             updateOcrBatchProgressOverlay(st);
         });
+    } catch (e) {
+        ringReportOcrAbort_('batch_pipeline', e, { payload: { fileCount: files.length } });
+        hideOcrBatchProgressOverlay();
+        if (saveBtn) saveBtn.disabled = false;
+        return;
     } finally {
         hideOcrBatchProgressOverlay();
         if (saveBtn) saveBtn.disabled = false;
     }
+    if (!batchResult || !batchResult.pageResults) return;
     if (wasOcrAnalyzingCancelled()) return;
     var merged = mergeOCRResults(batchResult.pageResults);
     showOcrBatchReviewModal(merged, {
@@ -3056,14 +3118,14 @@ async function ringHandleBatchDocumentScan(opts) {
 }
 
 /**
- * 書類・車検証画像の OCR（C-05）。本番は GAS ocr_vin + Vision API。車体番号のみ返却。
- * デモ用全項目は window.__RING_OCR_DEMO__ === true のときのみ（固定値）。
+ * 書類・車検証画像の OCR（C-05）。本番は GAS ocr_vin + Vision API。
+ * デモ stub は ringIsOcrDemoMode_() のときのみ。
  * @param {File[]} files
  * @returns {Promise<null|{vin?: string, shaken?: string, mileage?: string, workTitle?: string, parts?: string, model?: string, engine?: string, class?: string, typeDesignation?: string}>}
  */
 async function analyzeDocument(files) {
     if (!files || !files[0]) return null;
-    if (typeof window !== 'undefined' && window.__RING_OCR_DEMO__ === true) {
+    if (ringIsOcrDemoMode_()) {
         await delay(900);
         return {
             vin: 'ZVW50-5012847',
@@ -3078,17 +3140,8 @@ async function analyzeDocument(files) {
             typeDesignation: '17456'
         };
     }
-    var b64;
     try {
-        b64 = await fileToVisionBase64(files[0], 2000);
-    } catch (e) {
-        return null;
-    }
-    if (!b64) return null;
-    try {
-        await ringEnsureAuthForOcr();
-        var json = await sendToGAS_Safe('ocr_vin', { imageBase64: b64 });
-        b64 = null;
+        var json = await ringOcrVinRequest_(files[0], files[0].name || 'image');
         if (json && (json.vin || json.fields || json.partial === true)) {
             var flat = {};
             if (json.vin) flat.vin = ringCorrectVinOcrMisread_(String(json.vin).replace(/\s+/g, ''));
@@ -3119,26 +3172,12 @@ async function analyzeDocument(files) {
         });
         return null;
     } catch (e) {
-        var msg = String(e && e.message ? e.message : e || '');
-        if (/AUTH_/i.test(msg)) {
-            ringLogSystemEvent('AUTH_ERROR', {
-                error_message: msg,
-                payload: { stage: 'ocr_vin_request' }
-            });
-        } else {
-            ringLogSystemEvent('OCR_FAIL', {
-                error_message: msg,
-                payload: { stage: 'ocr_vin_request' }
-            });
-            if (/OCR_NOT_CONFIGURED|VIN_NOT_FOUND|NO_FIELDS|VISION_API_ERROR|IMAGE_REQUIRED/.test(msg)) {
-                /* 読取失敗系 */
-            } else if (typeof showToast === 'function') {
-                showToast('error', '読み取り処理でエラーが発生しました。再撮影か手入力をお試しください。');
-            }
-        }
+        var errMsg = String(e && e.message ? e.message : e || '');
+        ringReportOcrAbort_('ocr_vin_request', e, {
+            payload: { fileName: files[0].name || 'image' },
+            toast: !/AUTH_/i.test(errMsg)
+        });
         return null;
-    } finally {
-        b64 = null;
     }
 }
 
