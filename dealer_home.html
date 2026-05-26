@@ -125,18 +125,25 @@
   </div>
 
   <script>
-    window.addEventListener('DOMContentLoaded', () => {
+    window.addEventListener('DOMContentLoaded', async () => {
       showLoading("認証中", "ログイン情報を確認しています...");
 
-      setTimeout(() => {
-        const profile = typeof getCurrentProfile === "function" ? getCurrentProfile() : null;
-
-        if (!profile) {
+      if (typeof ringBootAuthForMode === 'function') {
+        var boot = await ringBootAuthForMode('business');
+        if (!boot.ok) {
           hideLoading();
-          alert("ログイン情報の有効期限が切れました。再度ログインしてください。");
-          location.replace("login.html");
+          location.replace(boot.redirect || 'login.html?tab=business');
           return;
         }
+      }
+
+      const profile = typeof getCurrentProfile === "function" ? getCurrentProfile() : null;
+
+      if (!profile || profile.shopType !== 'dealer') {
+        hideLoading();
+        location.replace('login.html?tab=business');
+        return;
+      }
 
         document.getElementById("shopName").innerText = "ログイン中: " + profile.shopName + " (担当: " + (profile.displayName || profile.staffId) + ")";
         document.getElementById("facCodeDisplay").innerText = "事業者ID: " + profile.shopId;
@@ -163,7 +170,6 @@
         }
         hideLoading();
         if (typeof ringAdsInit === 'function') ringAdsInit('dealer_home');
-      }, 300);
     });
   </script>
 </body>

@@ -53,8 +53,18 @@ const DB_LOGS = "nappy_logs_v1";
 const DB_INSPECTIONS = "inspections_v1"; 
 const DB_CURRENT_USER = "nappy_current_user";  
 const DB_LEGACY_PROFILE = "nappy_profile_v1";
+const RING_TOKEN_USER = 'ring_user_token';
+const RING_TOKEN_SHOP = 'ring_shop_token';
+const RING_TOKEN_BIZ = 'ring_biz_token';
+const RING_META_USER = 'ring_user_profile';
+const RING_META_SHOP = 'ring_shop_profile';
+const RING_META_BIZ = 'ring_biz_profile';
+const RING_CURRENT_MODE = 'ring_current_mode';
+/** @deprecated 移行用 */
 const RING_PROFILE_USER = 'ring_profile_user';
+/** @deprecated 移行用 */
 const RING_PROFILE_SHOP = 'ring_profile_shop';
+/** @deprecated 移行用 */
 const RING_ACTIVE_ACCOUNT = 'ring_active_account';
 const RING_AUTH_OFFLINE_GRACE_MS = 1000 * 60 * 60 * 24;
 /** GAS 失敗時の再送キュー（C-01） */
@@ -177,27 +187,92 @@ function getPendingRetryCount() {
 }
 
 /**
- * ストロングスタイル認証（メール+パスワード / スロット保持 / verify_session）
+ * ストロングスタイル認証（3スロット: user / shop / business）
  */
-function ringClassifyProfile(profile) {
-    var st = String(profile && profile.shopType || '');
-    if (st === 'factory' || st === 'dealer') return 'shop';
+function ringNormalizeMode(mode) {
+    var m = String(mode || '').trim().toLowerCase();
+    if (m === 'shop' || m === 'factory') return 'shop';
+    if (m === 'business' || m === 'biz' || m === 'dealer') return 'business';
     return 'user';
 }
 
-function ringAuthSlotKey(accountType) {
-    return accountType === 'shop' ? RING_PROFILE_SHOP : RING_PROFILE_USER;
+function ringClassifyProfile(profile) {
+    var st = String(profile && profile.shopType || '');
+    if (st === 'factory') return 'shop';
+    if (st === 'dealer') return 'business';
+    return 'user';
 }
 
-function ringReadAuthSlot(accountType) {
-    var key = ringAuthSlotKey(accountType);
-    var slot = safeJsonParse(localStorage.getItem(key), null);
-    if (!slot || !slot.profile) return null;
-    return slot;
+function ringModeTokenKey(mode) {
+    mode = ringNormalizeMode(mode);
+    if (mode === 'shop') return RING_TOKEN_SHOP;
+    if (mode === 'business') return RING_TOKEN_BIZ;
+    return RING_TOKEN_USER;
 }
 
-function ringApplyActiveSession(slot) {
+function ringModeMetaKey(mode) {
+    mode = ringNormalizeMode(mode);
+    if (mode === 'shop') return RING_META_SHOP;
+    if (mode === 'business') return RING_META_BIZ;
+    return RING_META_USER;
+}
+
+function ringWriteAuthSlot(mode, slot) {
+    mode = ringNormalizeMode(mode);
     if (!slot || !slot.profile) return;
+    localStorage.setItem(ringModeTokenKey(mode), slot.token || '');
+    localStorage.setItem(ringModeMetaKey(mode), JSON.stringify({
+        profile: slot.profile,
+        updatedAt: slot.updatedAt || new Date().toISOString(),
+        verifiedAt: slot.verifiedAt || ''
+    }));
+}
+
+function ringReadAuthSlot(mode) {
+    mode = ringNormalizeMode(mode);
+    var token = localStorage.getItem(ringModeTokenKey(mode)) || '';
+    var meta = safeJsonParse(localStorage.getItem(ringModeMetaKey(mode)), null);
+    if (!meta || !meta.profile) {
+        if (!token) return null;
+        return { token: token, profile: null, updatedAt: '', verifiedAt: '' };
+    }
+    return {
+        token: token,
+        profile: meta.profile,
+        updatedAt: meta.updatedAt || '',
+        verifiedAt: meta.verifiedAt || ''
+    };
+}
+
+function ringSetCurrentMode(mode) {
+    mode = ringNormalizeMode(mode);
+    localStorage.setItem(RING_CURRENT_MODE, mode);
+    localStorage.setItem(RING_ACTIVE_ACCOUNT, mode === 'business' ? 'shop' : mode);
+}
+
+function ringGetActiveMode() {
+    var mode = localStorage.getItem(RING_CURRENT_MODE);
+    if (mode === 'user' || mode === 'shop' || mode === 'business') return mode;
+    var legacy = localStorage.getItem(RING_ACTIVE_ACCOUNT);
+    if (legacy === 'user') return 'user';
+    if (legacy === 'shop') {
+        var profile = safeJsonParse(localStorage.getItem(DB_CURRENT_USER), null);
+        if (profile && profile.shopType === 'dealer') return 'business';
+        return 'shop';
+    }
+    var p = safeJsonParse(localStorage.getItem(DB_CURRENT_USER), null);
+    if (!p) return 'user';
+    return ringClassifyProfile(p);
+}
+
+/** @deprecated ringGetActiveMode を使用 */
+function ringGetActiveAccountType() {
+    return ringGetActiveMode();
+}
+
+function ringApplyActiveSession(slot, mode) {
+    if (!slot || !slot.profile) return;
+    if (mode) ringSetCurrentMode(mode);
     var raw = JSON.stringify(slot.profile);
     localStorage.setItem(DB_CURRENT_USER, raw);
     localStorage.setItem(DB_LEGACY_PROFILE, raw);
@@ -211,8 +286,7 @@ function ringSaveAuthSlot(profile, authToken, opts) {
     if (!isRingDemoProfile(profile)) {
         purgeRingDemoLocalData();
     }
-    var kind = ringClassifyProfile(profile);
-    var accountType = kind === 'shop' ? 'shop' : 'user';
+    var mode = ringClassifyProfile(profile);
     var now = new Date().toISOString();
     var slot = {
         token: authToken || '',
@@ -220,38 +294,75 @@ function ringSaveAuthSlot(profile, authToken, opts) {
         updatedAt: now,
         verifiedAt: opts.verifiedAt || now
     };
-    localStorage.setItem(ringAuthSlotKey(accountType), JSON.stringify(slot));
-    localStorage.setItem(RING_ACTIVE_ACCOUNT, accountType);
-    ringApplyActiveSession(slot);
+    ringWriteAuthSlot(mode, slot);
+    ringSetCurrentMode(mode);
+    ringApplyActiveSession(slot, mode);
+}
+
+function ringMigrateLegacySlotObject(key, defaultMode) {
+    var legacy = safeJsonParse(localStorage.getItem(key), null);
+    if (!legacy || !legacy.profile) return;
+    var mode = defaultMode || ringClassifyProfile(legacy.profile);
+    if (ringReadAuthSlot(mode) && ringReadAuthSlot(mode).profile) return;
+    ringWriteAuthSlot(mode, {
+        token: legacy.token || '',
+        profile: legacy.profile,
+        updatedAt: legacy.updatedAt || new Date().toISOString(),
+        verifiedAt: legacy.verifiedAt || ''
+    });
 }
 
 function ringMigrateLegacyAuth() {
     try {
-        if (localStorage.getItem(RING_PROFILE_USER) || localStorage.getItem(RING_PROFILE_SHOP)) return;
-        var profile = safeJsonParse(localStorage.getItem(DB_CURRENT_USER), null);
-        if (!profile) profile = safeJsonParse(localStorage.getItem(DB_LEGACY_PROFILE), null);
-        var tok = localStorage.getItem('ring_auth_token');
-        if (!profile || !tok) return;
-        ringSaveAuthSlot(profile, tok, { verifiedAt: '' });
+        var hasNew = localStorage.getItem(RING_TOKEN_USER) ||
+            localStorage.getItem(RING_TOKEN_SHOP) ||
+            localStorage.getItem(RING_TOKEN_BIZ);
+        if (!hasNew) {
+            ringMigrateLegacySlotObject(RING_PROFILE_USER, 'user');
+            var shopLegacy = safeJsonParse(localStorage.getItem(RING_PROFILE_SHOP), null);
+            if (shopLegacy && shopLegacy.profile) {
+                var shopMode = ringClassifyProfile(shopLegacy.profile);
+                ringWriteAuthSlot(shopMode, {
+                    token: shopLegacy.token || '',
+                    profile: shopLegacy.profile,
+                    updatedAt: shopLegacy.updatedAt || new Date().toISOString(),
+                    verifiedAt: shopLegacy.verifiedAt || ''
+                });
+            }
+            if (!localStorage.getItem(RING_CURRENT_MODE)) {
+                var active = localStorage.getItem(RING_ACTIVE_ACCOUNT);
+                if (active === 'user') ringSetCurrentMode('user');
+                else if (active === 'shop') {
+                    var cur = safeJsonParse(localStorage.getItem(DB_CURRENT_USER), null);
+                    ringSetCurrentMode(cur && cur.shopType === 'dealer' ? 'business' : 'shop');
+                }
+            }
+            var profile = safeJsonParse(localStorage.getItem(DB_CURRENT_USER), null);
+            if (!profile) profile = safeJsonParse(localStorage.getItem(DB_LEGACY_PROFILE), null);
+            var tok = localStorage.getItem('ring_auth_token');
+            if (profile && tok) {
+                var migMode = ringClassifyProfile(profile);
+                var existing = ringReadAuthSlot(migMode);
+                if (!existing || !existing.profile) {
+                    ringSaveAuthSlot(profile, tok, { verifiedAt: '' });
+                }
+            }
+        }
     } catch (e) { /* ignore */ }
 }
 
-function ringClearAuthSlot(accountType) {
-    localStorage.removeItem(ringAuthSlotKey(accountType));
-    if (localStorage.getItem(RING_ACTIVE_ACCOUNT) === accountType) {
+function ringClearAuthSlot(mode) {
+    mode = ringNormalizeMode(mode);
+    localStorage.removeItem(ringModeTokenKey(mode));
+    localStorage.removeItem(ringModeMetaKey(mode));
+    if (ringGetActiveMode() === mode) {
+        localStorage.removeItem(RING_CURRENT_MODE);
         localStorage.removeItem(RING_ACTIVE_ACCOUNT);
         localStorage.removeItem(DB_CURRENT_USER);
         localStorage.removeItem(DB_LEGACY_PROFILE);
         localStorage.removeItem('ring_auth_token');
+        if (typeof window !== 'undefined') window.__ringSessionVerified = false;
     }
-}
-
-function ringGetActiveAccountType() {
-    var active = localStorage.getItem(RING_ACTIVE_ACCOUNT);
-    if (active === 'user' || active === 'shop') return active;
-    var profile = safeJsonParse(localStorage.getItem(DB_CURRENT_USER), null);
-    if (!profile) return 'user';
-    return ringClassifyProfile(profile) === 'shop' ? 'shop' : 'user';
 }
 
 function ringGetHomeForProfile(profile) {
@@ -272,11 +383,25 @@ function ringIsUserAccountProfile(profile) {
     return String(profile.role || '').trim().toLowerCase() === 'user';
 }
 
-async function ringVerifySession(token) {
+function ringGetHomeForMode(mode) {
+    mode = ringNormalizeMode(mode);
+    if (mode === 'shop') return 'factory_home.html';
+    if (mode === 'business') return 'dealer_home.html';
+    return 'user_home.html';
+}
+
+function ringGetLoginUrlForMode(mode) {
+    mode = ringNormalizeMode(mode);
+    if (mode === 'shop') return 'login.html?tab=shop';
+    if (mode === 'business') return 'login.html?tab=business';
+    return 'login.html?tab=user';
+}
+
+async function ringVerifySession(token, mode) {
     if (!token) return { success: false, error: 'AUTH_REQUIRED' };
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-        var activeType = ringGetActiveAccountType();
-        var slot = ringReadAuthSlot(activeType);
+        var activeMode = mode || ringGetActiveMode();
+        var slot = ringReadAuthSlot(activeMode);
         if (slot && slot.verifiedAt) {
             var age = Date.now() - new Date(slot.verifiedAt).getTime();
             if (!isNaN(age) && age < RING_AUTH_OFFLINE_GRACE_MS) {
@@ -300,64 +425,71 @@ async function ringVerifySession(token) {
     }
 }
 
-async function ringBootAuth() {
-    ringMigrateLegacyAuth();
-    var accountType = ringGetActiveAccountType();
-    var slot = ringReadAuthSlot(accountType);
-    if (!slot || !slot.token) {
-        return { ok: false, reason: 'no_session' };
+async function ringVerifyAndRefreshSlot(mode) {
+    mode = ringNormalizeMode(mode);
+    var slot = ringReadAuthSlot(mode);
+    if (!slot || !slot.token || !slot.profile) {
+        return { ok: false, reason: 'no_session', mode: mode };
     }
-    var verified = await ringVerifySession(slot.token);
+    var verified = await ringVerifySession(slot.token, mode);
     if (verified.success === true) {
         if (verified.profile) slot.profile = verified.profile;
         slot.verifiedAt = new Date().toISOString();
         if (verified.authToken) slot.token = verified.authToken;
-        localStorage.setItem(ringAuthSlotKey(accountType), JSON.stringify(slot));
-        ringApplyActiveSession(slot);
-        return { ok: true, profile: slot.profile, accountType: accountType };
+        ringWriteAuthSlot(mode, slot);
+        ringApplyActiveSession(slot, mode);
+        return { ok: true, profile: slot.profile, mode: mode };
     }
     if (/AUTH_EXPIRED|AUTH_REQUIRED/.test(String(verified.error || ''))) {
-        ringClearAuthSlot(accountType);
+        ringClearAuthSlot(mode);
     }
-    return { ok: false, reason: verified.error || 'verify_failed' };
+    return { ok: false, reason: verified.error || 'verify_failed', mode: mode };
+}
+
+async function ringBootAuth() {
+    ringMigrateLegacyAuth();
+    var mode = ringGetActiveMode();
+    return ringVerifyAndRefreshSlot(mode);
 }
 
 /**
- * login.html 用: 工場/事業者 persona では user セッションで自動遷移しない
+ * 各ホーム画面用: 期待モードのスロットだけ verify
+ * @param {'user'|'shop'|'business'} expectedMode
+ */
+async function ringBootAuthForMode(expectedMode) {
+    ringMigrateLegacyAuth();
+    expectedMode = ringNormalizeMode(expectedMode);
+    ringSetCurrentMode(expectedMode);
+    var result = await ringVerifyAndRefreshSlot(expectedMode);
+    if (!result.ok) {
+        result.redirect = ringGetLoginUrlForMode(expectedMode);
+    }
+    return result;
+}
+
+/**
+ * login.html 用: persona に合うモードのスロットだけ verify
  * @param {'user'|'factory'|'dealer'|null} persona
  */
 async function ringBootAuthForLoginPage(persona) {
-    if (persona === 'factory' || persona === 'dealer') {
-        var shopSlot = ringReadAuthSlot('shop');
-        if (!shopSlot || !shopSlot.token) {
-            return { ok: false, reason: 'no_shop_session' };
-        }
-        var shopVerified = await ringVerifySession(shopSlot.token);
-        if (shopVerified.success !== true) {
-            if (/AUTH_EXPIRED|AUTH_REQUIRED/.test(String(shopVerified.error || ''))) {
-                ringClearAuthSlot('shop');
-            }
-            return { ok: false, reason: shopVerified.error || 'verify_failed' };
-        }
-        if (shopVerified.profile) shopSlot.profile = shopVerified.profile;
-        shopSlot.verifiedAt = new Date().toISOString();
-        if (shopVerified.authToken) shopSlot.token = shopVerified.authToken;
-        localStorage.setItem(ringAuthSlotKey('shop'), JSON.stringify(shopSlot));
-        localStorage.setItem(RING_ACTIVE_ACCOUNT, 'shop');
-        ringApplyActiveSession(shopSlot);
-        var st = String(shopSlot.profile && shopSlot.profile.shopType || '');
-        if (persona === 'factory' && st !== 'factory') {
-            return { ok: false, reason: 'persona_mismatch' };
-        }
-        if (persona === 'dealer' && st !== 'dealer') {
-            return { ok: false, reason: 'persona_mismatch' };
-        }
-        return { ok: true, profile: shopSlot.profile, accountType: 'shop' };
+    ringMigrateLegacyAuth();
+    if (persona === 'factory') {
+        var shopResult = await ringVerifyAndRefreshSlot('shop');
+        if (!shopResult.ok) return shopResult;
+        var stF = String(shopResult.profile && shopResult.profile.shopType || '');
+        if (stF !== 'factory') return { ok: false, reason: 'persona_mismatch' };
+        return shopResult;
     }
-    return ringBootAuth();
+    if (persona === 'dealer') {
+        var bizResult = await ringVerifyAndRefreshSlot('business');
+        if (!bizResult.ok) return bizResult;
+        var stD = String(bizResult.profile && bizResult.profile.shopType || '');
+        if (stD !== 'dealer') return { ok: false, reason: 'persona_mismatch' };
+        return bizResult;
+    }
+    return ringVerifyAndRefreshSlot('user');
 }
 
-/** 工場/事業者登録完了後: 一般ユーザーセッションだけ消してログイン画面を表示可能にする */
 function ringClearUserAuthForShopLogin() {
     ringClearAuthSlot('user');
     try {
@@ -367,45 +499,49 @@ function ringClearUserAuthForShopLogin() {
             localStorage.removeItem(DB_CURRENT_USER);
             localStorage.removeItem(DB_LEGACY_PROFILE);
             localStorage.removeItem('ring_auth_token');
-            if (localStorage.getItem(RING_ACTIVE_ACCOUNT) === 'user') {
-                localStorage.removeItem(RING_ACTIVE_ACCOUNT);
-            }
             if (typeof window !== 'undefined') window.__ringSessionVerified = false;
         }
     } catch (e) { /* ignore */ }
 }
 
-function ringSwitchAccount(accountType) {
-    accountType = accountType === 'shop' ? 'shop' : 'user';
-    var slot = ringReadAuthSlot(accountType);
+function ringSwitchAccount(mode) {
+    mode = ringNormalizeMode(mode);
+    var slot = ringReadAuthSlot(mode);
     if (!slot || !slot.token || !slot.profile) {
-        return { ok: false, reason: 'not_registered' };
+        return { ok: false, reason: 'not_registered', mode: mode };
     }
-    localStorage.setItem(RING_ACTIVE_ACCOUNT, accountType);
-    ringApplyActiveSession(slot);
-    return { ok: true, profile: slot.profile };
+    ringSetCurrentMode(mode);
+    ringApplyActiveSession(slot, mode);
+    if (typeof window !== 'undefined') window.__ringSessionVerified = false;
+    return { ok: true, profile: slot.profile, mode: mode };
 }
 
-function ringGetLoginUrlForAccountType(accountType) {
-    if (accountType !== 'shop') return 'login.html?tab=user';
-    var slot = ringReadAuthSlot('shop');
-    var st = slot && slot.profile && slot.profile.shopType;
-    if (st === 'dealer') return 'login.html?tab=business';
-    return 'login.html?tab=factory';
-}
-
-function ringSwitchAccountAndNavigate(accountType) {
-    var r = ringSwitchAccount(accountType);
+function ringSwitchAccountAndNavigate(mode) {
+    mode = ringNormalizeMode(mode);
+    var r = ringSwitchAccount(mode);
     if (r.ok) {
-        location.href = ringGetHomeForProfile(r.profile);
+        location.href = ringGetHomeForMode(mode);
         return;
     }
     if (typeof showToast === 'function') {
         showToast('info', 'この種類のアカウントがありません。ログインまたは新規登録してください。');
     }
     setTimeout(function () {
-        location.href = ringGetLoginUrlForAccountType(accountType);
+        location.href = ringGetLoginUrlForMode(mode);
     }, 600);
+}
+
+function ringSwitchToAdminDashboard() {
+    var userSlot = ringReadAuthSlot('user');
+    if (!userSlot || !userSlot.token || !ringIsAdminProfile(userSlot.profile)) {
+        if (typeof showToast === 'function') {
+            showToast('info', '管理者アカウントがありません。一般ユーザーとしてログインしてください。');
+        }
+        setTimeout(function () { location.href = 'login.html?tab=user'; }, 600);
+        return;
+    }
+    ringSwitchAccount('user');
+    location.href = 'admin_dashboard.html';
 }
 
 async function ringEnsureAuthForOcr() {
@@ -422,12 +558,12 @@ async function ringEnsureAuthForOcr() {
         throw new Error(v && v.error || 'AUTH_REQUIRED');
     }
     if (v.profile) {
-        var accountType = ringGetActiveAccountType();
-        var slot = ringReadAuthSlot(accountType) || { profile: v.profile, token: tok };
+        var activeMode = ringGetActiveMode();
+        var slot = ringReadAuthSlot(activeMode) || { profile: v.profile, token: tok };
         slot.profile = v.profile;
         slot.verifiedAt = new Date().toISOString();
-        localStorage.setItem(ringAuthSlotKey(accountType), JSON.stringify(slot));
-        ringApplyActiveSession(slot);
+        ringWriteAuthSlot(activeMode, slot);
+        ringApplyActiveSession(slot, activeMode);
     }
     if (typeof window !== 'undefined') window.__ringSessionVerified = true;
 }
@@ -444,6 +580,13 @@ function getCurrentProfile() {
 
 function logout() {
     purgeRingDemoLocalData();
+    localStorage.removeItem(RING_TOKEN_USER);
+    localStorage.removeItem(RING_TOKEN_SHOP);
+    localStorage.removeItem(RING_TOKEN_BIZ);
+    localStorage.removeItem(RING_META_USER);
+    localStorage.removeItem(RING_META_SHOP);
+    localStorage.removeItem(RING_META_BIZ);
+    localStorage.removeItem(RING_CURRENT_MODE);
     localStorage.removeItem(RING_PROFILE_USER);
     localStorage.removeItem(RING_PROFILE_SHOP);
     localStorage.removeItem(RING_ACTIVE_ACCOUNT);
@@ -2861,12 +3004,19 @@ function createGlobalUI() {
     }
     const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(appBaseUrl)}`;
 
+    var userSlotForAdmin = ringReadAuthSlot('user');
+    var adminSwitchItem = ringIsAdminProfile(userSlotForAdmin && userSlotForAdmin.profile)
+        ? '<li><a href="#" onclick="ringSwitchToAdminDashboard(); return false;">🛡 管理者ダッシュボード</a></li>'
+        : '';
+
     const accountSwitchHtml = `
         <div class="settings-group">
           <div class="settings-group-title">アカウント切替</div>
           <ul class="settings-list">
             <li><a href="#" onclick="ringSwitchAccountAndNavigate('user'); return false;">👤 一般ユーザー</a></li>
             <li><a href="#" onclick="ringSwitchAccountAndNavigate('shop'); return false;">🏭 工場 / 販売店</a></li>
+            <li><a href="#" onclick="ringSwitchAccountAndNavigate('business'); return false;">🏢 その他事業者</a></li>
+            ${adminSwitchItem}
           </ul>
         </div>`;
 
@@ -2875,14 +3025,7 @@ function createGlobalUI() {
     let panelsHtml = "";
 
     if (isUserMode) {
-        var adminMenuHtml = ringIsAdminProfile(profile)
-            ? `<div class="settings-group">
-          <ul class="settings-list">
-            <li><a href="admin_dashboard.html">🛡 管理者ダッシュボード</a></li>
-          </ul>
-        </div>`
-            : '';
-        menuBodyHtml = `<div class="ring-line-promo-slot ring-line-promo-slot--top" data-ring-line-promo></div>` + accountSwitchHtml + adminMenuHtml + `
+        menuBodyHtml = `<div class="ring-line-promo-slot ring-line-promo-slot--top" data-ring-line-promo></div>` + accountSwitchHtml + `
         <div class="settings-group">
           <div class="settings-group-title">ユーザーメニュー</div>
           <ul class="settings-list">

@@ -237,7 +237,15 @@
   </div>
 
   <script>
-    window.addEventListener('DOMContentLoaded', () => {
+    window.addEventListener('DOMContentLoaded', async () => {
+      if (typeof ringBootAuthForMode === 'function') {
+        var boot = await ringBootAuthForMode('user');
+        if (!boot.ok) {
+          location.replace(boot.redirect || 'login.html?tab=user');
+          return;
+        }
+      }
+
       // 今日の日付
       const today = new Date();
       const days  = ['日','月','火','水','木','金','土'];
@@ -248,8 +256,8 @@
 
       // プロフィール確認・表示
       const profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
-      if (!profile) {
-        location.replace('login.html');
+      if (!profile || (typeof ringIsUserAccountProfile === 'function' && !ringIsUserAccountProfile(profile))) {
+        location.replace('login.html?tab=user');
         return;
       }
 

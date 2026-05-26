@@ -247,7 +247,10 @@
       if (typeof ringBootAuth === 'function') {
         const boot = await ringBootAuth();
         if (boot.ok && boot.profile) {
-          location.replace(typeof ringGetHomeForProfile === 'function' ? ringGetHomeForProfile(boot.profile) : 'user_home.html');
+          var homeUrl = typeof ringGetHomeForMode === 'function'
+            ? ringGetHomeForMode(boot.mode || ringGetActiveMode())
+            : (typeof ringGetHomeForProfile === 'function' ? ringGetHomeForProfile(boot.profile) : 'user_home.html');
+          location.replace(homeUrl);
           return;
         }
       }

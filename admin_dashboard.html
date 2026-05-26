@@ -574,11 +574,18 @@
     };
 
     window.addEventListener('DOMContentLoaded', async function () {
-      if (typeof ringBootAuth === 'function') {
-        var boot = await ringBootAuth();
+      if (typeof ringBootAuthForMode === 'function') {
+        var boot = await ringBootAuthForMode('user');
         if (!boot.ok) {
           var gateEl = document.getElementById('gatePanel');
           if (gateEl) gateEl.style.display = 'block';
+          return;
+        }
+      } else if (typeof ringBootAuth === 'function') {
+        var bootLegacy = await ringBootAuth();
+        if (!bootLegacy.ok) {
+          var gateEl2 = document.getElementById('gatePanel');
+          if (gateEl2) gateEl2.style.display = 'block';
           return;
         }
       }

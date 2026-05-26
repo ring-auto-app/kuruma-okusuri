@@ -109,7 +109,15 @@
   </div>
 
   <script>
-    window.addEventListener('DOMContentLoaded', () => {
+    window.addEventListener('DOMContentLoaded', async () => {
+      if (typeof ringBootAuthForMode === 'function') {
+        var boot = await ringBootAuthForMode('shop');
+        if (!boot.ok) {
+          location.replace(boot.redirect || 'login.html?tab=shop');
+          return;
+        }
+      }
+
       // 日付表示
       const now = new Date();
       document.getElementById('displayDate').innerText = `${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()}`;
@@ -117,12 +125,11 @@
       // プロフィール読み込み
       const profile = (typeof getCurrentProfile === "function") ? getCurrentProfile() : JSON.parse(localStorage.getItem('nappy_profile_v1') || 'null');
       
-      if (profile) {
+      if (profile && profile.shopType === 'factory') {
         document.getElementById('shopName').innerText = profile.shopName || "登録工場";
         document.getElementById('staffName').innerText = `担当：${profile.staffName || "未設定"}`;
       } else {
-        // 万が一プロフィールがない場合はログインへ戻す
-        location.href = 'login.html';
+        location.replace('login.html?tab=shop');
         return;
       }
       const pend = typeof getPendingRetryCount === 'function' ? getPendingRetryCount() : 0;
