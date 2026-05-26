@@ -261,6 +261,17 @@ function ringGetHomeForProfile(profile) {
     return 'user_home.html';
 }
 
+function ringIsAdminProfile(profile) {
+    return String(profile && profile.role || '').trim().toLowerCase() === 'admin';
+}
+
+function ringIsUserAccountProfile(profile) {
+    if (!profile) return false;
+    if (ringIsAdminProfile(profile)) return true;
+    if (profile.shopType === 'user') return true;
+    return String(profile.role || '').trim().toLowerCase() === 'user';
+}
+
 async function ringVerifySession(token) {
     if (!token) return { success: false, error: 'AUTH_REQUIRED' };
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
@@ -2007,8 +2018,17 @@ function handleOcrVinResultForForm(res, applyFn, ocrFieldDescriptors) {
         }
         showRingSaveConfirm({
             title: '読み取り結果の確認',
-            lead: 'OCRで読み取った車体番号です。お車の表示と一致するかご確認のうえ反映してください。',
-            bodyHtml: ringConfirmRow('車体番号', res.vin),
+            lead: 'OCRで読み取った内容です。お車の表示と一致するかご確認のうえ反映してください。',
+            bodyHtml: (function () {
+                var html = ringConfirmRow('車体番号', res.vin);
+                if (res.mileage != null && String(res.mileage).trim() !== '') {
+                    html += ringConfirmRow('走行距離(km)', res.mileage);
+                }
+                if (res.shaken != null && String(res.shaken).trim() !== '') {
+                    html += ringConfirmRow('車検満了日', res.shaken);
+                }
+                return html;
+            })(),
             confirmLabel: '入力欄に反映する',
             onConfirm: function () {
                 resetOcrFailureCount();
@@ -2855,7 +2875,14 @@ function createGlobalUI() {
     let panelsHtml = "";
 
     if (isUserMode) {
-        menuBodyHtml = `<div class="ring-line-promo-slot ring-line-promo-slot--top" data-ring-line-promo></div>` + accountSwitchHtml + `
+        var adminMenuHtml = ringIsAdminProfile(profile)
+            ? `<div class="settings-group">
+          <ul class="settings-list">
+            <li><a href="admin_dashboard.html">🛡 管理者ダッシュボード</a></li>
+          </ul>
+        </div>`
+            : '';
+        menuBodyHtml = `<div class="ring-line-promo-slot ring-line-promo-slot--top" data-ring-line-promo></div>` + accountSwitchHtml + adminMenuHtml + `
         <div class="settings-group">
           <div class="settings-group-title">ユーザーメニュー</div>
           <ul class="settings-list">

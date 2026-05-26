@@ -273,7 +273,7 @@
       if (typeof ringAdsInit === 'function') ringAdsInit('user_home');
 
       var adl = document.getElementById('ringAdminDashLink');
-      if (adl && profile.role === 'admin') {
+      if (adl && (typeof ringIsAdminProfile === 'function' ? ringIsAdminProfile(profile) : profile.role === 'admin')) {
         adl.style.display = 'inline-block';
       }
       if (typeof ringTryShowPwaInstallBanner === 'function') ringTryShowPwaInstallBanner();

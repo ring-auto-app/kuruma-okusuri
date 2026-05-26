@@ -282,7 +282,9 @@
 
     window.addEventListener('DOMContentLoaded', function () {
       var profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
-      if (!profile || (profile.shopType !== 'user' && profile.role !== 'user')) {
+      if (!profile || !(typeof ringIsUserAccountProfile === 'function'
+          ? ringIsUserAccountProfile(profile)
+          : (profile.shopType === 'user' || profile.role === 'user'))) {
         location.replace('login.html');
         return;
       }

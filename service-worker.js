@@ -1,4 +1,4 @@
-const CACHE_NAME = "car-nappy-v10";
+const CACHE_NAME = "car-nappy-v11";
 const OFFLINE_URL = "./offline.html";
 
 const PRECACHE_URLS = [

@@ -97,22 +97,10 @@
       <a href="factory_edit_list.html" class="edit-link">✏️ 過去7日間の入力履歴を編集する</a>
     </div>
 
-    <div class="scan-btn" onclick="document.getElementById('docInput').click()">
-      📷 車検証・請求書をスキャン（最大5枚）
+    <div class="scan-btn" onclick="document.getElementById('vinOcrInput').click()">
+      📷 車体番号を読み取る
     </div>
-    <input type="file" id="docInput" accept="image/*" multiple hidden>
-
-    <div class="ring-ocr-thumb-strip" id="ocrThumbStrip"></div>
-    <button type="button" class="ring-ocr-load-btn" id="ocrLoadBtn" disabled>読み込む</button>
-
-    <div class="doc-preview-area" id="docPreviewArea" style="display:none;">
-      <div class="doc-preview-label">文字抽出用の一時画像</div>
-      <img id="docPreviewImg" src="">
-      <span class="doc-preview-more" id="docPreviewMore"></span>
-    </div>
-    <div class="discard-notice" id="discardNotice" style="display:none;">
-      ※情報漏洩防止のため、この書類画像は保存されず破棄されます。
-    </div>
+    <input type="file" id="vinOcrInput" accept="image/*" capture="environment" hidden>
     
     <div class="basic-info-card">
       <div class="field">
@@ -245,45 +233,47 @@
       { key: 'shaken', label: '車検満了日', getCurrent: () => document.getElementById('inShaken').value },
     ];
 
-    // OCR: 選択 → サムネイル → 読み込む
-    if (typeof ringInitOcrDocPicker === 'function') {
-      ringInitOcrDocPicker({
-        docInputId: 'docInput',
-        loadBtnId: 'ocrLoadBtn',
-        stripId: 'ocrThumbStrip',
-        discardNotice: 'discardNotice',
-        previewArea: 'docPreviewArea',
-        previewImg: 'docPreviewImg',
-        moreBadge: 'docPreviewMore',
-        scanOpts: {
-          mode: 'dealer',
-          saveBtnId: 'saveBtn',
-          previewArea: document.getElementById('docPreviewArea'),
-          previewImg: document.getElementById('docPreviewImg'),
-          discardNotice: document.getElementById('discardNotice'),
-          moreBadge: document.getElementById('docPreviewMore'),
-          clearMemoryOpts: {
-            previewImg: document.getElementById('docPreviewImg'),
-            previewArea: document.getElementById('docPreviewArea'),
-            moreBadge: document.getElementById('docPreviewMore'),
-            discardNotice: document.getElementById('discardNotice')
-          },
-          onApply: function (r) {
-            if (r.vin && !document.getElementById('inVin').readOnly) {
-              document.getElementById('inVin').value = String(r.vin).toUpperCase();
-            }
-            if (r.mileage) document.getElementById('inMileage').value = r.mileage;
-            if (r.shaken) document.getElementById('inShaken').value = r.shaken;
-            if (r.workTitle) document.getElementById('inTitle').value = r.workTitle;
-            var memoText = r.memo || r.parts || '';
-            if (memoText) {
-              var memoEl = document.getElementById('inMemo');
-              memoEl.value = memoEl.value ? (memoEl.value + '\n' + memoText) : memoText;
-            }
-          }
+    // OCR: 1枚撮影 → VIN（＋走行距離・車検満了日があれば反映）
+    document.getElementById('vinOcrInput').addEventListener('change', async function (e) {
+      var file = e.target.files[0];
+      if (!file) return;
+      var previewUrl = '';
+      try {
+        previewUrl = await new Promise(function (resolve, reject) {
+          var r = new FileReader();
+          r.onload = function () { resolve(String(r.result || '')); };
+          r.onerror = reject;
+          r.readAsDataURL(file);
+        });
+      } catch (err) {
+        console.error(err);
+        return;
+      }
+      if (typeof showOcrAnalyzingOverlay === 'function') {
+        showOcrAnalyzingOverlay({ previewDataUrl: previewUrl, title: '車体番号を読み取っています' });
+      } else if (typeof showLoading === 'function') {
+        showLoading('分析中', 'AIが車体番号を読み取っています…');
+      }
+      var res = null;
+      try {
+        res = await analyzeDocument([file]);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        if (typeof hideOcrAnalyzingOverlay === 'function') hideOcrAnalyzingOverlay();
+        else if (typeof hideLoading === 'function') hideLoading();
+        e.target.value = '';
+      }
+      if (typeof wasOcrAnalyzingCancelled === 'function' && wasOcrAnalyzingCancelled()) return;
+
+      handleOcrVinResultForForm(res, function (r) {
+        if (r.vin && !document.getElementById('inVin').readOnly) {
+          document.getElementById('inVin').value = String(r.vin).toUpperCase();
         }
-      });
-    }
+        if (r.mileage) document.getElementById('inMileage').value = r.mileage;
+        if (r.shaken) document.getElementById('inShaken').value = r.shaken;
+      }, RING_OCR_FIELDS_DEALER);
+    });
 
     // アコーディオンの開閉制御
     document.querySelectorAll('.parent-btn').forEach(btn => {

@@ -595,7 +595,9 @@
         var data = await res.json();
         hideLoading();
         if (data.success && data.profile && data.authToken) {
-          if (accountType === 'user' && !(data.profile.role === 'user' || data.profile.shopType === 'user' || data.profile.role === 'admin')) {
+          if (accountType === 'user' && !(typeof ringIsUserAccountProfile === 'function'
+              ? ringIsUserAccountProfile(data.profile)
+              : (data.profile.role === 'user' || data.profile.shopType === 'user' || data.profile.role === 'admin'))) {
             showToast('error', '一般ユーザー用のメールアドレスではありません。');
             return;
           }
