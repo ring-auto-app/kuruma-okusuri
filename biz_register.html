@@ -5,11 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#4b5563" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="車のお薬手帳" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="mobile-web-app-capable" content="yes" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
   <link rel="manifest" href="manifest.json">
-  <title>業者アカウント登録 | 車のお薬手帳</title>
+    <title>車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css">
   <script src="app.js"></script>
@@ -167,6 +168,12 @@
       </div>
       
       <div class="field">
+        <span class="label">ログイン用メールアドレス <span class="required">必須</span></span>
+        <input type="email" id="inLoginEmail" placeholder="例：shop@example.com" autocomplete="username"
+               autocapitalize="none" inputmode="email">
+      </div>
+
+      <div class="field">
         <span class="label">代表者名・ご担当者名 <span class="required">必須</span></span>
         <input type="text" id="inRepresentativeName" placeholder="例：山田 太郎（日常点検などの入力者表示に使います）" autocomplete="name">
       </div>
@@ -182,7 +189,7 @@
       <button class="save-btn" onclick="registerShop()">この内容で登録する</button>
     </div>
     
-    <div class="login-link">すでに登録済みの方は <a href="login.html">こちらからログイン</a></div>
+    <div class="login-link">すでに登録済みの方は <a href="login.html?tab=business">こちらからログイン</a></div>
   </div>
 
   <script>
@@ -191,6 +198,7 @@
      */
     async function registerShop() {
       const shopName = document.getElementById('inShopName').value.trim();
+      const loginEmail = document.getElementById('inLoginEmail').value.trim();
       const representativeName = document.getElementById('inRepresentativeName').value.trim();
       const shopType = document.getElementById('inShopType').value;
       const password = document.getElementById('inPassword').value.trim();
@@ -200,6 +208,10 @@
 
       if (!shopName || !password) {
         if (typeof showToast === 'function') showToast('error', '会社名とパスワードは必須です');
+        return;
+      }
+      if (!loginEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(loginEmail)) {
+        if (typeof showToast === 'function') showToast('error', 'ログイン用メールアドレスを正しく入力してください');
         return;
       }
       if (!representativeName) {
@@ -246,6 +258,7 @@
             action:        'register_shop',
             shopId:        shopId,
             shopName:      shopName,
+            loginEmail:    loginEmail,
             representativeName: representativeName,
             shopType:      shopType,
             factoryType:   factoryType,
@@ -259,19 +272,8 @@
           // GAS が発行した正式な shopId と masterLoginId を使う
           const finalShopId    = result.shopId        || shopId;
           const finalMasterId  = result.masterLoginId || (finalShopId + '-0000');
+          const savedEmail = loginEmail;
 
-          const profile = {
-            shopId:      finalShopId,
-            shopName:    shopName,
-            representativeName: representativeName,
-            shopType:    shopType,
-            factoryType: factoryType,
-            staffId:     finalMasterId,
-            staffName:   'マスター',
-            displayName: 'マスター',
-            role:        'master'
-          };
-          login(profile);
           hideLoading();
 
           document.body.innerHTML = `
@@ -279,19 +281,16 @@
               <div style="background:#fff;border:3px solid #16a34a;border-radius:20px;padding:32px 24px;max-width:380px;width:100%;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,0.1);">
                 <div style="font-size:40px;margin-bottom:12px;">✅</div>
                 <div style="font-size:20px;font-weight:900;color:#15803d;margin-bottom:20px;">登録完了しました！</div>
-                <div style="background:#f0fdf4;border:2px solid #86efac;border-radius:12px;padding:16px;margin-bottom:12px;">
-                  <div style="font-size:12px;font-weight:800;color:#166534;margin-bottom:8px;">⚠ 必ずメモしてください</div>
-                  <div style="font-size:13px;font-weight:800;color:#374151;margin-bottom:4px;">マスターログインID</div>
-                  <div style="font-size:22px;font-weight:900;color:#15803d;letter-spacing:0.08em;word-break:break-all;">${finalMasterId}</div>
+                <div style="background:#eff6ff;border:2px solid #bfdbfe;border-radius:12px;padding:16px;margin-bottom:12px;">
+                  <div style="font-size:12px;font-weight:800;color:#1e40af;margin-bottom:4px;">ログイン用メール</div>
+                  <div style="font-size:16px;font-weight:900;color:#1d4ed8;word-break:break-all;">${savedEmail}</div>
                 </div>
-                <div style="background:#eff6ff;border:2px solid #bfdbfe;border-radius:12px;padding:12px;margin-bottom:20px;">
-                  <div style="font-size:12px;font-weight:800;color:#1e40af;margin-bottom:4px;">パスワード</div>
-                  <div style="font-size:15px;font-weight:900;color:#1d4ed8;">登録時に設定したパスワード</div>
+                <div style="background:#f0fdf4;border:2px solid #86efac;border-radius:12px;padding:12px;margin-bottom:20px;font-size:13px;font-weight:700;color:#166534;">
+                  上記メールと登録時のパスワードでログインできます。
                 </div>
-                <div style="font-size:12px;color:#6b7280;font-weight:700;margin-bottom:24px;">このIDを紛失するとログインできなくなります。<br>スクリーンショットを撮っておいてください。</div>
-                <button onclick="location.replace('${shopType === 'factory' ? 'factory_home.html' : 'dealer_home.html'}')"
+                <button onclick="location.replace('login.html?tab=business')"
                   style="width:100%;padding:16px;background:#16a34a;color:#fff;border:none;border-radius:12px;font-size:16px;font-weight:900;cursor:pointer;">
-                  ホームへ進む →
+                  ログイン画面へ →
                 </button>
               </div>
             </div>`;

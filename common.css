@@ -743,6 +743,80 @@ textarea { line-height: 24px; min-height: 88px; }
   border-radius: 8px;
 }
 
+.ring-ocr-thumb-strip {
+  display: none;
+  flex-wrap: wrap;
+  gap: 10px;
+  width: 100%;
+  max-width: 340px;
+  margin: 12px auto 0;
+  justify-content: center;
+}
+.ring-ocr-thumb {
+  position: relative;
+  width: 72px;
+  flex-shrink: 0;
+}
+.ring-ocr-thumb img {
+  width: 72px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 2px solid var(--line, #e0d8c8);
+  display: block;
+  background: #fff;
+}
+.ring-ocr-thumb__label {
+  display: block;
+  font-size: 9px;
+  font-weight: 800;
+  color: var(--muted, #7a7167);
+  margin-top: 4px;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ring-ocr-thumb__remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: none;
+  background: #ef4444;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+.ring-ocr-load-btn {
+  display: block;
+  width: 100%;
+  max-width: 340px;
+  margin: 12px auto 0;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: none;
+  background: var(--accent, #2563eb);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 900;
+  font-family: inherit;
+  cursor: pointer;
+  min-height: 48px;
+}
+.ring-ocr-load-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.ring-ocr-load-btn:not(:disabled):active {
+  transform: scale(0.98);
+}
+
 /* =========================================
    保存前確認（整備入力・車両登録共通）
 ========================================= */
@@ -889,127 +963,6 @@ textarea { line-height: 24px; min-height: 88px; }
   border-top: 1px solid var(--line);
 }
 
-/* =========================================
-   ユーザー向け SSO（LINE / Google）付箋ボタン
-   user_login.html などで使用
-========================================= */
-.ring-sso-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  margin-bottom: 24px;
-}
-
-.ring-sso-fusen {
-  --ring-fusen-fold: var(--paper-bg, var(--page-bg, #f7f3ea));
-  position: relative;
-  width: 100%;
-  box-sizing: border-box;
-  border-radius: 14px 14px 4px 14px;
-  padding: 12px;
-  box-shadow: 6px 10px 20px rgba(50, 40, 28, 0.14);
-  border: 1px solid rgba(0, 0, 0, 0.06);
-}
-
-.ring-sso-fusen::after {
-  content: "";
-  position: absolute;
-  right: -1px;
-  bottom: -1px;
-  width: 0;
-  height: 0;
-  border-style: solid;
-  border-width: 0 0 24px 24px;
-  border-color: transparent transparent var(--ring-fusen-fold) transparent;
-  filter: drop-shadow(-3px -3px 4px rgba(50, 40, 28, 0.1));
-  pointer-events: none;
-}
-
-.ring-sso-fusen--line {
-  background: linear-gradient(155deg, #1fe078 0%, #06c755 48%, #04944a 100%);
-}
-
-.ring-sso-line-btn {
-  width: 100%;
-  margin: 0;
-  padding: 14px 14px;
-  min-height: var(--tap-min);
-  box-sizing: border-box;
-  border: none;
-  border-radius: 10px;
-  background: transparent;
-  color: #fff;
-  font-size: 16px;
-  font-weight: 900;
-  font-family: inherit;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  -webkit-tap-highlight-color: transparent;
-  transition: transform 0.1s, opacity 0.15s;
-}
-
-.ring-sso-line-btn:active {
-  transform: scale(0.98);
-  opacity: 0.94;
-}
-
-.ring-sso-fusen--google {
-  background: linear-gradient(155deg, #93c5fd 0%, #3b82f6 52%, #1d4ed8 100%);
-}
-
-.google-signin-slot {
-  display: none;
-  justify-content: center;
-  align-items: center;
-  flex-wrap: wrap;
-  width: 100%;
-  min-height: var(--tap-min);
-  margin: 0;
-}
-
-.google-signin-slot.ring-google-visible {
-  display: flex;
-}
-
-.ring-sso-fusen--google .google-signin-slot.ring-google-visible > div {
-  width: 100% !important;
-}
-
-.ring-sso-fusen--google .google-signin-slot iframe {
-  width: 100% !important;
-  max-width: 100%;
-}
-
-/* LINE 連携（マイページ・マイカー） */
-.ring-line-link-chip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-height: var(--tap-min);
-  padding: 8px 14px;
-  border: none;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 900;
-  font-family: inherit;
-  line-height: 1.2;
-  color: #fff;
-  background: linear-gradient(145deg, #22c55e 0%, #15803d 100%);
-  box-shadow: 0 2px 8px rgba(21, 128, 61, 0.35);
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-  max-width: 100%;
-  text-align: center;
-}
-.ring-line-link-chip:active {
-  transform: scale(0.98);
-  opacity: 0.95;
-}
-
 /* PWA インストール案内 */
 .ring-pwa-banner {
   display: none;
@@ -1051,4 +1004,76 @@ textarea { line-height: 24px; min-height: 88px; }
   background: rgba(255, 255, 255, 0.9);
   color: #047857;
   border: 2px solid #6ee7b7;
+}
+
+.ring-line-link-slot:empty {
+  display: none;
+}
+.ring-line-promo-slot:empty {
+  display: none;
+}
+.ring-line-official-btn {
+  display: inline-block;
+  line-height: 0;
+}
+.ring-line-official-btn img {
+  display: block;
+  height: 36px;
+  width: auto;
+}
+.ring-line-promo {
+  margin: 16px 0 8px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px dashed #c8e6c9;
+  background: rgba(240, 253, 244, 0.85);
+  text-align: center;
+}
+.ring-line-promo-copy {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--muted, #7a7167);
+  line-height: 1.5;
+}
+.ring-line-promo-link {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 900;
+  color: #06c755;
+  text-decoration: none;
+}
+.ring-line-promo-link:active {
+  opacity: 0.85;
+}
+.ring-line-promo-dismiss {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted, #b0a696);
+  cursor: pointer;
+  font-family: inherit;
+}
+.ring-line-promo-dismiss:active {
+  opacity: 0.75;
+}
+#nappy-settings-panel .ring-line-promo {
+  margin-top: 8px;
+}
+#nappy-settings-panel .ring-line-promo-slot--top {
+  margin: 0 0 4px;
+}
+#nappy-settings-panel .ring-line-promo-slot--top .ring-line-promo {
+  margin-top: 0;
+}
+.ring-line-reg-complete-slot .ring-line-promo {
+  margin: 16px 0;
+  padding: 12px;
+  border: none;
+  background: transparent;
 }

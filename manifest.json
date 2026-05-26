@@ -1,6 +1,6 @@
 {
   "name": "車のお薬手帳",
-  "short_name": "お薬手帳",
+  "short_name": "車のお薬手帳",
   "id": "car-nappy-app",
   "start_url": "./index.html",
   "scope": "./",

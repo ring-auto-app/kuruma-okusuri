@@ -5,26 +5,24 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#4b5563" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="車のお薬手帳" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="mobile-web-app-capable" content="yes" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
   <link rel="manifest" href="manifest.json">
-  <title>ログイン | 車のお薬手帳</title>
-  
+    <title>車のお薬手帳</title>
   <link rel="stylesheet" href="common.css">
   <script src="app.js"></script>
   <script src="theme.js"></script>
-  
   <style>
     :root {
-      --paper-bg: #f7f3ea; 
-      --paper-line: rgba(80, 65, 45, 0.10); 
+      --paper-bg: #f7f3ea;
+      --paper-line: rgba(80, 65, 45, 0.10);
       --text-main: #2f2a24;
       --text-sub: #7a7167;
-      --neutral-action: #4b5563; 
+      --neutral-action: #4b5563;
       --neutral-light: rgba(75, 85, 99, 0.15);
     }
-
     body {
       margin: 0;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -32,20 +30,81 @@
         linear-gradient(to bottom, var(--paper-line) 1px, transparent 1px) 0 0 / 100% 34px,
         var(--paper-bg);
       color: var(--text-main);
-      display: flex;
-      justify-content: center;
       min-height: 100vh;
       box-sizing: border-box;
     }
-
+    body.ring-login-themed {
+      background:
+        linear-gradient(to bottom, var(--page-line) 1px, transparent 1px) 0 0 / 100% 34px,
+        var(--page-bg);
+      --login-action: var(--accent);
+      --login-border: var(--highlighter);
+      --login-tab-bg: var(--highlighter);
+    }
+    body.ring-login--user { --login-radius: 16px; --login-card-radius: 18px; }
+    body.ring-login--factory { --login-radius: 10px; --login-card-radius: 12px; }
+    body.ring-login--dealer { --login-radius: 8px; --login-card-radius: 10px; }
+    body.ring-login-themed .back-link { color: var(--muted); }
+    body.ring-login-themed .tab-bar { background: var(--login-tab-bg); border-radius: var(--login-radius); }
+    body.ring-login-themed .tab-btn.active { color: var(--login-action); }
+    body.ring-login-themed input[type="email"],
+    body.ring-login-themed input[type="password"],
+    body.ring-login-themed input[type="text"] {
+      border-color: var(--login-border);
+      border-radius: var(--login-radius);
+    }
+    body.ring-login-themed input:focus { border-color: var(--login-action); }
+    body.ring-login-themed .btn-submit {
+      background: var(--login-action);
+      border-radius: var(--login-radius);
+    }
+    body.ring-login-themed .link-row a,
+    body.ring-login-themed .register-hint a { color: var(--login-action); }
+    body.ring-login-themed .register-hint,
+    body.ring-login-themed .consent-panel {
+      border-color: var(--login-border);
+      border-radius: var(--login-card-radius);
+    }
+    body.ring-login--user .register-hint,
+    body.ring-login--user .consent-panel { background: var(--highlighter); }
+    body.ring-login--factory .register-hint,
+    body.ring-login--factory .consent-panel { background: rgba(255,255,255,0.82); }
+    body.ring-login--dealer .register-hint,
+    body.ring-login--dealer .consent-panel { background: rgba(255,255,255,0.9); }
+    .login-persona-badge {
+      display: none;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 900;
+      letter-spacing: 0.06em;
+      padding: 10px 14px;
+      margin-bottom: 16px;
+      border-radius: 999px;
+      background: var(--highlighter, rgba(75,85,99,0.12));
+      color: var(--login-action, var(--neutral-action));
+    }
+    body.ring-login-themed .login-persona-badge { display: block; }
+    .login-persona-note {
+      display: none;
+      margin: 10px 0 0;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-sub);
+      line-height: 1.5;
+    }
+    .login-persona-note.is-visible { display: block; }
+    .page-title--welcome {
+      font-size: 22px;
+      line-height: 1.35;
+      letter-spacing: 0.02em;
+    }
     .app-page {
       width: 100%;
       max-width: 420px;
-      display: flex;
-      flex-direction: column;
+      margin: 0 auto;
       padding: 34px 16px 68px;
+      box-sizing: border-box;
     }
-
     .back-link {
       display: block;
       color: var(--text-sub);
@@ -55,50 +114,23 @@
       line-height: 34px;
       cursor: pointer;
     }
-
-    .page-header {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      margin-bottom: 34px;
-    }
-
+    .page-header { text-align: center; margin-bottom: 24px; }
     .page-title {
-      display: inline-block;
-      position: relative;
       margin: 0;
-      font-size: 28px;
+      font-size: 26px;
       font-weight: 900;
-      letter-spacing: 0.05em;
-      z-index: 1;
-      height: 34px;
-      line-height: 34px;
+      letter-spacing: 0.04em;
     }
-
-    .page-title::after {
-      content: "";
-      position: absolute;
-      left: -8px; right: -8px; bottom: 2px;
-      height: 12px;
-      background: rgba(0, 0, 0, 0.1);
-      border-radius: 8px;
-      z-index: -1;
-      transform: rotate(-1deg);
-    }
-
-    /* タブ */
     .tab-bar {
       display: flex;
       border-radius: 12px;
       background: var(--neutral-light);
       padding: 4px;
-      margin-bottom: 28px;
+      margin-bottom: 20px;
     }
-
     .tab-btn {
       flex: 1;
       min-height: var(--tap-min);
-      padding: 8px 4px;
       border: none;
       background: transparent;
       border-radius: 9px;
@@ -106,289 +138,545 @@
       font-weight: 900;
       color: var(--text-sub);
       cursor: pointer;
-      transition: all 0.18s;
       -webkit-tap-highlight-color: transparent;
     }
-
     .tab-btn.active {
-      background: white;
+      background: #fff;
       color: var(--text-main);
       box-shadow: 0 2px 8px rgba(0,0,0,0.08);
     }
-
+    .account-tab-bar { margin-bottom: 16px; }
     .tab-panel { display: none; }
     .tab-panel.active { display: block; }
-
-    .divider {
-      display: flex;
-      align-items: center;
-      margin: 20px 0;
-      color: var(--text-sub);
-      font-size: 13px;
-      font-weight: 800;
-    }
-    .divider::before, .divider::after {
-      content: "";
-      flex: 1;
-      height: 1px;
-      background: var(--neutral-light);
-      margin: 0 10px;
-    }
-
-    .field { margin-bottom: 24px; text-align: left; }
-
+    .field { margin-bottom: 20px; text-align: left; }
     .label {
       display: block;
-      font-size: 14px;
+      font-size: 15px;
       font-weight: 900;
       margin-bottom: 8px;
-      color: var(--text-main);
     }
-
-    .password-field-container { position: relative; width: 100%; }
-
-    input {
+    .optional { font-size: 12px; font-weight: 700; color: var(--text-sub); }
+    .pw-wrap, .password-field-container { position: relative; }
+    input[type="email"],
+    input[type="password"],
+    input[type="text"] {
       width: 100%;
-      padding: 16px;
-      background: rgba(255, 255, 255, 0.7);
+      min-height: var(--tap-min);
+      padding: 14px 16px;
+      font-size: 16px;
+      font-weight: 700;
       border: 2px solid var(--neutral-light);
       border-radius: 12px;
-      font-size: 18px;
-      font-weight: 700;
       box-sizing: border-box;
-      text-align: center;
-      letter-spacing: 1px;
+      background: rgba(255,255,255,0.85);
       color: var(--text-main);
-      transition: all 0.2s ease;
       outline: none;
+      -webkit-appearance: none;
     }
-
-    input:focus { background: #ffffff; border-color: var(--neutral-action); }
-
-    .password-toggle-btn {
+    input:focus { border-color: var(--neutral-action); background: #fff; }
+    .pw-wrap input, .password-field-container input { padding-right: 52px; }
+    .pw-toggle-btn, .password-toggle-btn {
       position: absolute;
-      right: 6px;
+      right: 4px;
       top: 50%;
       transform: translateY(-50%);
       width: var(--tap-min);
       height: var(--tap-min);
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      background: none;
       border: none;
-      cursor: pointer;
+      background: none;
       color: var(--text-sub);
-      border-radius: 50%;
+      cursor: pointer;
       -webkit-tap-highlight-color: transparent;
     }
-    .password-toggle-btn:active { background: rgba(0,0,0,0.06); }
-
     .btn-submit {
       width: 100%;
-      padding: 18px;
-      background: var(--neutral-action);
-      color: white;
+      min-height: var(--tap-min);
+      padding: 16px;
+      margin-top: 8px;
       border: none;
       border-radius: 14px;
+      background: var(--neutral-action);
+      color: #fff;
       font-size: 17px;
       font-weight: 900;
       cursor: pointer;
-      margin-top: 10px;
-      transition: transform 0.1s, opacity 0.2s;
     }
     .btn-submit:active { transform: scale(0.98); }
-
-    /* デモエリア */
-    .demo-area {
-      margin-top: 34px;
+    .btn-submit:disabled { opacity: 0.6; }
+    .link-row {
+      margin: 12px 0 20px;
+      text-align: right;
+      font-size: 14px;
+      font-weight: 800;
+    }
+    .link-row a { color: var(--neutral-action); text-decoration: none; }
+    .register-hint {
+      margin-top: 24px;
       padding: 16px;
-      border: 2px dashed var(--neutral-light);
-      border-radius: 16px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.6);
+      border: 2px solid var(--neutral-light);
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1.6;
       text-align: center;
     }
-    .demo-title { font-size: 12px; font-weight: 900; color: var(--text-sub); margin-bottom: 12px; display: block; }
-    .demo-links { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; }
-    .demo-links a { color: var(--text-main); font-size: 14px; font-weight: 900; text-decoration: underline; cursor: pointer; }
-
-    /* 新規登録タブ：案内カード */
-    .register-card {
+    .register-hint a { color: var(--neutral-action); font-weight: 900; cursor: pointer; }
+    .err-msg { display: none; color: #dc2626; font-size: 13px; font-weight: 800; margin-top: 6px; }
+    .strength-bar { height: 4px; background: #e5e7eb; border-radius: 2px; margin-top: 8px; overflow: hidden; }
+    .strength-bar .fill { height: 100%; width: 0; transition: width 0.2s; }
+    .strength-label { font-size: 12px; font-weight: 800; margin-top: 4px; color: var(--text-sub); }
+    .result-card {
+      display: none;
+      padding: 20px;
+      border-radius: 16px;
+      border: 2px solid #86efac;
+      background: #f0fdf4;
+      text-align: center;
+      margin-bottom: 16px;
+    }
+    .result-card strong { display: block; font-size: 18px; margin: 12px 0; word-break: break-all; }
+    .consent-panel {
+      padding: 16px;
+      border-radius: 12px;
       background: rgba(255,255,255,0.7);
       border: 2px solid var(--neutral-light);
-      border-radius: 16px;
-      padding: 24px 20px;
-      text-align: center;
-      margin-bottom: 20px;
+      margin-bottom: 16px;
     }
-
-    .register-card .icon { font-size: 40px; display: block; margin-bottom: 12px; }
-    .register-card h3 { font-size: 18px; font-weight: 900; margin: 0 0 10px; }
-    .register-card p { font-size: 13px; font-weight: 700; color: var(--text-sub); line-height: 1.7; margin: 0 0 20px; }
-
-    .btn-register {
-      width: 100%;
-      padding: 17px;
-      background: var(--neutral-action);
-      color: white;
-      border: none;
-      border-radius: 14px;
-      font-size: 16px;
-      font-weight: 900;
-      cursor: pointer;
-      transition: transform 0.1s;
-    }
-    .btn-register:active { transform: scale(0.98); }
+    .consent-check { display: flex; gap: 10px; align-items: flex-start; margin: 10px 0; font-size: 14px; font-weight: 700; }
+    .consent-err { display: none; color: #dc2626; font-size: 13px; font-weight: 800; margin-top: 8px; }
   </style>
 </head>
 <body>
-
   <div class="app-page">
     <a onclick="location.href='index.html'" class="back-link">◁ トップへ戻る</a>
-
     <header class="page-header">
-      <h1 class="page-title">事業者・工場ログイン</h1>
+      <h1 class="page-title" id="loginWelcomeTitle">ログイン</h1>
     </header>
 
-    <!-- タブ -->
     <div class="tab-bar">
-      <button class="tab-btn active" id="tabLogin" onclick="switchTab('login')">ログイン</button>
-      <button class="tab-btn" id="tabRegister" onclick="switchTab('register')">新規登録</button>
+      <button type="button" class="tab-btn active" id="tabLogin" onclick="switchMainTab('login')">ログイン</button>
+      <button type="button" class="tab-btn" id="tabRegister" onclick="switchMainTab('register')">新規登録</button>
     </div>
 
-    <!-- ===== ログインタブ ===== -->
     <div class="tab-panel active" id="panelLogin">
-
-      <div class="field">
-        <span class="label">ログインID</span>
-        <input type="text" id="inLoginId" placeholder="IDを入力" autocomplete="off">
-      </div>
-      
-      <div class="field">
-        <span class="label">パスワード</span>
-        <div class="password-field-container">
-          <input type="password" id="inPassword" placeholder="****">
-          <button type="button" class="password-toggle-btn" id="togglePasswordBtn" onclick="togglePasswordVisibility()">
-            <svg id="eyeIcon" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-              <circle cx="12" cy="12" r="3"></circle>
-            </svg>
-          </button>
-        </div>
+      <div class="login-persona-badge" id="loginPersonaBadge" hidden></div>
+      <div class="tab-bar account-tab-bar" id="accountTabBar">
+        <button type="button" class="tab-btn active" id="tabUser" onclick="switchAccountTab('user')">一般ユーザー</button>
+        <button type="button" class="tab-btn" id="tabShop" onclick="switchAccountTab('shop')">工場 / 販売店</button>
       </div>
 
-      <button class="btn-submit" onclick="doLogin()">ログインする</button>
-
-      <div class="demo-area">
-        <span class="demo-title">【開発用デモ】</span>
-        <div class="demo-links">
-          <a onclick="doDemoLogin('factory')">工場モード</a>
-          <a onclick="doDemoLogin('dealer')">事業者モード</a>
-          <a onclick="doDemoLogin('user')">ユーザーモード</a>
+      <form id="loginForm" onsubmit="doEmailLogin(event)">
+        <div class="field">
+          <label class="label" for="loginEmail">メールアドレス</label>
+          <input type="email" id="loginEmail" name="username" autocomplete="username"
+                 inputmode="email" autocapitalize="none" autocorrect="off" placeholder="you@example.com" required>
+          <div class="err-msg" id="errLoginEmail">⚠ メールアドレスを入力してください</div>
         </div>
+        <div class="field">
+          <label class="label" for="loginPassword">パスワード</label>
+          <div class="password-field-container">
+            <input type="password" id="loginPassword" name="password" autocomplete="current-password"
+                   placeholder="パスワード" required>
+            <button type="button" class="password-toggle-btn" onclick="togglePw('loginPassword', this)" aria-label="パスワード表示">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            </button>
+          </div>
+          <div class="err-msg" id="errLoginPw">⚠ パスワードを入力してください</div>
+        </div>
+        <p class="link-row" id="forgotPwRow">
+          <a href="forgot_password.html">パスワードをお忘れの方</a>
+        </p>
+        <button type="submit" class="btn-submit" id="loginBtn">ログインする</button>
+      </form>
+
+      <div class="register-hint" id="loginRegisterHint">
+        <span id="loginRegisterHintPrefix">アカウントをお持ちでない方は</span>
+        <a id="registerHintLink" onclick="switchMainTab('register')">新規登録（一般ユーザー）</a>
+        <p class="login-persona-note" id="loginPersonaNote"></p>
       </div>
     </div>
 
-    <!-- ===== 新規登録タブ ===== -->
     <div class="tab-panel" id="panelRegister">
-      <div class="divider">新規登録はフォームから</div>
+      <div id="registerConsentPanel" class="consent-panel">
+        <p style="margin:0 0 12px;font-weight:800;">利用開始前に規約への同意が必要です。</p>
+        <ul style="margin:0 0 12px;padding-left:1.2em;font-weight:700;">
+          <li><a href="terms.html" target="_blank" rel="noopener">利用規約</a></li>
+          <li><a href="privacy.html" target="_blank" rel="noopener">プライバシーポリシー</a></li>
+        </ul>
+        <label class="consent-check"><input type="checkbox" id="chkConsentTerms"> <span>利用規約に同意します</span></label>
+        <label class="consent-check"><input type="checkbox" id="chkConsentPrivacy"> <span>プライバシーポリシーに同意します</span></label>
+        <div class="consent-err" id="consentErr">両方にチェックを入れてください。</div>
+        <button type="button" class="btn-submit" style="margin-top:12px;" onclick="proceedAfterUserConsent()">同意して登録へ進む</button>
+      </div>
 
-      <div class="register-card">
-        <span class="icon">🏢</span>
-        <h3>事業者・整備工場の新規登録</h3>
-        <p>
-          店舗ID・マスターログインIDを発行します。<br>
-          登録後すぐにスタッフ管理や整備記録の入力が可能になります。
-        </p>
-        <button class="btn-register" onclick="location.href='biz_register.html'">
-          新規登録フォームへ進む
-        </button>
+      <div id="registerMainPanel" style="display:none;">
+        <div class="result-card" id="resultCard">
+          <h3>✅ 登録完了</h3>
+          <p>登録したメールアドレスとパスワードでログインできます。</p>
+          <div id="ringLineRegCompleteSlot" class="ring-line-promo-slot ring-line-reg-complete-slot" data-ring-line-promo data-ring-line-dismiss="0"></div>
+          <button type="button" class="btn-submit" onclick="switchMainTab('login')">ログイン画面へ</button>
+        </div>
+        <div id="registerForm">
+          <div class="field">
+            <span class="label">ニックネーム <span class="optional">任意</span></span>
+            <input type="text" id="regName" placeholder="例：田中 太郎" autocomplete="name">
+          </div>
+          <div class="field">
+            <span class="label">メールアドレス</span>
+            <input type="email" id="regEmail" placeholder="you@example.com" autocomplete="email"
+                   autocapitalize="none" oninput="clearErr('errRegEmail')">
+            <div class="err-msg" id="errRegEmail">⚠ 有効なメールアドレスを入力してください</div>
+          </div>
+          <div class="field">
+            <span class="label">パスワード</span>
+            <div class="pw-wrap">
+              <input type="password" id="regPw" autocomplete="new-password" oninput="checkStrength(this.value); clearErr('errRegPw')">
+              <button type="button" class="pw-toggle-btn" onclick="togglePw('regPw', this)"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></button>
+            </div>
+            <div class="strength-bar"><div class="fill" id="strengthFill"></div></div>
+            <div class="strength-label" id="strengthLabel">強度：未入力</div>
+            <div class="err-msg" id="errRegPw">⚠ パスワードを入力してください</div>
+          </div>
+          <div class="field">
+            <span class="label">パスワード（確認）</span>
+            <div class="pw-wrap">
+              <input type="password" id="regPwConf" autocomplete="new-password" oninput="clearErr('errRegPwConf')">
+              <button type="button" class="pw-toggle-btn" onclick="togglePw('regPwConf', this)"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></button>
+            </div>
+            <div class="err-msg" id="errRegPwConf">⚠ パスワードが一致しません</div>
+          </div>
+          <button type="button" class="btn-submit" id="registerBtn" onclick="doUserRegister()">アカウントを作成する</button>
+        </div>
+        <div class="register-hint" style="margin-top:16px;">
+          工場・販売店の方は <a href="biz_register.html">事業者新規登録</a>
+        </div>
       </div>
     </div>
   </div>
 
   <script>
-    /* ===== タブ切り替え ===== */
-    function switchTab(tab) {
-      const isLogin = (tab === 'login');
+    var loginAccountType = 'user';
+    var loginPersonaLocked = null;
+
+    var LOGIN_PERSONA_CONFIG = {
+      user: {
+        badge: '一般ユーザー ログイン',
+        welcome: 'ユーザーログイン',
+        accountType: 'user',
+        hintPrefix: 'アカウントをお持ちでない方は',
+        hintText: '新規登録（一般ユーザー）',
+        hintAction: 'register',
+        showForgotPw: true,
+        personaNote: ''
+      },
+      factory: {
+        badge: '指定・認証工場 ログイン',
+        welcome: '整備工場ログイン',
+        accountType: 'shop',
+        hintPrefix: '初めてご利用の方は',
+        hintText: '事業者新規登録',
+        hintAction: 'biz_register',
+        showForgotPw: false,
+        personaNote: 'オーナーから配られたIDでログインしてください'
+      },
+      dealer: {
+        badge: '事業者 ログイン',
+        welcome: '事業者ログイン',
+        accountType: 'shop',
+        hintPrefix: 'アカウントをお持ちでない方は',
+        hintText: '事業者新規登録',
+        hintAction: 'biz_register',
+        showForgotPw: false,
+        personaNote: ''
+      }
+    };
+
+    function resolveLoginPersona(tab) {
+      if (!tab || tab === 'register') return null;
+      if (tab === 'user') return 'user';
+      if (tab === 'factory' || tab === 'shop') return 'factory';
+      if (tab === 'business' || tab === 'dealer') return 'dealer';
+      return null;
+    }
+
+    function applyRegisterHintAction(action, hintLink) {
+      if (!hintLink) return;
+      if (action === 'register') {
+        hintLink.onclick = function () { switchMainTab('register'); };
+      } else if (action === 'biz_register') {
+        hintLink.onclick = function () { location.href = 'biz_register.html'; };
+      }
+    }
+
+    function applyLoginChameleonUI(persona) {
+      var cfg = LOGIN_PERSONA_CONFIG[persona];
+      if (!cfg) return;
+
+      loginPersonaLocked = persona;
+      loginAccountType = cfg.accountType;
+
+      document.body.classList.add('ring-login-themed', 'ring-login--' + persona);
+
+      var badge = document.getElementById('loginPersonaBadge');
+      var accountBar = document.getElementById('accountTabBar');
+      var title = document.getElementById('loginWelcomeTitle');
+      var forgot = document.getElementById('forgotPwRow');
+      var hintPrefix = document.getElementById('loginRegisterHintPrefix');
+      var hintLink = document.getElementById('registerHintLink');
+      var personaNote = document.getElementById('loginPersonaNote');
+
+      if (badge) {
+        badge.hidden = false;
+        badge.textContent = cfg.badge;
+      }
+      if (accountBar) accountBar.style.display = 'none';
+      if (title) {
+        title.textContent = cfg.welcome;
+        title.classList.add('page-title--welcome');
+      }
+      if (forgot) forgot.style.display = cfg.showForgotPw ? 'block' : 'none';
+      if (hintPrefix) hintPrefix.textContent = cfg.hintPrefix;
+      if (hintLink) {
+        hintLink.textContent = cfg.hintText;
+        applyRegisterHintAction(cfg.hintAction, hintLink);
+      }
+      if (personaNote) {
+        if (cfg.personaNote) {
+          personaNote.textContent = cfg.personaNote;
+          personaNote.classList.add('is-visible');
+        } else {
+          personaNote.textContent = '';
+          personaNote.classList.remove('is-visible');
+        }
+      }
+    }
+
+    function switchMainTab(tab) {
+      var isLogin = tab === 'login';
       document.getElementById('tabLogin').classList.toggle('active', isLogin);
       document.getElementById('tabRegister').classList.toggle('active', !isLogin);
       document.getElementById('panelLogin').classList.toggle('active', isLogin);
       document.getElementById('panelRegister').classList.toggle('active', !isLogin);
+      if (!isLogin) syncRegisterConsentUI();
     }
 
-    /* ===== パスワード表示切替 ===== */
-    function togglePasswordVisibility() {
-      const passwordInput = document.getElementById('inPassword');
-      const eyeIcon = document.getElementById('eyeIcon');
-      const eyeOpen   = `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>`;
-      const eyeClosed = `<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line>`;
-      if (passwordInput.type === 'password') {
-        passwordInput.type = 'text';
-        eyeIcon.innerHTML = eyeClosed;
+    function switchAccountTab(type) {
+      if (loginPersonaLocked) return;
+      loginAccountType = type === 'shop' ? 'shop' : 'user';
+      document.getElementById('tabUser').classList.toggle('active', loginAccountType === 'user');
+      document.getElementById('tabShop').classList.toggle('active', loginAccountType === 'shop');
+      var forgot = document.getElementById('forgotPwRow');
+      var hint = document.getElementById('registerHintLink');
+      if (loginAccountType === 'shop') {
+        if (forgot) forgot.style.display = 'none';
+        if (hint) {
+          hint.textContent = '事業者新規登録';
+          hint.onclick = function () { location.href = 'biz_register.html'; };
+        }
       } else {
-        passwordInput.type = 'password';
-        eyeIcon.innerHTML = eyeOpen;
+        if (forgot) forgot.style.display = 'block';
+        if (hint) {
+          hint.textContent = '新規登録（一般ユーザー）';
+          hint.onclick = function () { switchMainTab('register'); };
+        }
       }
     }
 
-    /* ===== デモログイン ===== */
-    function doDemoLogin(role) {
-      showLoading("デモ認証中", "テスト環境を準備しています...");
-      setTimeout(() => {
-        const demoShopId = role === 'factory' ? "SHOP-DEMO-F" : (role === 'dealer' ? "SHOP-DEMO-D" : "");
-        const demoRole = (role === 'factory' || role === 'dealer') ? 'master' : role;
-        const dummyProfile = {
-          userId:   role === 'factory' ? "F-DEMO01" : (role === 'dealer' ? "D-DEMO01" : "U-DEMO01"),
-          userName: "デモ太郎",
-          shopName: role === 'factory' ? "RinG Auto 整備工場" : (role === 'dealer' ? "T.G販売店" : ""),
-          shopType: role,
-          role:     demoRole,
-          shopId:   demoShopId
-        };
-        if (role === 'factory') {
-          dummyProfile.factoryType = '指定工場';
-          dummyProfile.factoryNumber = '第11234号';
-        } else if (role === 'dealer') {
-          dummyProfile.factoryType = '認証';
-          dummyProfile.factoryNumber = '第55678号';
-        }
-        if (typeof seedDemoEnvironment === 'function') seedDemoEnvironment(role);
-        login(dummyProfile);
-        let target = "user_home.html";
-        if (role === 'factory') target = "factory_home.html";
-        if (role === 'dealer')  target = "dealer_home.html";
-        location.replace(target);
-      }, 800);
+    function clearErr(id) { var el = document.getElementById(id); if (el) el.style.display = 'none'; }
+    function showErr(id) { var el = document.getElementById(id); if (el) el.style.display = 'block'; }
+
+    function togglePw(inputId, btn) {
+      var el = document.getElementById(inputId);
+      if (!el) return;
+      var open = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>';
+      var closed = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line>';
+      var svg = btn.querySelector('svg');
+      if (el.type === 'password') { el.type = 'text'; if (svg) svg.innerHTML = closed; }
+      else { el.type = 'password'; if (svg) svg.innerHTML = open; }
     }
 
-    /* ===== 本番ログイン ===== */
-    async function doLogin() {
-      const loginId = document.getElementById('inLoginId').value.trim().toUpperCase();
-      const pass    = document.getElementById('inPassword').value.trim();
-      if (!loginId || !pass) {
-        showToast('error', 'IDとパスワードを入力してください');
+    function checkStrength(val) {
+      var fill = document.getElementById('strengthFill');
+      var label = document.getElementById('strengthLabel');
+      if (!fill || !label) return;
+      if (!val) { fill.style.width = '0'; label.textContent = '強度：未入力'; return; }
+      var score = 0;
+      if (val.length >= 8) score++;
+      if (val.length >= 12) score++;
+      if (/[A-Z]/.test(val)) score++;
+      if (/[0-9]/.test(val)) score++;
+      if (/[^A-Za-z0-9]/.test(val)) score++;
+      var levels = [
+        { pct: '20%', color: '#ef4444', text: '弱い' },
+        { pct: '60%', color: '#eab308', text: '普通' },
+        { pct: '100%', color: '#10b981', text: '強い' }
+      ];
+      var lv = levels[Math.min(score, 2)];
+      fill.style.width = lv.pct;
+      fill.style.background = lv.color;
+      label.textContent = '強度：' + lv.text;
+    }
+
+    function syncRegisterConsentUI() {
+      var consentPanel = document.getElementById('registerConsentPanel');
+      var mainPanel = document.getElementById('registerMainPanel');
+      var rc = document.getElementById('resultCard');
+      if (!consentPanel || !mainPanel) return;
+      if (rc && rc.style.display === 'block') {
+        consentPanel.style.display = 'none';
+        mainPanel.style.display = 'block';
         return;
       }
-      showLoading("認証中", "ログイン情報を照合しています...");
+      if (typeof ringReadUserRegConsent === 'function' && ringReadUserRegConsent()) {
+        consentPanel.style.display = 'none';
+        mainPanel.style.display = 'block';
+      } else {
+        consentPanel.style.display = 'block';
+        mainPanel.style.display = 'none';
+      }
+    }
+
+    function proceedAfterUserConsent() {
+      var t = document.getElementById('chkConsentTerms');
+      var p = document.getElementById('chkConsentPrivacy');
+      var err = document.getElementById('consentErr');
+      if (err) err.style.display = 'none';
+      if (!t || !p || !t.checked || !p.checked) {
+        if (err) err.style.display = 'block';
+        return;
+      }
+      ringSaveUserRegConsent();
+      syncRegisterConsentUI();
+    }
+
+    async function doEmailLogin(e) {
+      if (e) e.preventDefault();
+      var email = document.getElementById('loginEmail').value.trim();
+      var pw = document.getElementById('loginPassword').value;
+      clearErr('errLoginEmail');
+      clearErr('errLoginPw');
+      var hasErr = false;
+      if (!email || email.indexOf('@') < 0) { showErr('errLoginEmail'); hasErr = true; }
+      if (!pw) { showErr('errLoginPw'); hasErr = true; }
+      if (hasErr) return;
+
+      var btn = document.getElementById('loginBtn');
+      btn.disabled = true;
+      showLoading('認証中', 'ログイン情報を照合しています…');
+
+      var accountType = loginAccountType === 'shop' ? 'business' : 'user';
       try {
-        const res    = await fetch(GAS_URL, {
+        var res = await fetch(GAS_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain' },
-          body: JSON.stringify({ action: 'login', loginId: loginId, password: pass })
+          body: JSON.stringify({ action: 'login', email: email, password: pw, accountType: accountType })
         });
-        const result = await res.json();
-        if (result.success) {
-          login(result.profile, result.authToken);
-          location.replace(result.profile.shopType === 'factory' ? "factory_home.html" : "dealer_home.html");
+        var data = await res.json();
+        hideLoading();
+        if (data.success && data.profile && data.authToken) {
+          if (accountType === 'user' && !(data.profile.role === 'user' || data.profile.shopType === 'user' || data.profile.role === 'admin')) {
+            showToast('error', '一般ユーザー用のメールアドレスではありません。');
+            return;
+          }
+          if (accountType === 'business' && data.profile.shopType !== 'factory' && data.profile.shopType !== 'dealer') {
+            showToast('error', '工場・販売店用のメールアドレスではありません。');
+            return;
+          }
+          login(data.profile, data.authToken);
+          location.replace(typeof ringGetHomeForProfile === 'function' ? ringGetHomeForProfile(data.profile) : 'index.html');
+          return;
+        }
+        showToast('error', data.error || 'メールアドレスまたはパスワードが違います');
+      } catch (err) {
+        hideLoading();
+        showToast('error', '通信エラーが発生しました');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function doUserRegister() {
+      var consent = typeof ringReadUserRegConsent === 'function' ? ringReadUserRegConsent() : null;
+      if (!consent) {
+        showToast('error', '先に規約への同意が必要です');
+        syncRegisterConsentUI();
+        return;
+      }
+      var name = document.getElementById('regName').value.trim();
+      var email = document.getElementById('regEmail').value.trim();
+      var pw = document.getElementById('regPw').value;
+      var pwConf = document.getElementById('regPwConf').value;
+      clearErr('errRegEmail'); clearErr('errRegPw'); clearErr('errRegPwConf');
+      var hasErr = false;
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showErr('errRegEmail'); hasErr = true; }
+      if (!pw) { showErr('errRegPw'); hasErr = true; }
+      if (pw !== pwConf) { showErr('errRegPwConf'); hasErr = true; }
+      if (hasErr) return;
+
+      var btn = document.getElementById('registerBtn');
+      btn.disabled = true;
+      showLoading('登録中', 'アカウントを作成しています…');
+      try {
+        var res = await fetch(GAS_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({
+            action: 'user_register',
+            userName: name,
+            email: email,
+            password: pw,
+            consentAt: consent.consentAt,
+            termsVersion: consent.termsVersion,
+            privacyVersion: consent.privacyVersion
+          })
+        });
+        var data = await res.json();
+        hideLoading();
+        if (data.success) {
+          try { sessionStorage.removeItem(RING_USER_REG_CONSENT_KEY); } catch (e2) {}
+          document.getElementById('resultCard').style.display = 'block';
+          document.getElementById('registerForm').style.display = 'none';
+          loginAccountType = 'user';
+          if (!loginPersonaLocked) switchAccountTab('user');
+          document.getElementById('loginEmail').value = email;
+          var lineSlot = document.getElementById('ringLineRegCompleteSlot');
+            if (lineSlot) {
+            lineSlot.removeAttribute('data-ring-line-mounted');
+            if (typeof ringMountLinePromo === 'function') {
+              ringMountLinePromo(lineSlot, { dismiss: false });
+            }
+          }
         } else {
-          hideLoading();
-          showToast('error', 'ログイン失敗: ' + result.error);
+          showToast('error', data.error || '登録に失敗しました');
         }
       } catch (e) {
         hideLoading();
         showToast('error', '通信エラーが発生しました');
+      } finally {
+        btn.disabled = false;
       }
     }
+
+    document.addEventListener('DOMContentLoaded', async function () {
+      var params = new URLSearchParams(window.location.search);
+      var tab = params.get('tab');
+      var persona = resolveLoginPersona(tab);
+
+      if (persona && typeof applyRingPalette === 'function') {
+        applyRingPalette(persona);
+        applyLoginChameleonUI(persona);
+      }
+
+      if (tab === 'register') switchMainTab('register');
+
+      if (typeof ringBootAuth === 'function') {
+        var boot = await ringBootAuth();
+        if (boot.ok && boot.profile) {
+          location.replace(ringGetHomeForProfile(boot.profile));
+        }
+      }
+    });
   </script>
 </body>
 </html>

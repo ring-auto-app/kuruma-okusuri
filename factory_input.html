@@ -5,11 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#4b5563" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="車のお薬手帳" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="mobile-web-app-capable" content="yes" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
   <link rel="manifest" href="manifest.json">
-  <title>整備入力 | 車のお薬手帳</title>
+    <title>車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css">
   <script src="app.js"></script>
@@ -100,11 +101,14 @@
       <a href="factory_edit_list.html" class="edit-link">✏️ 過去7日間の入力履歴を編集する</a>
     </header>
     
-    <div class="scan-btn" onclick="document.getElementById('docInput').click()">📄 請求書・明細書をスキャン（複数枚可）</div>
+    <div class="scan-btn" onclick="document.getElementById('docInput').click()">📄 請求書・明細書をスキャン（最大5枚）</div>
     <input type="file" id="docInput" accept="image/*" multiple hidden>
 
-    <div class="doc-preview-area" id="docPreviewArea"><img id="docPreviewImg" src=""><span class="doc-preview-more" id="docPreviewMore"></span></div>
-    <div class="discard-notice" id="discardNotice" style="display:none;">※画像は保存されず破棄されます</div>
+    <div class="ring-ocr-thumb-strip" id="ocrThumbStrip"></div>
+    <button type="button" class="ring-ocr-load-btn" id="ocrLoadBtn" disabled>読み込む</button>
+
+    <div class="doc-preview-area" id="docPreviewArea" style="display:none;"><img id="docPreviewImg" src=""><span class="doc-preview-more" id="docPreviewMore"></span></div>
+    <div class="discard-notice" id="discardNotice" style="display:none;">※書類画像は保存されず破棄されます</div>
 
     <div class="note-card">
       <div class="field">
@@ -213,7 +217,7 @@
 
     window.addEventListener('DOMContentLoaded', () => {
       currentProfile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
-      if (!currentProfile) return location.replace("login.html");
+      if (!currentProfile) return location.replace("login.html?tab=factory");
 
       // inspector（日常点検のみ）・viewer（閲覧のみ）は整備入力不可
       if (currentProfile.role === 'inspector' || currentProfile.role === 'viewer') {
@@ -255,36 +259,46 @@
       { key: 'typeDesignation', label: '型式指定番号', getCurrent: () => document.getElementById('inTypeDesig').value },
     ];
 
-    document.getElementById('docInput').addEventListener('change', async (e) => {
-      const files = e.target.files;
-      if (!files || !files.length) return;
-      e.target.value = '';
-      if (typeof ringHandleBatchDocumentScan !== 'function') return;
-      await ringHandleBatchDocumentScan({
-        files: files,
-        mode: 'factory',
-        saveBtnId: 'saveLogBtn',
-        previewArea: document.getElementById('docPreviewArea'),
-        previewImg: document.getElementById('docPreviewImg'),
-        discardNotice: document.getElementById('discardNotice'),
-        moreBadge: document.getElementById('docPreviewMore'),
-        onApply: function (r) {
-          if (r.vin) document.getElementById('inVin').value = String(r.vin).toUpperCase();
-          if (r.mileage) document.getElementById('inMileage').value = r.mileage;
-          if (r.workTitle) document.getElementById('inTitle').value = r.workTitle;
-          if (r.parts) document.getElementById('inParts').value = r.parts;
-          if (r.shaken) document.getElementById('inShaken').value = r.shaken;
-          if (r.model) document.getElementById('inModel').value = r.model;
-          if (r.engine) document.getElementById('inEngine').value = r.engine;
-          if (r.class) document.getElementById('inClass').value = r.class;
-          if (r.typeDesignation) document.getElementById('inTypeDesig').value = r.typeDesignation;
-          if (r.memo) document.getElementById('inMemo').value = r.memo;
-          if (r.vin) lookupVehicle(r.vin);
-          var det = document.querySelector('.note-card details');
-          if (det && (r.model || r.engine || r.class || r.typeDesignation)) det.open = true;
+    if (typeof ringInitOcrDocPicker === 'function') {
+      ringInitOcrDocPicker({
+        docInputId: 'docInput',
+        loadBtnId: 'ocrLoadBtn',
+        stripId: 'ocrThumbStrip',
+        discardNotice: 'discardNotice',
+        previewArea: 'docPreviewArea',
+        previewImg: 'docPreviewImg',
+        moreBadge: 'docPreviewMore',
+        scanOpts: {
+          mode: 'factory',
+          saveBtnId: 'saveLogBtn',
+          previewArea: document.getElementById('docPreviewArea'),
+          previewImg: document.getElementById('docPreviewImg'),
+          discardNotice: document.getElementById('discardNotice'),
+          moreBadge: document.getElementById('docPreviewMore'),
+          clearMemoryOpts: {
+            previewImg: document.getElementById('docPreviewImg'),
+            previewArea: document.getElementById('docPreviewArea'),
+            moreBadge: document.getElementById('docPreviewMore'),
+            discardNotice: document.getElementById('discardNotice')
+          },
+          onApply: function (r) {
+            if (r.vin) document.getElementById('inVin').value = String(r.vin).toUpperCase();
+            if (r.mileage) document.getElementById('inMileage').value = r.mileage;
+            if (r.workTitle) document.getElementById('inTitle').value = r.workTitle;
+            if (r.parts) document.getElementById('inParts').value = r.parts;
+            if (r.shaken) document.getElementById('inShaken').value = r.shaken;
+            if (r.model) document.getElementById('inModel').value = r.model;
+            if (r.engine) document.getElementById('inEngine').value = r.engine;
+            if (r.class) document.getElementById('inClass').value = r.class;
+            if (r.typeDesignation) document.getElementById('inTypeDesig').value = r.typeDesignation;
+            if (r.memo) document.getElementById('inMemo').value = r.memo;
+            if (r.vin) lookupVehicle(r.vin);
+            var det = document.querySelector('.note-card details');
+            if (det && (r.model || r.engine || r.class || r.typeDesignation)) det.open = true;
+          }
         }
       });
-    });
+    }
 
     document.getElementById('partsPhotoInput').addEventListener('change', (e) => {
       const file = e.target.files[0]; if(!file) return;

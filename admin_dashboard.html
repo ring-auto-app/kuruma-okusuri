@@ -3,8 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-title" content="車のお薬手帳" />
   <meta name="theme-color" content="#334155" />
-  <title>管理者ダッシュボード | 車のお薬手帳</title>
+    <title>車のお薬手帳</title>
   <link rel="stylesheet" href="common.css">
   <script src="app.js"></script>
   <style>
@@ -247,6 +248,48 @@
       color: #2563eb;
       font-weight: 600;
     }
+    .broadcast-field {
+      margin-bottom: 14px;
+    }
+    .broadcast-field label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: #334155;
+      margin-bottom: 6px;
+    }
+    .broadcast-field select,
+    .broadcast-field input,
+    .broadcast-field textarea {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 10px 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      font-size: 14px;
+      font-family: inherit;
+      background: #fff;
+      color: #0f172a;
+    }
+    .broadcast-field textarea {
+      min-height: 140px;
+      resize: vertical;
+      line-height: 1.55;
+    }
+    .broadcast-field select:focus,
+    .broadcast-field input:focus,
+    .broadcast-field textarea:focus {
+      outline: none;
+      border-color: #2563eb;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+    }
+    .broadcast-actions {
+      margin-top: 16px;
+    }
+    .broadcast-actions .btn-sm {
+      width: 100%;
+      max-width: 320px;
+    }
   </style>
 </head>
 <body class="ring-admin-app">
@@ -264,7 +307,7 @@
         <input type="password" id="gatePw" placeholder="ゲート用パスワード" autocomplete="current-password">
         <button type="button" class="btn-sm secondary" onclick="doGateLogin()">ログインしてダッシュボードへ</button>
       </div>
-      <p class="muted" style="margin-bottom:0;"><a href="user_login.html">通常のユーザーログインはこちら</a>（シート上で B 列が admin のアカウントでも入れます）</p>
+      <p class="muted" style="margin-bottom:0;"><a href="login.html">通常のユーザーログインはこちら</a>（シート上で B 列が admin のアカウントでも入れます）</p>
     </div>
 
     <div id="dashMain" style="display:none;">
@@ -276,6 +319,31 @@
       <div class="monitor-recent" id="monitorRecent"></div>
     </div>
     <div class="admin-grid" id="statGrid"></div>
+
+    <div class="section">
+      <h2>お知らせ一斉メール配信</h2>
+      <p class="muted" style="margin-top:0;">登録メールアドレス（一般ユーザー: users_v1 N列 / 工場・事業者: shops L列）へ一斉送信します。誤送信防止のため、実行前に対象件数の確認を行います。</p>
+      <div class="broadcast-field">
+        <label for="broadcastTarget">配信対象</label>
+        <select id="broadcastTarget">
+          <option value="all">全員に配信</option>
+          <option value="user">一般ユーザーのみ</option>
+          <option value="factory">工場のみ</option>
+          <option value="dealer">事業者のみ</option>
+        </select>
+      </div>
+      <div class="broadcast-field">
+        <label for="broadcastSubject">件名</label>
+        <input type="text" id="broadcastSubject" placeholder="例：【お知らせ】メンテナンスのご案内" autocomplete="off">
+      </div>
+      <div class="broadcast-field">
+        <label for="broadcastBody">本文</label>
+        <textarea id="broadcastBody" placeholder="配信する本文を入力してください"></textarea>
+      </div>
+      <div class="broadcast-actions">
+        <button type="button" class="btn-sm" id="broadcastSubmit">一斉配信を実行する</button>
+      </div>
+    </div>
 
     <div class="section">
       <h2>システム設定</h2>
@@ -418,6 +486,56 @@
       });
     }
 
+    async function runBroadcast() {
+      var targetEl = document.getElementById('broadcastTarget');
+      var subjectEl = document.getElementById('broadcastSubject');
+      var bodyEl = document.getElementById('broadcastBody');
+      if (!targetEl || !subjectEl || !bodyEl) return;
+
+      var target = String(targetEl.value || '').trim();
+      var subject = String(subjectEl.value || '').trim();
+      var body = String(bodyEl.value || '').trim();
+
+      if (!subject) {
+        if (typeof showToast === 'function') showToast('error', '件名を入力してください');
+        return;
+      }
+      if (!body) {
+        if (typeof showToast === 'function') showToast('error', '本文を入力してください');
+        return;
+      }
+
+      var payload = { target: target, subject: subject, body: body };
+
+      try {
+        if (typeof showLoading === 'function') showLoading('確認中', '配信対象を集計しています…');
+        var preview = await sendToGAS_Safe('admin_broadcast_message', Object.assign({}, payload, { dryRun: true }));
+        if (typeof hideLoading === 'function') hideLoading();
+
+        var count = preview && preview.recipientCount != null ? Number(preview.recipientCount) : 0;
+        if (!count) {
+          if (typeof showToast === 'function') showToast('error', '配信対象のメールアドレスがありません');
+          return;
+        }
+        if (!window.confirm('本当に ' + count + ' 件の対象者へ一斉送信しますか？')) return;
+
+        if (typeof showLoading === 'function') showLoading('配信中', 'メールを送信しています…');
+        var result = await sendToGAS_Safe('admin_broadcast_message', payload);
+        if (typeof hideLoading === 'function') hideLoading();
+
+        var sent = result && result.sentCount != null ? Number(result.sentCount) : count;
+        var msg = sent + ' 件の配信が完了しました！';
+        if (result && result.failCount > 0) {
+          msg += '（' + result.failCount + ' 件は送信に失敗しました）';
+        }
+        if (typeof showToast === 'function') showToast('success', msg);
+        else window.alert(msg);
+      } catch (e) {
+        if (typeof hideLoading === 'function') hideLoading();
+        if (typeof showToast === 'function') showToast('error', e.message || '配信に失敗しました');
+      }
+    }
+
     async function saveOneConfig(key, value) {
       try {
         if (typeof showLoading === 'function') showLoading('保存中', '');
@@ -466,6 +584,8 @@
       }
 
       if (mainEl) mainEl.style.display = 'block';
+      var broadcastBtn = document.getElementById('broadcastSubmit');
+      if (broadcastBtn) broadcastBtn.addEventListener('click', runBroadcast);
       if (typeof ringLogClientAccess === 'function') ringLogClientAccess('admin_dashboard');
 
       try {

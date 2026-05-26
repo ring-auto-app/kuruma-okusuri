@@ -5,11 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#4b5563" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="車のお薬手帳" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="mobile-web-app-capable" content="yes" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
   <link rel="manifest" href="manifest.json">
-  <title>RinG Auto | スプラッシュ画面</title>
+    <title>車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css">
   <script src="app.js"></script> 
@@ -114,27 +115,24 @@
   </div>
 
   <script>
-    document.addEventListener("DOMContentLoaded", () => {
-      // 指定された2.5秒間ロゴを表示
-      setTimeout(() => {
-        
-        // 1. フェードアウト開始
+    document.addEventListener("DOMContentLoaded", async () => {
+      setTimeout(async () => {
         document.body.classList.add("fade-out");
-
-        // 2. フェードアウト完了後にリダイレクト
-        setTimeout(() => {
-          
-          // ログイン状態を確認（app.jsの共通関数を使用）
+        setTimeout(async () => {
+          if (typeof ringBootAuth === 'function') {
+            const boot = await ringBootAuth();
+            if (boot.ok && boot.profile) {
+              sessionStorage.setItem('splashShown', '1');
+              location.href = typeof ringGetHomeForProfile === 'function' ? ringGetHomeForProfile(boot.profile) : 'user_home.html';
+              return;
+            }
+          }
           const profile = typeof getCurrentProfile === "function" ? getCurrentProfile() : null;
-
-          if (!profile) {
-            // スプラッシュ表示済みフラグをセット（セッション内で1回だけ表示）
+          if (!profile || !localStorage.getItem('ring_auth_token')) {
             sessionStorage.setItem('splashShown', '1');
             location.href = "index.html";
             return;
           }
-
-          // 役割に応じて遷移先を振り分け
           if (profile.shopType === "factory") {
             location.href = "factory_home.html";
           } else if (profile.shopType === "dealer") {
@@ -142,10 +140,8 @@
           } else {
             location.href = "user_home.html";
           }
-          
-        }, 500); 
-
-      }, 2500); 
+        }, 500);
+      }, 2500);
     });
   </script>
 </body>

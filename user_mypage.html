@@ -5,15 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#4b5563" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="車のお薬手帳" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="mobile-web-app-capable" content="yes" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
   <link rel="manifest" href="manifest.json">
-  <title>マイページ | 車のお薬手帳</title>
+    <title>車のお薬手帳</title>
   <link rel="stylesheet" href="common.css">
   <script src="app.js"></script>
   <script src="theme.js"></script>
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <style>
     body { margin: 0; font-family: -apple-system, sans-serif; background: var(--page-bg); color: var(--text); padding: 34px 16px 100px; }
     .container { max-width: 560px; margin: 0 auto; }
@@ -45,49 +45,6 @@
     }
     .nick-save-wrap { margin-top: 10px; }
     .empty-hint { font-size: 12px; font-weight: 800; color: var(--muted); padding: 16px; text-align: center; }
-    .ring-mypage-oauth-section { margin-top: 14px; position: relative; }
-    .ring-mypage-oauth-title {
-      font-size: 12px; font-weight: 900; color: var(--muted); margin-bottom: 8px;
-    }
-    .ring-mypage-oauth-note { font-size: 11px; font-weight: 700; color: var(--muted); line-height: 1.45; margin: 0 0 12px; }
-    /* ロゴ無し・同サイズのペアボタン（Google は非表示 GIS をプログラムでクリック） */
-    .ring-mypage-oauth-btns {
-      display: flex;
-      gap: 10px;
-      align-items: stretch;
-    }
-    .ring-mypage-oauth-btn {
-      flex: 1;
-      min-width: 0;
-      box-sizing: border-box;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      padding: 10px 8px;
-      min-height: 44px;
-      font-size: 13px;
-      font-weight: 800;
-      line-height: 1.25;
-      font-family: inherit;
-      border: 2px solid var(--line);
-      border-radius: 12px;
-      background: var(--paper);
-      color: var(--text);
-      cursor: pointer;
-      -webkit-tap-highlight-color: transparent;
-    }
-    .ring-mypage-oauth-btn:active { opacity: 0.92; transform: translateY(0.5px); }
-    /* GIS 本体は画面外に退避（操作は ringTriggerGoogleSignInSlot 経由） */
-    .ring-mypage-gis-hide {
-      position: absolute;
-      width: 400px;
-      height: 52px;
-      left: -9999px;
-      top: 0;
-      overflow: visible;
-    }
-    .ring-mypage-google-slot { margin: 0; min-height: 1px; }
   </style>
 </head>
 <body>
@@ -103,17 +60,7 @@
         <div class="row"><span class="k">ニックネーム</span><span class="v" id="dispName">—</span></div>
         <div class="row"><span class="k">ユーザーID</span><span class="v" id="dispUserId">—</span></div>
         <div class="row"><span class="k">ログインID</span><span class="v" id="dispLoginId">—</span></div>
-      </div>
-      <div class="ring-mypage-oauth-section" id="ringMyPageOauthSection" style="display:none;">
-        <div class="ring-mypage-oauth-title">Google / LINE アカウントと連携</div>
-        <p class="ring-mypage-oauth-note">ログイン済みのアカウントに、Google または LINE を紐付けできます（メールログインと併用しやすくなります）。</p>
-        <div class="ring-mypage-oauth-btns">
-          <button type="button" class="ring-mypage-oauth-btn" id="ringMypageBtnGoogleLink">Googleと連携</button>
-          <button type="button" class="ring-mypage-oauth-btn" id="ringMypageBtnLineLink">LINEと連携</button>
-        </div>
-        <div class="ring-mypage-gis-hide" aria-hidden="true">
-          <div id="googleSignInSlotMypage" class="ring-mypage-google-slot"></div>
-        </div>
+        <div class="row"><span class="k">メール</span><span class="v" id="dispEmail">—</span></div>
       </div>
       <div class="nick-edit">
         <label for="nickInput">ニックネームを変更</label>
@@ -125,6 +72,7 @@
       <div class="btn-stack">
         <a class="btn btn-primary" href="change_password.html">パスワード変更</a>
       </div>
+      <div class="ring-line-promo-slot" data-ring-line-promo style="margin-top:14px;"></div>
     </div>
 
     <div class="section">
@@ -168,12 +116,12 @@
     window.addEventListener('DOMContentLoaded', function () {
       var profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
       if (!profile || profile.shopType !== 'user') {
-        location.replace('user_login.html');
+        location.replace('login.html');
         return;
       }
       var r = String(profile.role || '');
       if (r !== 'user' && r !== 'admin') {
-        location.replace('user_login.html');
+        location.replace('login.html');
         return;
       }
 
@@ -181,72 +129,11 @@
       dispNm.textContent = (profile.userName && String(profile.userName).trim()) ? profile.userName : '未設定';
       document.getElementById('dispUserId').textContent = profile.userId || '—';
       document.getElementById('dispLoginId').textContent = profile.loginId || profile.userId || '—';
+      var emEl = document.getElementById('dispEmail');
+      if (emEl) emEl.textContent = profile.registeredEmail || profile.googleEmail || '—';
 
       var nickInput = document.getElementById('nickInput');
       nickInput.value = profile.userName ? String(profile.userName) : '';
-
-      var oauthSec = document.getElementById('ringMyPageOauthSection');
-      if (oauthSec && r === 'user' && profile.shopType === 'user') {
-        var lineSid = String(profile.lineUserId || '').trim();
-        var anyOAuthLinked =
-          profile.googleLinked === true ||
-          profile.lineLinked === true ||
-          lineSid.length > 0;
-        if (anyOAuthLinked) {
-          oauthSec.style.display = 'none';
-        } else {
-          oauthSec.style.display = 'block';
-          var gSlot = document.getElementById('googleSignInSlotMypage');
-          if (gSlot) {
-            function bootG() {
-              if (typeof ringBootGoogleSignIn === 'function') {
-                ringBootGoogleSignIn(['googleSignInSlotMypage']);
-              }
-            }
-            if (window.google && google.accounts && google.accounts.id) bootG();
-            else {
-              var nAttempts = 0;
-              var tmr = setInterval(function () {
-                nAttempts++;
-                if (window.google && google.accounts && google.accounts.id) {
-                  clearInterval(tmr);
-                  bootG();
-                } else if (nAttempts >= 120) clearInterval(tmr);
-              }, 120);
-            }
-          }
-          var btnG = document.getElementById('ringMypageBtnGoogleLink');
-          var btnL = document.getElementById('ringMypageBtnLineLink');
-          if (btnG) {
-            btnG.onclick = function () {
-              var cid =
-                typeof RING_GOOGLE_WEB_CLIENT_ID !== 'undefined'
-                  ? String(RING_GOOGLE_WEB_CLIENT_ID).trim()
-                  : '';
-              if (!cid) {
-                if (typeof showToast === 'function')
-                  showToast('error', 'Googleログインの設定がありません');
-                return;
-              }
-              if (typeof ringTriggerGoogleSignInSlotWithRetries === 'function') {
-                ringTriggerGoogleSignInSlotWithRetries('googleSignInSlotMypage', 15, function (ok) {
-                  if (
-                    !ok &&
-                    typeof showToast === 'function'
-                  ) {
-                    showToast('error', 'Google連携ボタンの読み込みを待ってから再度お試しください');
-                  }
-                });
-              }
-            };
-          }
-          if (btnL) {
-            btnL.onclick = function () {
-              if (typeof ringStartLineLogin === 'function') ringStartLineLogin();
-            };
-          }
-        }
-      }
 
       document.getElementById('nickSaveBtn').onclick = async function () {
         var v = nickInput.value.trim();

@@ -5,11 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#4b5563" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="車のお薬手帳" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="mobile-web-app-capable" content="yes" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
   <link rel="manifest" href="manifest.json">
-  <title>整備入力 | 車のお薬手帳</title>
+    <title>車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css">
   <script src="app.js"></script>
@@ -97,11 +98,14 @@
     </div>
 
     <div class="scan-btn" onclick="document.getElementById('docInput').click()">
-      📷 車検証・請求書をスキャン（複数枚可）
+      📷 車検証・請求書をスキャン（最大5枚）
     </div>
     <input type="file" id="docInput" accept="image/*" multiple hidden>
 
-    <div class="doc-preview-area" id="docPreviewArea">
+    <div class="ring-ocr-thumb-strip" id="ocrThumbStrip"></div>
+    <button type="button" class="ring-ocr-load-btn" id="ocrLoadBtn" disabled>読み込む</button>
+
+    <div class="doc-preview-area" id="docPreviewArea" style="display:none;">
       <div class="doc-preview-label">文字抽出用の一時画像</div>
       <img id="docPreviewImg" src="">
       <span class="doc-preview-more" id="docPreviewMore"></span>
@@ -241,34 +245,45 @@
       { key: 'shaken', label: '車検満了日', getCurrent: () => document.getElementById('inShaken').value },
     ];
 
-    // OCR解析処理（複数枚バッチ）
-    document.getElementById('docInput').addEventListener('change', async (e) => {
-      const files = e.target.files;
-      if (!files || !files.length) return;
-      e.target.value = '';
-      if (typeof ringHandleBatchDocumentScan !== 'function') return;
-      await ringHandleBatchDocumentScan({
-        files: files,
-        mode: 'dealer',
-        saveBtnId: 'saveBtn',
-        previewArea: document.getElementById('docPreviewArea'),
-        previewImg: document.getElementById('docPreviewImg'),
-        discardNotice: document.getElementById('discardNotice'),
-        moreBadge: document.getElementById('docPreviewMore'),
-        onApply: function (r) {
-          if (r.vin && !document.getElementById('inVin').readOnly) {
-            document.getElementById('inVin').value = String(r.vin).toUpperCase();
-          }
-          if (r.mileage) document.getElementById('inMileage').value = r.mileage;
-          if (r.shaken) document.getElementById('inShaken').value = r.shaken;
-          if (r.workTitle) document.getElementById('inTitle').value = r.workTitle;
-          if (r.memo) {
-            var memoEl = document.getElementById('inMemo');
-            memoEl.value = memoEl.value ? (memoEl.value + '\n' + r.memo) : r.memo;
+    // OCR: 選択 → サムネイル → 読み込む
+    if (typeof ringInitOcrDocPicker === 'function') {
+      ringInitOcrDocPicker({
+        docInputId: 'docInput',
+        loadBtnId: 'ocrLoadBtn',
+        stripId: 'ocrThumbStrip',
+        discardNotice: 'discardNotice',
+        previewArea: 'docPreviewArea',
+        previewImg: 'docPreviewImg',
+        moreBadge: 'docPreviewMore',
+        scanOpts: {
+          mode: 'dealer',
+          saveBtnId: 'saveBtn',
+          previewArea: document.getElementById('docPreviewArea'),
+          previewImg: document.getElementById('docPreviewImg'),
+          discardNotice: document.getElementById('discardNotice'),
+          moreBadge: document.getElementById('docPreviewMore'),
+          clearMemoryOpts: {
+            previewImg: document.getElementById('docPreviewImg'),
+            previewArea: document.getElementById('docPreviewArea'),
+            moreBadge: document.getElementById('docPreviewMore'),
+            discardNotice: document.getElementById('discardNotice')
+          },
+          onApply: function (r) {
+            if (r.vin && !document.getElementById('inVin').readOnly) {
+              document.getElementById('inVin').value = String(r.vin).toUpperCase();
+            }
+            if (r.mileage) document.getElementById('inMileage').value = r.mileage;
+            if (r.shaken) document.getElementById('inShaken').value = r.shaken;
+            if (r.workTitle) document.getElementById('inTitle').value = r.workTitle;
+            var memoText = r.memo || r.parts || '';
+            if (memoText) {
+              var memoEl = document.getElementById('inMemo');
+              memoEl.value = memoEl.value ? (memoEl.value + '\n' + memoText) : memoText;
+            }
           }
         }
       });
-    });
+    }
 
     // アコーディオンの開閉制御
     document.querySelectorAll('.parent-btn').forEach(btn => {

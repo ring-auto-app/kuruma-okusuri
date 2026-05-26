@@ -5,10 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#4b5563" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="車のお薬手帳" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="mobile-web-app-capable" content="yes" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
-  <title>車のお薬手帳 | ホーム</title>
+    <title>車のお薬手帳</title>
   
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="common.css">
@@ -126,6 +127,60 @@
     .menu-desc { font-size: 11px; color: var(--text-sub); font-weight: 700; line-height: 1.4; }
 
     .pwa-hint { margin-top: 34px; font-size: 13px; color: var(--text-sub); font-weight: 800; }
+
+    .demo-public {
+      margin-top: 20px;
+      width: 100%;
+      max-width: 340px;
+      padding-top: 18px;
+      border-top: 1px dashed rgba(47, 42, 36, 0.15);
+    }
+    .demo-public-title {
+      font-size: 14px;
+      font-weight: 900;
+      color: var(--text);
+      margin: 0 0 8px;
+      text-align: center;
+    }
+    .demo-public-note {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--muted);
+      margin: 0 0 14px;
+      text-align: center;
+      line-height: 1.55;
+    }
+    .demo-btn-row {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      width: 100%;
+    }
+    .demo-btn {
+      width: 100%;
+      padding: 14px 16px;
+      border-radius: 12px;
+      border: 2px dashed var(--accent);
+      background: var(--paper);
+      font-size: 15px;
+      font-weight: 900;
+      color: var(--text);
+      cursor: pointer;
+      box-sizing: border-box;
+      min-height: 48px;
+      font-family: inherit;
+    }
+    .demo-btn:active { transform: scale(0.98); }
+    .demo-preview-link-wrap { margin: 0 0 14px; text-align: center; }
+    .demo-preview-link {
+      display: inline-block;
+      font-size: 13px;
+      font-weight: 900;
+      color: var(--text);
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+    .demo-preview-link:active { opacity: 0.85; }
   </style>
 </head>
 
@@ -135,7 +190,7 @@
     <h1 class="page-title">車のお薬手帳</h1>
 
     <div class="menu-list">
-      <a href="login.html" class="note-card sticky-blue">
+      <a href="login.html?tab=factory" class="note-card sticky-blue">
         <div class="menu-icon">🏭</div>
         <div class="menu-body">
           <div class="menu-title">指定・認証工場の方</div>
@@ -143,7 +198,7 @@
         </div>
       </a>
 
-      <a href="login.html" class="note-card sticky-pink">
+      <a href="login.html?tab=business" class="note-card sticky-pink">
         <div class="menu-icon">🏢</div>
         <div class="menu-body">
           <div class="menu-title">事業者の方はこちら</div>
@@ -151,7 +206,7 @@
         </div>
       </a>
 
-      <a href="user_login.html" class="note-card sticky-yellow">
+      <a href="login.html?tab=user" class="note-card sticky-yellow">
         <div class="menu-icon">👤</div>
         <div class="menu-body">
           <div class="menu-title">ユーザーとして使う</div>
@@ -161,6 +216,19 @@
     </div>
 
     <div class="pwa-hint">PWA対応：ホーム画面に追加できます</div>
+
+    <div class="demo-public" id="demoPublicBlock">
+      <p class="demo-public-title">デモで試してみる</p>
+      <p class="demo-public-note">登録なしで画面の流れを体験できます。サンプルの車両・履歴が表示されます。</p>
+      <p class="demo-preview-link-wrap">
+        <a href="demo_preview.html" class="demo-preview-link">保存なし・サンプル一覧を見るだけ</a>
+      </p>
+      <div class="demo-btn-row">
+        <button type="button" class="demo-btn" onclick="ringStartIndexDemo('factory')">工場デモで体験</button>
+        <button type="button" class="demo-btn" onclick="ringStartIndexDemo('dealer')">事業者デモで体験</button>
+        <button type="button" class="demo-btn" onclick="ringStartIndexDemo('user')">ユーザーデモで体験</button>
+      </div>
+    </div>
 
     <div id="ringA2hsPanel" class="ring-a2hs-panel" style="display:none;">
       <div class="ring-a2hs-panel__title">ホーム画面に追加</div>
@@ -175,17 +243,26 @@
   </div>
 
   <script>
-    document.addEventListener("DOMContentLoaded", () => {
+    document.addEventListener("DOMContentLoaded", async () => {
+      if (typeof ringBootAuth === 'function') {
+        const boot = await ringBootAuth();
+        if (boot.ok && boot.profile) {
+          location.replace(typeof ringGetHomeForProfile === 'function' ? ringGetHomeForProfile(boot.profile) : 'user_home.html');
+          return;
+        }
+      }
+
       const profile = typeof getCurrentProfile === "function" ? getCurrentProfile() : null;
 
-      // ログイン済みは各ホームへ即転送（全画面ローディングと遅延を挟まず二重体感を抑える）
-      if (profile) {
+      // ログイン済み・デモ中は各ホームへ即転送（verify 未完了の stale profile は上で除外済み）
+      if (profile && (localStorage.getItem('ring_auth_token') ||
+          (typeof isRingDemoProfile === 'function' && isRingDemoProfile(profile)))) {
         if (profile.shopType === 'factory') {
           location.replace("factory_home.html");
         } else if (profile.shopType === 'dealer') {
           location.replace("dealer_home.html");
         } else {
-          location.replace("user_home.html");
+          location.replace(typeof ringGetHomeForProfile === 'function' ? ringGetHomeForProfile(profile) : "user_home.html");
         }
         return;
       }

@@ -10,28 +10,6 @@ const GAS_URL = (typeof window !== 'undefined' && window.__RING_GAS_URL_OVERRIDE
 /** ads/ads.js から fetch する際の参照用（別スクリプトでは const が見えないため） */
 if (typeof window !== 'undefined') window.__RING_GAS_URL__ = GAS_URL;
 
-/** LINE 認可の bot_prompt。aggressive は「友だち追加済み」のとき進めず戻るでフロー中断しやすいため normal を既定とする */
-const RING_LINE_BOT_PROMPT = (typeof window !== 'undefined' && window.__RING_LINE_BOT_PROMPT__)
-    ? String(window.__RING_LINE_BOT_PROMPT__).trim()
-    : 'normal';
-
-/** GIS renderButton の幅（付箋内・max-width420 のコンテンツ幅に合わせる） */
-const RING_GSI_BUTTON_WIDTH = 364;
-
-/** Google Sign-In の OAuth クライアント ID。HTML より前に window.__RING_GOOGLE_WEB_CLIENT_ID__ で上書き可 */
-const RING_GOOGLE_WEB_CLIENT_ID = (function () {
-  if (typeof window === 'undefined') return '';
-  if (window.__RING_GOOGLE_WEB_CLIENT_ID__) return String(window.__RING_GOOGLE_WEB_CLIENT_ID__).trim();
-  return '837629231147-n7tuh402iosbtva4tc5l523qjhvdg1uc.apps.googleusercontent.com';
-})();
-
-/** LINE Login のチャネル ID（HTML より前に `window.__RING_LINE_CHANNEL_ID__` で上書き可）。シークレットはサーバ（GAS）のみ。 */
-const RING_LINE_CHANNEL_ID = (function () {
-  if (typeof window === 'undefined') return '';
-  if (window.__RING_LINE_CHANNEL_ID__) return String(window.__RING_LINE_CHANNEL_ID__).trim();
-  return '2010137438';
-})();
-
 /** PWA 用: ブラウザのインストールプロンプトを保留 */
 var ringDeferredInstallPrompt = null;
 if (typeof window !== 'undefined') {
@@ -70,311 +48,107 @@ function ringSaveUserRegConsent() {
     }));
 }
 
-/**
- * GIS が返す JWT のペイロードをデコードする（表示・送信補助用。真正な検証は GAS）。
- */
-function ringDecodeGoogleCredentialJwt(credential) {
-    try {
-        const parts = String(credential || '').split('.');
-        if (parts.length < 2) return null;
-        let b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-        while (b64.length % 4 !== 0) b64 += '=';
-        const payload = JSON.parse(atob(b64));
-        return {
-            sub: String(payload.sub || ''),
-            email: String(payload.email || ''),
-            name: String(payload.name || '')
-        };
-    } catch (e) {
-        return null;
-    }
-}
-
-/**
- * LINE OAuth コールバック URL（`user_line_callback.html` をこのオリジン・サブパスに配置すること）
- */
-function ringGetLineRedirectUri() {
-    if (typeof window === 'undefined') return '';
-    try {
-        return new URL('user_line_callback.html', window.location.href).href;
-    } catch (e) {
-        return '';
-    }
-}
-
-/**
- * 規約同意後に呼ぶ。GAS で state を発行し、LINE 認可画面へ遷移（bot_prompt=aggressive, scope=profile openid email）。
- * 外部ブラウザと LINE 内蔵ブラウザで sessionStorage が分断されるため、state はサーバ（Cache）で検証する。
- */
-async function ringStartLineLogin() {
-    var cid = typeof RING_LINE_CHANNEL_ID !== 'undefined' ? String(RING_LINE_CHANNEL_ID).trim() : '';
-    if (!cid) {
-        showToast('error', 'LINEログインの設定が不完全です');
-        return;
-    }
-    var redirectUri = ringGetLineRedirectUri();
-    if (!redirectUri) {
-        showToast('error', 'コールバックURLを決定できません');
-        return;
-    }
-    showLoading('LINEログイン準備中', 'セッションを初期化しています…');
-    var state;
-    try {
-        var prep = await sendToGAS_Safe('user_line_oauth_prepare', { redirectUri: redirectUri });
-        state = prep && prep.state ? String(prep.state).trim() : '';
-        if (!state) {
-            throw new Error('state の取得に失敗しました');
-        }
-    } catch (ePrep) {
-        hideLoading();
-        showToast('error', String(ePrep && ePrep.message ? ePrep.message : ePrep) || '通信に失敗しました');
-        return;
-    }
-    hideLoading();
-    var params = new URLSearchParams({
-        response_type: 'code',
-        client_id: cid,
-        redirect_uri: redirectUri,
-        state: state,
-        scope: 'profile openid email',
-        bot_prompt: RING_LINE_BOT_PROMPT
-    });
-    window.location.href = 'https://access.line.me/oauth2/v2.1/authorize?' + params.toString();
-}
-
-/**
- * `user_line_callback.html` で実行。認可コードを GAS に渡し、成功時は `user_home.html` へ。
- */
-async function ringHandleLineOAuthCallback() {
-    function failAndReturnToLogin_() {
-        try {
-            showToast('error', 'ログインに失敗しました');
-        } catch (eToast) { /* ignore */ }
-        location.replace('user_login.html');
-    }
-
-    var params = new URLSearchParams(window.location.search);
-    var err = params.get('error');
-    var code = params.get('code');
-    var state = params.get('state');
-    if (err) {
-        failAndReturnToLogin_();
-        return;
-    }
-    if (!code || !state) {
-        failAndReturnToLogin_();
-        return;
-    }
-    var redirectUri = ringGetLineRedirectUri();
-    if (!redirectUri) {
-        failAndReturnToLogin_();
-        return;
-    }
-    showLoading('LINEで認証中', 'サーバーと通信しています...');
-    try {
-        var payload = { code: code, redirectUri: redirectUri, state: state };
-        try {
-            var existingTok = localStorage.getItem('ring_auth_token');
-            if (existingTok) payload.authToken = existingTok;
-        } catch (eT) { /* ignore */ }
-        var consent = typeof ringReadUserRegConsent === 'function' ? ringReadUserRegConsent() : null;
-        if (consent) {
-            payload.consentAt = consent.consentAt;
-            payload.termsVersion = consent.termsVersion;
-            payload.privacyVersion = consent.privacyVersion;
-        }
-        var data = await sendToGAS_Safe('user_line_auth', payload, { timeoutMs: 45000 });
-        hideLoading();
-        if (data.profile && (data.profile.role === 'user' || data.profile.role === 'admin' || data.profile.shopType === 'user')) {
-            try {
-                sessionStorage.removeItem(RING_USER_REG_CONSENT_KEY);
-            } catch (e1) { /* ignore */ }
-            login(data.profile, data.authToken);
-            location.replace('user_home.html');
-            return;
-        }
-        failAndReturnToLogin_();
-    } catch (err) {
-        hideLoading();
-        failAndReturnToLogin_();
-    } finally {
-        try {
-            hideLoading();
-        } catch (eH) { /* ignore */ }
-    }
-}
-
-/**
- * Google Identity Services の credential コールバック（名前・メール取得後 sendToGAS_Safe）。
- */
-async function handleGoogleCredentialResponse(response) {
-    if (!response || !response.credential) return;
-
-    const decoded = ringDecodeGoogleCredentialJwt(response.credential);
-    if (typeof window !== 'undefined') {
-        window.__ringLastGoogleCredentialMeta = decoded || null;
-    }
-
-    showLoading('Googleで認証中', 'サーバーと通信しています...');
-    try {
-        const payload = { credential: response.credential };
-        if (decoded) {
-            if (decoded.email) payload.googleEmail = decoded.email;
-            if (decoded.name) payload.googleName = decoded.name;
-        }
-        const consent = ringReadUserRegConsent();
-        if (consent) {
-            payload.consentAt = consent.consentAt;
-            payload.termsVersion = consent.termsVersion;
-            payload.privacyVersion = consent.privacyVersion;
-        }
-        try {
-            const existingTok = localStorage.getItem('ring_auth_token');
-            if (existingTok) payload.authToken = existingTok;
-        } catch (eT) {}
-
-        const data = await sendToGAS_Safe('user_google_auth', payload);
-        hideLoading();
-
-        if (data.profile && (data.profile.role === 'user' || data.profile.role === 'admin' || data.profile.shopType === 'user')) {
-            try {
-                sessionStorage.removeItem(RING_USER_REG_CONSENT_KEY);
-            } catch (e1) { /* ignore */ }
-            const emailHint = decoded && decoded.email ? decoded.email : (data.profile.googleEmail || '');
-            if (emailHint) data.profile.googleEmail = emailHint;
-            login(data.profile, data.authToken);
-            var pn = '';
-            try {
-                pn = String(window.location.pathname || '');
-            } catch (eP) {
-                /* ignore */
-            }
-            if (pn.indexOf('user_mypage.html') !== -1) window.location.reload();
-            else window.location.replace('user_home.html');
-            return;
-        }
-
-        showToast('error', 'ユーザー用のアカウントではありません。');
-    } catch (err) {
-        hideLoading();
-        const msg = String(err && err.message ? err.message : err || '');
-        showToast('error', msg || '認証に失敗しました');
-        if (/規約|同意|新規登録/.test(msg)) {
-            if (typeof switchTab === 'function') {
-                try {
-                    switchTab('register');
-                    if (typeof syncRegisterConsentUI === 'function') syncRegisterConsentUI();
-                    ringBootGoogleSignIn(['googleSignInSlotLogin', 'googleSignInSlotRegister']);
-                } catch (e2) { /* ignore */ }
-            }
-        }
-    }
-}
-
-/**
- * GIS のボタンを指定した要素 ID に描画する。
- * @param {string[]} slotIds
- */
-function ringBootGoogleSignIn(slotIds) {
-    const ids = Array.isArray(slotIds) ? slotIds : ['googleSignInSlotLogin', 'googleSignInSlotRegister'];
-    const cid = typeof RING_GOOGLE_WEB_CLIENT_ID !== 'undefined' ? String(RING_GOOGLE_WEB_CLIENT_ID).trim() : '';
-    ids.forEach(function (slotId) {
-        const el = document.getElementById(slotId);
-        if (!el) return;
-        el.classList.toggle('ring-google-visible', !!cid);
-        if (!cid) el.innerHTML = '';
-    });
-    if (!cid) return;
-    if (!window.google || !google.accounts || !google.accounts.id) {
-        setTimeout(function () { ringBootGoogleSignIn(ids); }, 120);
-        return;
-    }
-    if (!window.__ringGsiInited) {
-        google.accounts.id.initialize({
-            client_id: cid,
-            callback: handleGoogleCredentialResponse,
-            ux_mode: 'popup',
-            auto_select: false
-        });
-        window.__ringGsiInited = true;
-    }
-    ids.forEach(function (slotId) {
-        const el = document.getElementById(slotId);
-        if (!el || !el.classList.contains('ring-google-visible')) return;
-        el.innerHTML = '';
-        google.accounts.id.renderButton(el, {
-            theme: 'outline',
-            size: 'large',
-            text: 'signin_with',
-            shape: 'rectangular',
-            width: RING_GSI_BUTTON_WIDTH,
-            locale: 'ja'
-        });
-    });
-}
-
-/**
- * 非表示にした GIS の renderButton を、カスタム UI から起動するときに使う。
- * @param {string} slotId goog.accounts.id.renderButton が描画した要素の id（子孫からクリック可能ノードを探す）
- * @returns {boolean} クリック処理を試したら true（ポップアップ成否まで保証しない）
- */
-function ringTriggerGoogleSignInSlot(slotId) {
-    const root = typeof slotId === 'string' ? document.getElementById(slotId) : slotId;
-    if (!root) return false;
-
-    function synthClick(node) {
-        if (!node) return false;
-        try {
-            node.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
-            node.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
-        } catch (e0) { /* ignore */ }
-        try {
-            if (typeof node.click === 'function') node.click();
-            return true;
-        } catch (e1) {
-            return false;
-        }
-    }
-
-    /** GIS の DOM 並びが変わってもなるべく外側から試す（iframe は最終手段） */
-    const selectors = ['div[role="button"]', 'div[id^="gsi"] button', '.nsm7Bb-HzV7-LgbsSe', 'button', 'iframe'];
-    let i = 0;
-    for (i = 0; i < selectors.length; i++) {
-        var el = root.querySelector(selectors[i]);
-        if (el && synthClick(el)) return true;
-    }
-    return false;
-}
-
-/**
- * GIS の iframe が遅れて載るとき向けに数回リトライする。
- * @param {function(boolean):void} [done] いずれかの試行でクリック処理に成功したら true
- */
-function ringTriggerGoogleSignInSlotWithRetries(slotId, maxAttempts, done) {
-    const max = typeof maxAttempts === 'number' ? maxAttempts : 12;
-    let n = 0;
-    function step() {
-        n++;
-        if (ringTriggerGoogleSignInSlot(slotId)) {
-            if (typeof done === 'function') done(true);
-            return;
-        }
-        if (n >= max) {
-            if (typeof done === 'function') done(false);
-            return;
-        }
-        setTimeout(step, 120);
-    }
-    setTimeout(step, 80);
-}
-
 const DB_VEHICLES = "nappy_vehicles_v1";
 const DB_LOGS = "nappy_logs_v1";
 const DB_INSPECTIONS = "inspections_v1"; 
 const DB_CURRENT_USER = "nappy_current_user";  
 const DB_LEGACY_PROFILE = "nappy_profile_v1";
+const RING_PROFILE_USER = 'ring_profile_user';
+const RING_PROFILE_SHOP = 'ring_profile_shop';
+const RING_ACTIVE_ACCOUNT = 'ring_active_account';
+const RING_AUTH_OFFLINE_GRACE_MS = 1000 * 60 * 60 * 24;
 /** GAS 失敗時の再送キュー（C-01） */
 const DB_RETRY_QUEUE = "ring_retry_queue_v1";
+
+/** RinG Auto 公式LINE 友だち追加URL */
+const RING_LINE_OFFICIAL_URL = (typeof window !== 'undefined' && window.__RING_LINE_OFFICIAL_URL__)
+    ? String(window.__RING_LINE_OFFICIAL_URL__).trim()
+    : 'https://lin.ee/pd390p5';
+const RING_LINE_BTN_IMG = 'https://scdn.line-apps.com/n/line_add_friends/btn/ja.png';
+const RING_LINE_PROMO_HIDDEN_KEY = 'ring_line_promo_hidden';
+
+function ringIsLinePromoHiddenLocally() {
+    try {
+        return localStorage.getItem(RING_LINE_PROMO_HIDDEN_KEY) === '1';
+    } catch (e) {
+        return false;
+    }
+}
+
+/** LINE連携済み（users_v1 L列）または端末で非表示指定済み */
+function ringHasLineFriendStatus() {
+    if (ringIsLinePromoHiddenLocally()) return true;
+    var profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+    if (profile && profile.lineUserId && String(profile.lineUserId).trim()) return true;
+    return false;
+}
+
+function ringShouldShowLinePromo() {
+    if (!RING_LINE_OFFICIAL_URL) return false;
+    return !ringHasLineFriendStatus();
+}
+
+function ringHideLinePromo() {
+    try {
+        localStorage.setItem(RING_LINE_PROMO_HIDDEN_KEY, '1');
+    } catch (e) { /* ignore */ }
+}
+
+function ringRemoveLinePromoElements() {
+    document.querySelectorAll('.ring-line-promo').forEach(function (el) {
+        var slot = el.parentElement;
+        el.remove();
+        if (slot && (slot.id === 'ringLineLinkSlot' || slot.classList.contains('ring-line-promo-slot'))) {
+            slot.style.display = 'none';
+        }
+    });
+}
+
+function ringHideLinePromoAndRefresh() {
+    ringHideLinePromo();
+    ringRemoveLinePromoElements();
+}
+
+function ringOnLinePromoFollowClick(e) {
+    ringHideLinePromo();
+    setTimeout(ringRemoveLinePromoElements, 80);
+}
+
+function ringGetLineOfficialButtonHtml() {
+    var url = RING_LINE_OFFICIAL_URL.replace(/"/g, '&quot;');
+    return '<a class="ring-line-official-btn" href="' + url + '" target="_blank" rel="noopener noreferrer" ' +
+        'onclick="ringOnLinePromoFollowClick(event)">' +
+        '<img src="' + RING_LINE_BTN_IMG + '" alt="友だち追加" height="36" border="0">' +
+        '</a>';
+}
+
+function ringMountLinePromo(container, opts) {
+    opts = opts || {};
+    if (!container || container.getAttribute('data-ring-line-mounted') === '1') return;
+    container.setAttribute('data-ring-line-mounted', '1');
+    if (!ringShouldShowLinePromo()) {
+        container.style.display = 'none';
+        return;
+    }
+    var dismissHtml = opts.dismiss === false ? '' :
+        '<button type="button" class="ring-line-promo-dismiss" onclick="ringHideLinePromoAndRefresh()">友だち追加済み</button>';
+    var copyHtml = opts.copy ? '<p class="ring-line-promo-copy">' + opts.copy + '</p>' : '';
+    container.innerHTML =
+        '<div class="ring-line-promo">' +
+        copyHtml +
+        ringGetLineOfficialButtonHtml() +
+        dismissHtml +
+        '</div>';
+    container.style.display = '';
+}
+
+function ringInitLinePromoSlots() {
+    document.querySelectorAll('[data-ring-line-promo], #ringLineLinkSlot').forEach(function (el) {
+        var opts = {};
+        if (el.getAttribute('data-ring-line-dismiss') === '0') opts.dismiss = false;
+        ringMountLinePromo(el, opts);
+    });
+}
 
 /**
  * localStorage JSON 破損対策（H-03）。失敗時は退避キーに生文字列を残す。
@@ -403,27 +177,219 @@ function getPendingRetryCount() {
 }
 
 /**
- * ユーザー認証管理
+ * ストロングスタイル認証（メール+パスワード / スロット保持 / verify_session）
  */
-function login(profile, authToken) {
-    if (!isRingDemoProfile(profile)) {
-      purgeRingDemoLocalData();
-    }
-    const raw = JSON.stringify(profile);
+function ringClassifyProfile(profile) {
+    var st = String(profile && profile.shopType || '');
+    if (st === 'factory' || st === 'dealer') return 'shop';
+    return 'user';
+}
+
+function ringAuthSlotKey(accountType) {
+    return accountType === 'shop' ? RING_PROFILE_SHOP : RING_PROFILE_USER;
+}
+
+function ringReadAuthSlot(accountType) {
+    var key = ringAuthSlotKey(accountType);
+    var slot = safeJsonParse(localStorage.getItem(key), null);
+    if (!slot || !slot.profile) return null;
+    return slot;
+}
+
+function ringApplyActiveSession(slot) {
+    if (!slot || !slot.profile) return;
+    var raw = JSON.stringify(slot.profile);
     localStorage.setItem(DB_CURRENT_USER, raw);
     localStorage.setItem(DB_LEGACY_PROFILE, raw);
-    if (authToken) localStorage.setItem('ring_auth_token', authToken);
+    if (slot.token) localStorage.setItem('ring_auth_token', slot.token);
+    if (typeof window !== 'undefined') window.__ringSessionVerified = true;
 }
+
+function ringSaveAuthSlot(profile, authToken, opts) {
+    opts = opts || {};
+    if (!profile) return;
+    if (!isRingDemoProfile(profile)) {
+        purgeRingDemoLocalData();
+    }
+    var kind = ringClassifyProfile(profile);
+    var accountType = kind === 'shop' ? 'shop' : 'user';
+    var now = new Date().toISOString();
+    var slot = {
+        token: authToken || '',
+        profile: profile,
+        updatedAt: now,
+        verifiedAt: opts.verifiedAt || now
+    };
+    localStorage.setItem(ringAuthSlotKey(accountType), JSON.stringify(slot));
+    localStorage.setItem(RING_ACTIVE_ACCOUNT, accountType);
+    ringApplyActiveSession(slot);
+}
+
+function ringMigrateLegacyAuth() {
+    try {
+        if (localStorage.getItem(RING_PROFILE_USER) || localStorage.getItem(RING_PROFILE_SHOP)) return;
+        var profile = safeJsonParse(localStorage.getItem(DB_CURRENT_USER), null);
+        if (!profile) profile = safeJsonParse(localStorage.getItem(DB_LEGACY_PROFILE), null);
+        var tok = localStorage.getItem('ring_auth_token');
+        if (!profile || !tok) return;
+        ringSaveAuthSlot(profile, tok, { verifiedAt: '' });
+    } catch (e) { /* ignore */ }
+}
+
+function ringClearAuthSlot(accountType) {
+    localStorage.removeItem(ringAuthSlotKey(accountType));
+    if (localStorage.getItem(RING_ACTIVE_ACCOUNT) === accountType) {
+        localStorage.removeItem(RING_ACTIVE_ACCOUNT);
+        localStorage.removeItem(DB_CURRENT_USER);
+        localStorage.removeItem(DB_LEGACY_PROFILE);
+        localStorage.removeItem('ring_auth_token');
+    }
+}
+
+function ringGetActiveAccountType() {
+    var active = localStorage.getItem(RING_ACTIVE_ACCOUNT);
+    if (active === 'user' || active === 'shop') return active;
+    var profile = safeJsonParse(localStorage.getItem(DB_CURRENT_USER), null);
+    if (!profile) return 'user';
+    return ringClassifyProfile(profile) === 'shop' ? 'shop' : 'user';
+}
+
+function ringGetHomeForProfile(profile) {
+    if (!profile) return 'login.html';
+    if (profile.shopType === 'factory') return 'factory_home.html';
+    if (profile.shopType === 'dealer') return 'dealer_home.html';
+    return 'user_home.html';
+}
+
+async function ringVerifySession(token) {
+    if (!token) return { success: false, error: 'AUTH_REQUIRED' };
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        var activeType = ringGetActiveAccountType();
+        var slot = ringReadAuthSlot(activeType);
+        if (slot && slot.verifiedAt) {
+            var age = Date.now() - new Date(slot.verifiedAt).getTime();
+            if (!isNaN(age) && age < RING_AUTH_OFFLINE_GRACE_MS) {
+                return { success: true, offline: true, profile: slot.profile };
+            }
+        }
+        return { success: false, error: 'AUTH_REQUIRED', offline: true };
+    }
+    try {
+        var json = await fetchJsonWithTimeout(GAS_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({ action: 'verify_session', authToken: token })
+        }, 15000);
+        if (json && json.success === true && json.profile) {
+            return json;
+        }
+        return { success: false, error: (json && json.error) || 'AUTH_EXPIRED' };
+    } catch (e) {
+        return { success: false, error: String(e && e.message ? e.message : e || 'NETWORK_ERROR') };
+    }
+}
+
+async function ringBootAuth() {
+    ringMigrateLegacyAuth();
+    var accountType = ringGetActiveAccountType();
+    var slot = ringReadAuthSlot(accountType);
+    if (!slot || !slot.token) {
+        return { ok: false, reason: 'no_session' };
+    }
+    var verified = await ringVerifySession(slot.token);
+    if (verified.success === true) {
+        if (verified.profile) slot.profile = verified.profile;
+        slot.verifiedAt = new Date().toISOString();
+        if (verified.authToken) slot.token = verified.authToken;
+        localStorage.setItem(ringAuthSlotKey(accountType), JSON.stringify(slot));
+        ringApplyActiveSession(slot);
+        return { ok: true, profile: slot.profile, accountType: accountType };
+    }
+    if (/AUTH_EXPIRED|AUTH_REQUIRED/.test(String(verified.error || ''))) {
+        ringClearAuthSlot(accountType);
+    }
+    return { ok: false, reason: verified.error || 'verify_failed' };
+}
+
+function ringSwitchAccount(accountType) {
+    accountType = accountType === 'shop' ? 'shop' : 'user';
+    var slot = ringReadAuthSlot(accountType);
+    if (!slot || !slot.token || !slot.profile) {
+        return { ok: false, reason: 'not_registered' };
+    }
+    localStorage.setItem(RING_ACTIVE_ACCOUNT, accountType);
+    ringApplyActiveSession(slot);
+    return { ok: true, profile: slot.profile };
+}
+
+function ringGetLoginUrlForAccountType(accountType) {
+    if (accountType !== 'shop') return 'login.html?tab=user';
+    var slot = ringReadAuthSlot('shop');
+    var st = slot && slot.profile && slot.profile.shopType;
+    if (st === 'dealer') return 'login.html?tab=business';
+    return 'login.html?tab=factory';
+}
+
+function ringSwitchAccountAndNavigate(accountType) {
+    var r = ringSwitchAccount(accountType);
+    if (r.ok) {
+        location.href = ringGetHomeForProfile(r.profile);
+        return;
+    }
+    if (typeof showToast === 'function') {
+        showToast('info', 'この種類のアカウントがありません。ログインまたは新規登録してください。');
+    }
+    setTimeout(function () {
+        location.href = ringGetLoginUrlForAccountType(accountType);
+    }, 600);
+}
+
+async function ringEnsureAuthForOcr() {
+    var tok = localStorage.getItem('ring_auth_token');
+    if (!tok) {
+        if (typeof showToast === 'function') {
+            showToast('error', 'セッションが切れました。再度ログインしてください。');
+        }
+        throw new Error('AUTH_REQUIRED');
+    }
+    if (typeof window !== 'undefined' && window.__ringSessionVerified === true) return;
+    var v = await ringVerifySession(tok);
+    if (!v || (v.success !== true && !v.offline)) {
+        throw new Error(v && v.error || 'AUTH_REQUIRED');
+    }
+    if (v.profile) {
+        var accountType = ringGetActiveAccountType();
+        var slot = ringReadAuthSlot(accountType) || { profile: v.profile, token: tok };
+        slot.profile = v.profile;
+        slot.verifiedAt = new Date().toISOString();
+        localStorage.setItem(ringAuthSlotKey(accountType), JSON.stringify(slot));
+        ringApplyActiveSession(slot);
+    }
+    if (typeof window !== 'undefined') window.__ringSessionVerified = true;
+}
+
+function login(profile, authToken) {
+    ringSaveAuthSlot(profile, authToken);
+}
+
 function getCurrentProfile() {
     const current = safeJsonParse(localStorage.getItem(DB_CURRENT_USER), null);
     if (current) return current;
     return safeJsonParse(localStorage.getItem(DB_LEGACY_PROFILE), null);
 }
+
 function logout() {
     purgeRingDemoLocalData();
+    localStorage.removeItem(RING_PROFILE_USER);
+    localStorage.removeItem(RING_PROFILE_SHOP);
+    localStorage.removeItem(RING_ACTIVE_ACCOUNT);
     localStorage.removeItem(DB_CURRENT_USER);
     localStorage.removeItem(DB_LEGACY_PROFILE);
     localStorage.removeItem('ring_auth_token');
+    if (typeof window !== 'undefined') {
+        window.__ringSessionVerified = false;
+        window.__RING_OCR_DEMO__ = false;
+    }
 }
 
 // ★ 全ページ共通のログアウト処理
@@ -776,6 +742,48 @@ function seedDemoEnvironment(role) {
 }
 
 /**
+ * トップ（index.html）から公開デモへ入る。本番 authToken は使わない。
+ * @param {'factory'|'dealer'|'user'} role
+ */
+function ringStartIndexDemo(role) {
+  if (typeof showLoading === 'function') {
+    showLoading('デモ準備中', 'サンプルデータを読み込んでいます...');
+  }
+  setTimeout(function () {
+    try {
+      localStorage.removeItem('ring_auth_token');
+      if (typeof window !== 'undefined') {
+        window.__ringSessionVerified = false;
+        window.__RING_OCR_DEMO__ = true;
+      }
+    } catch (e) { /* ignore */ }
+
+    var demoShopId = role === 'factory' ? 'SHOP-DEMO-F' : (role === 'dealer' ? 'SHOP-DEMO-D' : '');
+    var demoRole = (role === 'factory' || role === 'dealer') ? 'master' : role;
+    var dummyProfile = {
+      userId: role === 'factory' ? 'F-DEMO01' : (role === 'dealer' ? 'D-DEMO01' : 'U-DEMO01'),
+      userName: role === 'user' ? 'デモユーザー' : 'デモ太郎',
+      shopName: role === 'factory' ? 'RinG Auto 整備工場' : (role === 'dealer' ? 'T.G販売店' : ''),
+      shopType: role,
+      role: demoRole,
+      shopId: demoShopId
+    };
+    if (role === 'user') dummyProfile.loginId = 'USR-DEMO-0000';
+    if (role === 'factory') {
+      dummyProfile.factoryType = '指定工場';
+      dummyProfile.factoryNumber = '第11234号';
+    } else if (role === 'dealer') {
+      dummyProfile.factoryType = '認証';
+      dummyProfile.factoryNumber = '第55678号';
+    }
+
+    seedDemoEnvironment(role);
+    login(dummyProfile);
+    location.replace(typeof ringGetHomeForProfile === 'function' ? ringGetHomeForProfile(dummyProfile) : 'user_home.html');
+  }, 450);
+}
+
+/**
  * 車両データ管理
  */
 function loadVehicles() {
@@ -933,26 +941,6 @@ function isMaintenanceLogType(log) {
     const t = log && log.type;
     if (t === "inspection" || t === "inspection_user") return false;
     return true;
-}
-
-/**
- * マイページ等: LINE 未連携の一般ユーザー向けに連携ボタンを親要素へ追加
- */
-function ringMountLineLinkButton(container, profile) {
-    if (!container || !profile) return;
-    container.innerHTML = '';
-    var st = String(profile.shopType || '');
-    var role = String(profile.role || '');
-    if (st !== 'user' || role !== 'user') return;
-    if (profile.lineUserId) return;
-    var btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'ring-line-link-chip';
-    btn.textContent = 'LINEと連携して車検通知を受け取る 🟢';
-    btn.onclick = function () {
-        if (typeof ringStartLineLogin === 'function') ringStartLineLogin();
-    };
-    container.appendChild(btn);
 }
 
 /**
@@ -1285,10 +1273,8 @@ async function sendToGAS_Safe(actionType, data, opts) {
         payload.photoUrl = payload.partsPhoto;
     }
 
-    if (actionType !== 'user_google_auth' && actionType !== 'user_line_auth' && actionType !== 'user_line_oauth_prepare') {
-        const authToken = localStorage.getItem('ring_auth_token');
-        if (authToken) payload.authToken = authToken;
-    }
+    const authToken = localStorage.getItem('ring_auth_token');
+    if (authToken) payload.authToken = authToken;
 
     const timeoutMs = opts && opts.timeoutMs != null ? opts.timeoutMs : 20000;
     const json = await fetchJsonWithTimeout(GAS_URL, {
@@ -1297,18 +1283,26 @@ async function sendToGAS_Safe(actionType, data, opts) {
         body: JSON.stringify(payload)
     }, timeoutMs);
     if (!json || json.success !== true) {
-        if (actionType === 'ocr_vin' && json && json.ocrText) {
+        if (actionType === 'ocr_vin' && json && (json.fields || json.ocrText)) {
             return json;
         }
         throw new Error((json && json.error) || 'GAS保存に失敗しました');
     }
     return json;
     } catch (err) {
-        if (actionType !== 'system_log' && !(actionType === 'ocr_vin' && /VIN_NOT_FOUND/i.test(String(err && err.message ? err.message : '')))) {
-            ringLogSystemEvent('GAS_ERROR', {
-                error_message: String(err && err.message ? err.message : err || ''),
-                payload: { gasAction: actionType }
-            });
+        var errMsg = String(err && err.message ? err.message : err || '');
+        if (actionType !== 'system_log') {
+            if (actionType === 'ocr_vin' && /AUTH_/i.test(errMsg)) {
+                ringLogSystemEvent('AUTH_ERROR', {
+                    error_message: errMsg,
+                    payload: { gasAction: actionType }
+                });
+            } else if (!(actionType === 'ocr_vin' && /VIN_NOT_FOUND|NO_FIELDS/i.test(errMsg))) {
+                ringLogSystemEvent('GAS_ERROR', {
+                    error_message: errMsg,
+                    payload: { gasAction: actionType }
+                });
+            }
         }
         throw err;
     }
@@ -1984,7 +1978,146 @@ function handleOcrVinResultForForm(res, applyFn, ocrFieldDescriptors) {
     }
 }
 
-var RING_OCR_BATCH_MAX = 10;
+var RING_OCR_BATCH_MAX = 5;
+
+/** OCR 書類選択キュー（サムネイル表示用・Drive 保存なし） */
+var ringOcrQueueState = { files: [], objectUrls: [] };
+
+function ringOcrClearQueue() {
+    ringOcrQueueState.objectUrls.forEach(function (u) {
+        try { URL.revokeObjectURL(u); } catch (e) { /* ignore */ }
+    });
+    ringOcrQueueState.files = [];
+    ringOcrQueueState.objectUrls = [];
+}
+
+function ringClearOcrImageMemory(opts) {
+    opts = opts || {};
+    ringOcrClearQueue();
+    if (opts.previewImg) {
+        opts.previewImg.removeAttribute('src');
+        opts.previewImg.src = '';
+    }
+    if (opts.previewArea) opts.previewArea.style.display = 'none';
+    if (opts.moreBadge) {
+        opts.moreBadge.textContent = '';
+        opts.moreBadge.style.display = 'none';
+    }
+    if (opts.discardNotice) opts.discardNotice.style.display = 'none';
+    var strip = document.getElementById('ocrThumbStrip');
+    if (strip) strip.innerHTML = '';
+    var loadBtn = document.getElementById('ocrLoadBtn');
+    if (loadBtn) loadBtn.disabled = true;
+}
+
+function ringRenderOcrThumbnails(container, files) {
+    if (!container) return;
+    container.innerHTML = '';
+    ringOcrClearQueue();
+    var list = Array.from(files || []).slice(0, RING_OCR_BATCH_MAX);
+    ringOcrQueueState.files = list;
+    list.forEach(function (file, idx) {
+        var url = URL.createObjectURL(file);
+        ringOcrQueueState.objectUrls.push(url);
+        var wrap = document.createElement('div');
+        wrap.className = 'ring-ocr-thumb';
+        wrap.innerHTML = '<img src="' + url + '" alt=""><span class="ring-ocr-thumb__label">' + escapeHtml(ringShortFileName(file.name)) + '</span>' +
+            '<button type="button" class="ring-ocr-thumb__remove" data-idx="' + idx + '" aria-label="削除">×</button>';
+        container.appendChild(wrap);
+    });
+    container.style.display = list.length ? 'flex' : 'none';
+}
+
+function ringOcrEnqueueFiles(fileList, opts) {
+    opts = opts || {};
+    var incoming = Array.from(fileList || []);
+    if (!incoming.length) return;
+    var merged = ringOcrQueueState.files.concat(incoming).slice(0, RING_OCR_BATCH_MAX);
+    if (incoming.length + ringOcrQueueState.files.length > RING_OCR_BATCH_MAX && typeof showToast === 'function') {
+        showToast('info', '一度に読み取れるのは最大' + RING_OCR_BATCH_MAX + '枚です。');
+    }
+    var strip = opts.thumbStrip || document.getElementById('ocrThumbStrip');
+    ringRenderOcrThumbnails(strip, merged);
+    var loadBtn = opts.loadBtn || document.getElementById('ocrLoadBtn');
+    if (loadBtn) loadBtn.disabled = merged.length === 0;
+    if (opts.discardNotice) opts.discardNotice.style.display = merged.length ? 'block' : 'none';
+}
+
+function ringInitOcrDocPicker(opts) {
+    opts = opts || {};
+    var docInput = opts.docInputId ? document.getElementById(opts.docInputId) : null;
+    var loadBtn = opts.loadBtnId ? document.getElementById(opts.loadBtnId) : document.getElementById('ocrLoadBtn');
+    var strip = opts.stripId ? document.getElementById(opts.stripId) : document.getElementById('ocrThumbStrip');
+    if (!docInput) return;
+    docInput.addEventListener('change', function (e) {
+        var files = e.target.files;
+        if (!files || !files.length) return;
+        ringOcrEnqueueFiles(files, {
+            thumbStrip: strip,
+            loadBtn: loadBtn,
+            discardNotice: opts.discardNotice ? document.getElementById(opts.discardNotice) : null
+        });
+        e.target.value = '';
+    });
+    if (strip) {
+        strip.addEventListener('click', function (e) {
+            var btn = e.target.closest('.ring-ocr-thumb__remove');
+            if (!btn) return;
+            var idx = parseInt(btn.getAttribute('data-idx'), 10);
+            if (isNaN(idx)) return;
+            var next = ringOcrQueueState.files.filter(function (_, i) { return i !== idx; });
+            ringRenderOcrThumbnails(strip, next);
+            if (loadBtn) loadBtn.disabled = next.length === 0;
+        });
+    }
+    if (loadBtn) {
+        loadBtn.addEventListener('click', async function () {
+            if (!ringOcrQueueState.files.length) return;
+            if (typeof ringHandleBatchDocumentScan !== 'function') return;
+            await ringHandleBatchDocumentScan(Object.assign({}, opts.scanOpts || {}, {
+                files: ringOcrQueueState.files.slice(),
+                clearMemoryOpts: {
+                    previewImg: opts.previewImg ? document.getElementById(opts.previewImg) : null,
+                    previewArea: opts.previewArea ? document.getElementById(opts.previewArea) : null,
+                    moreBadge: opts.moreBadge ? document.getElementById(opts.moreBadge) : null,
+                    discardNotice: opts.discardNotice ? document.getElementById(opts.discardNotice) : null
+                }
+            }));
+        });
+    }
+}
+
+function gasFieldsToParsed_(fields, fileName, gasVin) {
+    var src = fileName || 'image';
+    var out = { work: [], parts: [] };
+    if (gasVin) out.vin = { value: String(gasVin).toUpperCase(), source: src };
+    if (!fields || typeof fields !== 'object') return out;
+    if (fields.mileage != null && !isNaN(fields.mileage)) {
+        out.mileage = { value: Number(fields.mileage), source: src };
+    }
+    if (fields.shaken) out.shaken = { value: String(fields.shaken), source: src };
+    if (fields.model) out.model = { value: String(fields.model), source: src };
+    if (fields.engine) out.engine = { value: String(fields.engine), source: src };
+    if (fields.class) out.class = { value: String(fields.class), source: src };
+    if (fields.typeDesignation) out.typeDesignation = { value: String(fields.typeDesignation), source: src };
+    (fields.work || []).forEach(function (w) {
+        var v = String(w || '').trim();
+        if (v && !isPiiOrBillingMetaLine_(v)) out.work.push({ value: v, source: src });
+    });
+    (fields.parts || []).forEach(function (p) {
+        var v = normalizePartName_(String(p || '').trim());
+        if (v && !isPiiOrBillingMetaLine_(v)) out.parts.push({ value: v, source: src });
+    });
+    return out;
+}
+
+function ringShowAuthErrorForOcr_(alreadyShown) {
+    if (alreadyShown) return true;
+    if (typeof showToast === 'function') {
+        showToast('error', 'セッションが切れました。再度ログインしてください。');
+    }
+    return true;
+}
 
 function ringShortFileName(name) {
     var s = String(name || 'image');
@@ -2214,26 +2347,44 @@ async function analyzeDocumentSingle(file, fileIndex) {
     }
     if (!b64) return { fileName: fileName, ok: false, partial: false, parsed: { work: [], parts: [] } };
     try {
+        await ringEnsureAuthForOcr();
         var json = await sendToGAS_Safe('ocr_vin', { imageBase64: b64 });
-        var ocrText = json && json.ocrText ? String(json.ocrText) : '';
+        b64 = null;
         var gasVin = json && json.vin ? String(json.vin).toUpperCase() : '';
-        var parsed = parseInvoiceLabelsFromOcrText(ocrText, fileName, gasVin);
-        ocrText = '';
+        var parsed;
+        if (json && json.fields) {
+            parsed = gasFieldsToParsed_(json.fields, fileName, gasVin);
+        } else if (json && json.ocrText) {
+            parsed = parseInvoiceLabelsFromOcrText(json.ocrText, fileName, gasVin);
+        } else {
+            parsed = gasFieldsToParsed_({}, fileName, gasVin);
+        }
         var hasData = !!(parsed.vin || parsed.mileage || parsed.shaken || parsed.model || parsed.engine ||
             parsed.class || parsed.typeDesignation || parsed.work.length || parsed.parts.length);
-        if (hasData) return { fileName: fileName, ok: true, partial: !gasVin && hasData, parsed: parsed };
+        if (hasData || (json && json.success === true)) {
+            return { fileName: fileName, ok: true, partial: !!(json && json.partial), parsed: parsed };
+        }
         ringLogSystemEvent('OCR_FAIL', {
-            error_message: (json && json.error) || 'VIN_NOT_FOUND',
+            error_message: (json && json.error) || 'NO_FIELDS',
             payload: { stage: 'batch_page', fileName: fileName }
         });
         return { fileName: fileName, ok: false, partial: false, parsed: parsed };
     } catch (e) {
         var msg = String(e && e.message ? e.message : e || '');
-        ringLogSystemEvent('OCR_FAIL', {
-            error_message: msg,
-            payload: { stage: 'batch_request', fileName: fileName }
-        });
-        return { fileName: fileName, ok: false, partial: false, parsed: { work: [], parts: [] } };
+        if (/AUTH_/i.test(msg)) {
+            ringLogSystemEvent('AUTH_ERROR', {
+                error_message: msg,
+                payload: { stage: 'batch_request', fileName: fileName }
+            });
+        } else {
+            ringLogSystemEvent('OCR_FAIL', {
+                error_message: msg,
+                payload: { stage: 'batch_request', fileName: fileName }
+            });
+        }
+        return { fileName: fileName, ok: false, partial: false, parsed: { work: [], parts: [] }, authError: /AUTH_/i.test(msg) };
+    } finally {
+        b64 = null;
     }
 }
 
@@ -2297,21 +2448,32 @@ function showOcrBatchProgressOverlay(opts) {
 }
 
 async function runBatchOcrPipeline(files, onProgress) {
-    var results = [];
     var failCount = 0;
-    var items = files.map(function (f, i) {
-        return { name: f.name, status: i === 0 ? 'processing' : 'waiting' };
+    var authToastShown = false;
+    var items = files.map(function (f) {
+        return { name: f.name, status: 'processing' };
     });
-    for (var i = 0; i < files.length; i++) {
-        if (wasOcrAnalyzingCancelled()) break;
-        items[i].status = 'processing';
-        if (onProgress) onProgress({ current: i, total: files.length, failCount: failCount, items: items.slice(), fileName: files[i].name });
-        var pr = await analyzeDocumentSingle(files[i], i);
-        if (!pr.ok) failCount++;
-        results.push(pr);
-        items[i].status = pr.ok ? 'done' : 'fail';
-        if (onProgress) onProgress({ current: i + 1, total: files.length, failCount: failCount, items: items.slice(), fileName: files[i].name });
-    }
+    if (onProgress) onProgress({ current: 0, total: files.length, failCount: 0, items: items.slice() });
+    var settled = 0;
+    var promises = files.map(function (file, i) {
+        return analyzeDocumentSingle(file, i).then(function (pr) {
+            settled++;
+            if (!pr.ok) failCount++;
+            if (pr.authError) authToastShown = ringShowAuthErrorForOcr_(authToastShown);
+            items[i].status = pr.ok ? 'done' : 'fail';
+            if (onProgress) {
+                onProgress({
+                    current: settled,
+                    total: files.length,
+                    failCount: failCount,
+                    items: items.slice(),
+                    fileName: file.name
+                });
+            }
+            return pr;
+        });
+    });
+    var results = await Promise.all(promises);
     return { pageResults: results, failCount: failCount };
 }
 
@@ -2457,6 +2619,13 @@ async function ringHandleBatchDocumentScan(opts) {
         if (typeof showToast === 'function') showToast('warning', 'オフラインのため読み取れません。手入力で続行してください。');
         return;
     }
+    if (!(typeof window !== 'undefined' && window.__RING_OCR_DEMO__ === true)) {
+        try {
+            await ringEnsureAuthForOcr();
+        } catch (e) {
+            return;
+        }
+    }
     var saveBtn = opts.saveBtnId ? document.getElementById(opts.saveBtnId) : null;
     if (saveBtn) saveBtn.disabled = true;
     var previewUrl = '';
@@ -2496,6 +2665,7 @@ async function ringHandleBatchDocumentScan(opts) {
         mode: opts.mode || 'factory',
         onApply: function (payload) {
             ringApplyOcrPayloadNonEmpty_(payload, opts.onApply);
+            ringClearOcrImageMemory(opts.clearMemoryOpts || {});
             if (typeof showToast === 'function' && merged.stats.successCount > 0) {
                 showToast('success', '読み取り内容を入力欄に反映しました。内容を確認してから登録してください。');
             }
@@ -2534,13 +2704,22 @@ async function analyzeDocument(files) {
     }
     if (!b64) return null;
     try {
+        await ringEnsureAuthForOcr();
         var json = await sendToGAS_Safe('ocr_vin', { imageBase64: b64 });
-        if (json && json.vin) {
-            var flat = { vin: String(json.vin).toUpperCase() };
-            if (json.ocrText) {
-                var parsed = parseInvoiceLabelsFromOcrText(json.ocrText, files[0].name || 'image', json.vin);
+        b64 = null;
+        if (json && (json.vin || json.fields)) {
+            var flat = {};
+            if (json.vin) flat.vin = String(json.vin).toUpperCase();
+            if (json.fields) {
+                var parsed = gasFieldsToParsed_(json.fields, files[0].name || 'image', json.vin || '');
                 var merged = mergeOCRResults([{ fileName: files[0].name, ok: true, parsed: parsed }]);
-                Object.assign(flat, ringMergedToFlatApply_(merged));
+                flat = ringMergedToFlatApply_(merged);
+                if (flat.vin) flat.vin = String(flat.vin).toUpperCase();
+            } else if (json.ocrText) {
+                var parsedLegacy = parseInvoiceLabelsFromOcrText(json.ocrText, files[0].name || 'image', json.vin);
+                var mergedLegacy = mergeOCRResults([{ fileName: files[0].name, ok: true, parsed: parsedLegacy }]);
+                flat = ringMergedToFlatApply_(mergedLegacy);
+                if (flat.vin) flat.vin = String(flat.vin).toUpperCase();
             }
             return flat;
         }
@@ -2553,22 +2732,31 @@ async function analyzeDocument(files) {
             }
         }
         ringLogSystemEvent('OCR_FAIL', {
-            error_message: 'VIN_NOT_FOUND',
+            error_message: (json && json.error) || 'NO_FIELDS',
             payload: { stage: 'ocr_vin_response' }
         });
         return null;
     } catch (e) {
         var msg = String(e && e.message ? e.message : e || '');
-        ringLogSystemEvent('OCR_FAIL', {
-            error_message: msg,
-            payload: { stage: 'ocr_vin_request' }
-        });
-        if (/OCR_NOT_CONFIGURED|VIN_NOT_FOUND|VISION_API_ERROR|IMAGE_REQUIRED|AUTH_/.test(msg)) {
-            /* 読取失敗系：メッセージは handleOcrVinResultForForm 側 */
-        } else if (typeof showToast === 'function') {
-            showToast('error', '読み取り処理でエラーが発生しました。再撮影か手入力をお試しください。');
+        if (/AUTH_/i.test(msg)) {
+            ringLogSystemEvent('AUTH_ERROR', {
+                error_message: msg,
+                payload: { stage: 'ocr_vin_request' }
+            });
+        } else {
+            ringLogSystemEvent('OCR_FAIL', {
+                error_message: msg,
+                payload: { stage: 'ocr_vin_request' }
+            });
+            if (/OCR_NOT_CONFIGURED|VIN_NOT_FOUND|NO_FIELDS|VISION_API_ERROR|IMAGE_REQUIRED/.test(msg)) {
+                /* 読取失敗系 */
+            } else if (typeof showToast === 'function') {
+                showToast('error', '読み取り処理でエラーが発生しました。再撮影か手入力をお試しください。');
+            }
         }
         return null;
+    } finally {
+        b64 = null;
     }
 }
 
@@ -2582,7 +2770,7 @@ function createGlobalUI() {
     
     const isUserMode = path.includes('user_') || !profile; 
 
-    if (path.includes('login.html') || path.includes('user_login.html') || path.includes('user_line_callback.html') || path.includes('register.html') || path.includes('biz_register.html') || path.endsWith('/') || path.endsWith('index.html')) {
+    if (path.includes('login.html') || path.includes('user_login.html') || path.includes('user_line_callback.html') || path.includes('register.html') || path.includes('biz_register.html') || path.includes('forgot_password.html') || path.includes('reset_password.html') || path.endsWith('/') || path.endsWith('index.html')) {
         return;
     }
 
@@ -2600,12 +2788,21 @@ function createGlobalUI() {
     }
     const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(appBaseUrl)}`;
 
+    const accountSwitchHtml = `
+        <div class="settings-group">
+          <div class="settings-group-title">アカウント切替</div>
+          <ul class="settings-list">
+            <li><a href="#" onclick="ringSwitchAccountAndNavigate('user'); return false;">👤 一般ユーザー</a></li>
+            <li><a href="#" onclick="ringSwitchAccountAndNavigate('shop'); return false;">🏭 工場 / 販売店</a></li>
+          </ul>
+        </div>`;
+
     let menuBodyHtml = "";
     let tabsHtml = "";
     let panelsHtml = "";
 
     if (isUserMode) {
-        menuBodyHtml = `
+        menuBodyHtml = `<div class="ring-line-promo-slot ring-line-promo-slot--top" data-ring-line-promo></div>` + accountSwitchHtml + `
         <div class="settings-group">
           <div class="settings-group-title">ユーザーメニュー</div>
           <ul class="settings-list">
@@ -2656,7 +2853,7 @@ function createGlobalUI() {
         const pwMenuItem = canManageStaff
             ? '<li><a href="change_password.html">🔑 パスワード変更</a></li>' : '';
         const bizMenuLabel = profile && profile.shopType === 'dealer' ? '事業者専用メニュー' : '店舗・工場専用メニュー';
-        menuBodyHtml = `
+        menuBodyHtml = accountSwitchHtml + `
         <div class="settings-group">
           <div class="settings-group-title">${bizMenuLabel}</div>
           <ul class="settings-list">
@@ -2682,6 +2879,7 @@ function createGlobalUI() {
             <li><a href="tokushoho.html">📜 特定商取引法に基づく表示</a></li>
           </ul>
         </div>
+        <div class="ring-line-promo-slot" data-ring-line-promo></div>
         <div class="settings-group">
           <ul class="settings-list">
             <li><a href="#" onclick="logoutApp(); return false;" class="danger-link" style="color: #ef4444;">🚪 ログアウト</a></li>
@@ -2750,8 +2948,11 @@ function createGlobalUI() {
         });
     }
     if (qrClose) qrClose.addEventListener('click', () => { qrPanel.classList.remove('open'); });
+
+    ringInitLinePromoSlots();
 }
 window.addEventListener('DOMContentLoaded', createGlobalUI);
+window.addEventListener('DOMContentLoaded', ringInitLinePromoSlots);
 
 // 戻るリンク文言を全ページで統一
 window.addEventListener('DOMContentLoaded', () => {
