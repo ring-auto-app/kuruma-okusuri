@@ -696,8 +696,11 @@
         switchMainTab('register');
       }
 
-      if (typeof ringBootAuth === 'function') {
-        var boot = await ringBootAuth();
+      var bootAuthFn = typeof ringBootAuthForLoginPage === 'function'
+        ? ringBootAuthForLoginPage
+        : ringBootAuth;
+      if (typeof bootAuthFn === 'function') {
+        var boot = await bootAuthFn(persona);
         if (boot.ok && boot.profile) {
           location.replace(ringGetHomeForProfile(boot.profile));
         }

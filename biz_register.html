@@ -295,6 +295,10 @@
           const savedEmail = loginEmail;
           const loginTab = shopType === 'factory' ? 'factory' : 'business';
 
+          if (typeof ringClearUserAuthForShopLogin === 'function') {
+            ringClearUserAuthForShopLogin();
+          }
+
           hideLoading();
 
           document.body.innerHTML = `

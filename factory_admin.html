@@ -129,6 +129,14 @@
         return;
       }
 
+      const authToken = localStorage.getItem('ring_auth_token');
+      if (!authToken) {
+        const loginTab = currentProfile.shopType === 'dealer' ? 'business' : 'factory';
+        alert("ログインセッションが切れています。再度ログインしてください。");
+        location.replace('login.html?tab=' + loginTab);
+        return;
+      }
+
       // 事業者 / 工場でラベル切り替え
       if (currentProfile.shopType === 'dealer') {
         document.querySelector('h1.title').textContent = "スタッフ管理";
@@ -151,6 +159,10 @@
      * スタッフ一覧の読み込み処理
      */
     async function loadStaffList() {
+      if (!localStorage.getItem('ring_auth_token')) {
+        renderLocalStaff();
+        return;
+      }
       showLoading("データ取得中", "スタッフ一覧を読み込んでいます...");
       try {
         const controller = new AbortController();

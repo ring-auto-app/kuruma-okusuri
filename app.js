@@ -311,6 +311,59 @@ async function ringBootAuth() {
     return { ok: false, reason: verified.error || 'verify_failed' };
 }
 
+/**
+ * login.html 用: 工場/事業者 persona では user セッションで自動遷移しない
+ * @param {'user'|'factory'|'dealer'|null} persona
+ */
+async function ringBootAuthForLoginPage(persona) {
+    if (persona === 'factory' || persona === 'dealer') {
+        var shopSlot = ringReadAuthSlot('shop');
+        if (!shopSlot || !shopSlot.token) {
+            return { ok: false, reason: 'no_shop_session' };
+        }
+        var shopVerified = await ringVerifySession(shopSlot.token);
+        if (shopVerified.success !== true) {
+            if (/AUTH_EXPIRED|AUTH_REQUIRED/.test(String(shopVerified.error || ''))) {
+                ringClearAuthSlot('shop');
+            }
+            return { ok: false, reason: shopVerified.error || 'verify_failed' };
+        }
+        if (shopVerified.profile) shopSlot.profile = shopVerified.profile;
+        shopSlot.verifiedAt = new Date().toISOString();
+        if (shopVerified.authToken) shopSlot.token = shopVerified.authToken;
+        localStorage.setItem(ringAuthSlotKey('shop'), JSON.stringify(shopSlot));
+        localStorage.setItem(RING_ACTIVE_ACCOUNT, 'shop');
+        ringApplyActiveSession(shopSlot);
+        var st = String(shopSlot.profile && shopSlot.profile.shopType || '');
+        if (persona === 'factory' && st !== 'factory') {
+            return { ok: false, reason: 'persona_mismatch' };
+        }
+        if (persona === 'dealer' && st !== 'dealer') {
+            return { ok: false, reason: 'persona_mismatch' };
+        }
+        return { ok: true, profile: shopSlot.profile, accountType: 'shop' };
+    }
+    return ringBootAuth();
+}
+
+/** 工場/事業者登録完了後: 一般ユーザーセッションだけ消してログイン画面を表示可能にする */
+function ringClearUserAuthForShopLogin() {
+    ringClearAuthSlot('user');
+    try {
+        var p = safeJsonParse(localStorage.getItem(DB_CURRENT_USER), null);
+        if (!p) p = safeJsonParse(localStorage.getItem(DB_LEGACY_PROFILE), null);
+        if (p && ringClassifyProfile(p) === 'user') {
+            localStorage.removeItem(DB_CURRENT_USER);
+            localStorage.removeItem(DB_LEGACY_PROFILE);
+            localStorage.removeItem('ring_auth_token');
+            if (localStorage.getItem(RING_ACTIVE_ACCOUNT) === 'user') {
+                localStorage.removeItem(RING_ACTIVE_ACCOUNT);
+            }
+            if (typeof window !== 'undefined') window.__ringSessionVerified = false;
+        }
+    } catch (e) { /* ignore */ }
+}
+
 function ringSwitchAccount(accountType) {
     accountType = accountType === 'shop' ? 'shop' : 'user';
     var slot = ringReadAuthSlot(accountType);
