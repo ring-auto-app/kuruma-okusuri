@@ -270,6 +270,54 @@ function ringGetActiveAccountType() {
     return ringGetActiveMode();
 }
 
+/**
+ * アクティブモードのスロット token を ring_auth_token へミラーして返す。
+ * 三重アカウント導入後、OCR/GAS 送信はこの関数経由で token を解決する。
+ * @returns {string}
+ */
+function ringResolveActiveAuthToken() {
+    ringMigrateLegacyAuth();
+    var mode = ringGetActiveMode();
+    var slot = ringReadAuthSlot(mode);
+    var cached = localStorage.getItem('ring_auth_token') || '';
+    if (slot && slot.token) {
+        if (slot.token !== cached) {
+            localStorage.setItem('ring_auth_token', slot.token);
+        }
+        return slot.token;
+    }
+    if (cached) return cached;
+    var modes = ['user', 'shop', 'business'];
+    var i;
+    for (i = 0; i < modes.length; i++) {
+        var s = ringReadAuthSlot(modes[i]);
+        if (s && s.token && s.profile) {
+            ringApplyActiveSession(s, modes[i]);
+            return s.token;
+        }
+    }
+    return '';
+}
+
+/**
+ * OCR 入力画面用: モード別スロット → ring_auth_token 同期（verify は OCR 実行時）
+ * @param {'user'|'shop'|'business'=} expectedMode
+ */
+function ringBootAuthForOcrPage(expectedMode) {
+    ringMigrateLegacyAuth();
+    if (expectedMode) {
+        expectedMode = ringNormalizeMode(expectedMode);
+        var slot = ringReadAuthSlot(expectedMode);
+        if (slot && slot.token && slot.profile) {
+            ringSetCurrentMode(expectedMode);
+            ringApplyActiveSession(slot, expectedMode);
+            if (typeof window !== 'undefined') window.__ringSessionVerified = false;
+            return;
+        }
+    }
+    ringResolveActiveAuthToken();
+}
+
 function ringApplyActiveSession(slot, mode) {
     if (!slot || !slot.profile) return;
     if (mode) ringSetCurrentMode(mode);
@@ -288,8 +336,13 @@ function ringSaveAuthSlot(profile, authToken, opts) {
     }
     var mode = ringClassifyProfile(profile);
     var now = new Date().toISOString();
+    var existing = ringReadAuthSlot(mode);
+    var token = authToken;
+    if (token == null || String(token).trim() === '') {
+        token = (existing && existing.token) || localStorage.getItem('ring_auth_token') || '';
+    }
     var slot = {
-        token: authToken || '',
+        token: token || '',
         profile: profile,
         updatedAt: now,
         verifiedAt: opts.verifiedAt || now
@@ -545,7 +598,7 @@ function ringSwitchToAdminDashboard() {
 }
 
 async function ringEnsureAuthForOcr() {
-    var tok = localStorage.getItem('ring_auth_token');
+    var tok = ringResolveActiveAuthToken();
     if (!tok) {
         if (typeof showToast === 'function') {
             showToast('error', 'セッションが切れました。再度ログインしてください。');
@@ -1126,7 +1179,9 @@ function mergeVehiclesLocalAndServer(localList, serverList) {
  * 車両一覧画面用: get_vehicles でサーバとローカルをマージして保存
  */
 async function syncVehiclesFromServer() {
-    const token = localStorage.getItem("ring_auth_token");
+    const token = typeof ringResolveActiveAuthToken === 'function'
+        ? ringResolveActiveAuthToken()
+        : localStorage.getItem("ring_auth_token");
     if (!token) return loadVehicles();
     try {
         const json = await sendToGAS_Safe("get_vehicles", {});
@@ -1244,7 +1299,7 @@ function ringBuildSystemLogPayload(logAction, opts) {
         payload: opts.payload || {}
     };
     try {
-        var tok = localStorage.getItem('ring_auth_token');
+        var tok = ringResolveActiveAuthToken();
         if (tok) body.authToken = tok;
     } catch (eT) { /* ignore */ }
     return body;
@@ -1480,7 +1535,7 @@ async function sendToGAS_Safe(actionType, data, opts) {
         payload.photoUrl = payload.partsPhoto;
     }
 
-    const authToken = localStorage.getItem('ring_auth_token');
+    const authToken = ringResolveActiveAuthToken();
     if (authToken) payload.authToken = authToken;
 
     const timeoutMs = opts && opts.timeoutMs != null ? opts.timeoutMs : 20000;

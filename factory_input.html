@@ -216,6 +216,7 @@
     }
 
     window.addEventListener('DOMContentLoaded', () => {
+      if (typeof ringBootAuthForOcrPage === 'function') ringBootAuthForOcrPage('shop');
       currentProfile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
       if (!currentProfile) return location.replace("login.html?tab=factory");
 

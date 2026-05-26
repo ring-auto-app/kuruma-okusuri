@@ -282,6 +282,9 @@
                                profile.role === 'inspector' || profile.role === 'viewer'));
 
     window.addEventListener('DOMContentLoaded', () => {
+      if (typeof ringBootAuthForOcrPage === 'function') {
+        ringBootAuthForOcrPage(isBiz ? (role === 'dealer' ? 'business' : 'shop') : 'user');
+      }
       if (isBiz) {
         document.getElementById('pageTitle').textContent    = '🚙 車両の登録';
         document.getElementById('pageSubtitle').textContent = '入庫車両や在庫車の情報を登録します。';

@@ -188,6 +188,7 @@
   </div> 
 
   <script>
+    if (typeof ringBootAuthForOcrPage === 'function') ringBootAuthForOcrPage('business');
     // currentProfile をグローバルで取得（保存時にも参照できるよう宣言）
     const currentProfile = (typeof getCurrentProfile === 'function')
       ? getCurrentProfile()

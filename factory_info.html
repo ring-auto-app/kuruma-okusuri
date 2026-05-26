@@ -207,7 +207,7 @@
           showToast('success', '正常に登録されました');
           currentProfile.shopName = shopName;
           currentProfile.representativeName = representativeName;
-          login(currentProfile); 
+          login(currentProfile, localStorage.getItem('ring_auth_token') || '');
         } else {
           showToast('error', '保存に失敗しました: ' + data.error);
         }
