@@ -2906,7 +2906,7 @@ function createGlobalUI() {
         const pwMenuItem = canManageStaff
             ? '<li><a href="change_password.html">🔑 パスワード変更</a></li>' : '';
         const bizMenuLabel = profile && profile.shopType === 'dealer' ? '事業者専用メニュー' : '店舗・工場専用メニュー';
-        menuBodyHtml = accountSwitchHtml + `
+        menuBodyHtml = `<div class="ring-line-promo-slot ring-line-promo-slot--top" data-ring-line-promo></div>` + accountSwitchHtml + `
         <div class="settings-group">
           <div class="settings-group-title">${bizMenuLabel}</div>
           <ul class="settings-list">
@@ -2932,7 +2932,6 @@ function createGlobalUI() {
             <li><a href="tokushoho.html">📜 特定商取引法に基づく表示</a></li>
           </ul>
         </div>
-        <div class="ring-line-promo-slot" data-ring-line-promo></div>
         <div class="settings-group">
           <ul class="settings-list">
             <li><a href="#" onclick="logoutApp(); return false;" class="danger-link" style="color: #ef4444;">🚪 ログアウト</a></li>
