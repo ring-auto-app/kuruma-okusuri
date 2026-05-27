@@ -115,36 +115,24 @@
   </div>
 
   <script>
-    document.addEventListener("DOMContentLoaded", async () => {
-      setTimeout(async () => {
-        document.body.classList.add("fade-out");
-        setTimeout(async () => {
-          if (typeof ringBootAuth === 'function') {
-            const boot = await ringBootAuth();
-            if (boot.ok && boot.profile) {
-              sessionStorage.setItem('splashShown', '1');
-              var homeUrl = typeof ringGetHomeForMode === 'function'
-                ? ringGetHomeForMode(boot.mode || ringGetActiveMode())
-                : (typeof ringGetHomeForProfile === 'function' ? ringGetHomeForProfile(boot.profile) : 'user_home.html');
-              location.href = homeUrl;
-              return;
-            }
-          }
-          const profile = typeof getCurrentProfile === "function" ? getCurrentProfile() : null;
-          if (!profile || !localStorage.getItem('ring_auth_token')) {
-            sessionStorage.setItem('splashShown', '1');
-            location.href = "index.html";
+    document.addEventListener("DOMContentLoaded", function () {
+      var skipAnim = sessionStorage.getItem('splashShown') === '1';
+      var mainDelay = skipAnim ? 0 : 2500;
+      var fadeDelay = skipAnim ? 0 : 500;
+      setTimeout(function () {
+        if (!skipAnim) document.body.classList.add("fade-out");
+        setTimeout(function () {
+          sessionStorage.setItem('splashShown', '1');
+          var homeUrl = typeof ringTryOptimisticEntryRedirect_ === 'function'
+            ? ringTryOptimisticEntryRedirect_()
+            : null;
+          if (homeUrl) {
+            location.href = homeUrl;
             return;
           }
-          if (profile.shopType === "factory") {
-            location.href = "factory_home.html";
-          } else if (profile.shopType === "dealer") {
-            location.href = "dealer_home.html";
-          } else {
-            location.href = "user_home.html";
-          }
-        }, 500);
-      }, 2500);
+          location.href = "index.html";
+        }, fadeDelay);
+      }, mainDelay);
     });
   </script>
 </body>

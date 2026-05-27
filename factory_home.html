@@ -109,9 +109,9 @@
   </div>
 
   <script>
-    window.addEventListener('DOMContentLoaded', async () => {
+    window.addEventListener('DOMContentLoaded', function () {
       if (typeof ringBootAuthForMode === 'function') {
-        var boot = await ringBootAuthForMode('shop');
+        var boot = ringBootAuthForMode('shop');
         if (!boot.ok) {
           location.replace(boot.redirect || 'login.html?tab=shop');
           return;
@@ -132,13 +132,26 @@
         location.replace('login.html?tab=shop');
         return;
       }
-      const pend = typeof getPendingRetryCount === 'function' ? getPendingRetryCount() : 0;
-      const pbar = document.getElementById('ringPendingSyncBar');
-      if (pbar && pend > 0) {
-        pbar.style.display = 'block';
-        pbar.textContent = '未送信のデータが ' + pend + ' 件あります。オンライン復帰時に自動送信します。';
+
+      if (typeof ringDeferAfterPaint_ === 'function') {
+        ringDeferAfterPaint_(function () {
+          const pend = typeof getPendingRetryCount === 'function' ? getPendingRetryCount() : 0;
+          const pbar = document.getElementById('ringPendingSyncBar');
+          if (pbar && pend > 0) {
+            pbar.style.display = 'block';
+            pbar.textContent = '未送信のデータが ' + pend + ' 件あります。オンライン復帰時に自動送信します。';
+          }
+          if (typeof ringAdsInit === 'function') ringAdsInit('factory_home');
+        });
+      } else {
+        const pend = typeof getPendingRetryCount === 'function' ? getPendingRetryCount() : 0;
+        const pbar = document.getElementById('ringPendingSyncBar');
+        if (pbar && pend > 0) {
+          pbar.style.display = 'block';
+          pbar.textContent = '未送信のデータが ' + pend + ' 件あります。オンライン復帰時に自動送信します。';
+        }
+        if (typeof ringAdsInit === 'function') ringAdsInit('factory_home');
       }
-      if (typeof ringAdsInit === 'function') ringAdsInit('factory_home');
     });
   </script>
 </body>

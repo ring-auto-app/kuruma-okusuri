@@ -125,13 +125,10 @@
   </div>
 
   <script>
-    window.addEventListener('DOMContentLoaded', async () => {
-      showLoading("認証中", "ログイン情報を確認しています...");
-
+    window.addEventListener('DOMContentLoaded', function () {
       if (typeof ringBootAuthForMode === 'function') {
-        var boot = await ringBootAuthForMode('business');
+        var boot = ringBootAuthForMode('business');
         if (!boot.ok) {
-          hideLoading();
           location.replace(boot.redirect || 'login.html?tab=business');
           return;
         }
@@ -140,36 +137,46 @@
       const profile = typeof getCurrentProfile === "function" ? getCurrentProfile() : null;
 
       if (!profile || profile.shopType !== 'dealer') {
-        hideLoading();
         location.replace('login.html?tab=business');
         return;
       }
 
-        document.getElementById("shopName").innerText = "ログイン中: " + profile.shopName + " (担当: " + (profile.displayName || profile.staffId) + ")";
-        document.getElementById("facCodeDisplay").innerText = "事業者ID: " + profile.shopId;
+      document.getElementById("shopName").innerText = "ログイン中: " + profile.shopName + " (担当: " + (profile.displayName || profile.staffId) + ")";
+      document.getElementById("facCodeDisplay").innerText = "事業者ID: " + profile.shopId;
 
+      if (profile.role === 'viewer') {
+        const btnInput = document.getElementById('btnInput');
+        const badgeViewer = document.getElementById('badgeViewer');
+
+        btnInput.classList.add('disabled');
+        btnInput.href = "javascript:void(0);";
+        badgeViewer.style.display = "inline-block";
+
+        btnInput.onclick = function() {
+          alert("【閲覧専用】入力機能は制限されています。");
+          return false;
+        };
+      }
+
+      if (typeof ringDeferAfterPaint_ === 'function') {
+        ringDeferAfterPaint_(function () {
+          const pend = typeof getPendingRetryCount === 'function' ? getPendingRetryCount() : 0;
+          const pbar = document.getElementById('ringPendingSyncBar');
+          if (pbar && pend > 0) {
+            pbar.style.display = 'block';
+            pbar.textContent = '未送信のデータが ' + pend + ' 件あります。オンライン復帰時に自動送信します。';
+          }
+          if (typeof ringAdsInit === 'function') ringAdsInit('dealer_home');
+        });
+      } else {
         const pend = typeof getPendingRetryCount === 'function' ? getPendingRetryCount() : 0;
         const pbar = document.getElementById('ringPendingSyncBar');
         if (pbar && pend > 0) {
           pbar.style.display = 'block';
           pbar.textContent = '未送信のデータが ' + pend + ' 件あります。オンライン復帰時に自動送信します。';
         }
-
-        if (profile.role === 'viewer') {
-          const btnInput = document.getElementById('btnInput');
-          const badgeViewer = document.getElementById('badgeViewer');
-          
-          btnInput.classList.add('disabled');
-          btnInput.href = "javascript:void(0);";
-          badgeViewer.style.display = "inline-block";
-          
-          btnInput.onclick = function() {
-            alert("【閲覧専用】入力機能は制限されています。");
-            return false;
-          };
-        }
-        hideLoading();
         if (typeof ringAdsInit === 'function') ringAdsInit('dealer_home');
+      }
     });
   </script>
 </body>

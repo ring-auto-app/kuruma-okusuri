@@ -704,7 +704,7 @@
       if (typeof bootAuthFn === 'function') {
         var boot = await bootAuthFn(persona);
         if (boot.ok && boot.profile) {
-          location.replace(ringGetHomeForProfile(boot.profile));
+          location.replace(ringGetHomeForMode(boot.mode || ringGetActiveMode()));
         }
       }
     });

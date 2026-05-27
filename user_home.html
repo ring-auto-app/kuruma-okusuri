@@ -237,9 +237,9 @@
   </div>
 
   <script>
-    window.addEventListener('DOMContentLoaded', async () => {
+    window.addEventListener('DOMContentLoaded', function () {
       if (typeof ringBootAuthForMode === 'function') {
-        var boot = await ringBootAuthForMode('user');
+        var boot = ringBootAuthForMode('user');
         if (!boot.ok) {
           location.replace(boot.redirect || 'login.html?tab=user');
           return;
@@ -271,21 +271,37 @@
       if (idEl)   idEl.textContent   = 'ログインID：' + (profile.loginId || profile.userId || '---');
       if (idInner) idInner.textContent = 'ユーザーID：' + (profile.userId || '---');
 
-      const pend = typeof getPendingRetryCount === 'function' ? getPendingRetryCount() : 0;
-      const pbar = document.getElementById('ringPendingSyncBar');
-      if (pbar && pend > 0) {
-        pbar.style.display = 'block';
-        pbar.textContent = '未送信のデータが ' + pend + ' 件あります。オンライン復帰時に自動送信します。';
+      if (typeof ringDeferAfterPaint_ === 'function') {
+        ringDeferAfterPaint_(function () {
+          const pend = typeof getPendingRetryCount === 'function' ? getPendingRetryCount() : 0;
+          const pbar = document.getElementById('ringPendingSyncBar');
+          if (pbar && pend > 0) {
+            pbar.style.display = 'block';
+            pbar.textContent = '未送信のデータが ' + pend + ' 件あります。オンライン復帰時に自動送信します。';
+          }
+          if (typeof ringAdsInit === 'function') ringAdsInit('user_home');
+          var adl = document.getElementById('ringAdminDashLink');
+          if (adl && (typeof ringIsAdminProfile === 'function' ? ringIsAdminProfile(profile) : profile.role === 'admin')) {
+            adl.style.display = 'inline-block';
+          }
+          if (typeof ringTryShowPwaInstallBanner === 'function') ringTryShowPwaInstallBanner();
+          if (typeof ringLogClientAccess === 'function') ringLogClientAccess('user_home');
+        });
+      } else {
+        const pend = typeof getPendingRetryCount === 'function' ? getPendingRetryCount() : 0;
+        const pbar = document.getElementById('ringPendingSyncBar');
+        if (pbar && pend > 0) {
+          pbar.style.display = 'block';
+          pbar.textContent = '未送信のデータが ' + pend + ' 件あります。オンライン復帰時に自動送信します。';
+        }
+        if (typeof ringAdsInit === 'function') ringAdsInit('user_home');
+        var adl = document.getElementById('ringAdminDashLink');
+        if (adl && (typeof ringIsAdminProfile === 'function' ? ringIsAdminProfile(profile) : profile.role === 'admin')) {
+          adl.style.display = 'inline-block';
+        }
+        if (typeof ringTryShowPwaInstallBanner === 'function') ringTryShowPwaInstallBanner();
+        if (typeof ringLogClientAccess === 'function') ringLogClientAccess('user_home');
       }
-
-      if (typeof ringAdsInit === 'function') ringAdsInit('user_home');
-
-      var adl = document.getElementById('ringAdminDashLink');
-      if (adl && (typeof ringIsAdminProfile === 'function' ? ringIsAdminProfile(profile) : profile.role === 'admin')) {
-        adl.style.display = 'inline-block';
-      }
-      if (typeof ringTryShowPwaInstallBanner === 'function') ringTryShowPwaInstallBanner();
-      if (typeof ringLogClientAccess === 'function') ringLogClientAccess('user_home');
     });
   </script>
 </body>

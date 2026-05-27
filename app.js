@@ -311,12 +311,12 @@ function ringBootAuthForOcrPage(expectedMode) {
         if (slot && slot.token && slot.profile) {
             ringSetCurrentMode(expectedMode);
             ringApplyActiveSession(slot, expectedMode);
-            if (typeof window !== 'undefined') window.__ringSessionVerified = false;
+            if (typeof window !== 'undefined') window.__ringSessionVerified = true;
             return;
         }
     }
     ringResolveActiveAuthToken();
-    if (typeof window !== 'undefined') window.__ringSessionVerified = false;
+    if (typeof window !== 'undefined') window.__ringSessionVerified = true;
 }
 
 function ringApplyActiveSession(slot, mode) {
@@ -456,11 +456,14 @@ async function ringVerifySession(token, mode) {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
         var activeMode = mode || ringGetActiveMode();
         var slot = ringReadAuthSlot(activeMode);
-        if (slot && slot.verifiedAt) {
-            var age = Date.now() - new Date(slot.verifiedAt).getTime();
-            if (!isNaN(age) && age < RING_AUTH_OFFLINE_GRACE_MS) {
-                return { success: true, offline: true, profile: slot.profile };
+        if (slot && slot.profile) {
+            if (slot.verifiedAt) {
+                var age = Date.now() - new Date(slot.verifiedAt).getTime();
+                if (!isNaN(age) && age < RING_AUTH_OFFLINE_GRACE_MS) {
+                    return { success: true, offline: true, profile: slot.profile };
+                }
             }
+            return { success: true, offline: true, profile: slot.profile };
         }
         return { success: false, error: 'AUTH_REQUIRED', offline: true };
     }
@@ -479,6 +482,149 @@ async function ringVerifySession(token, mode) {
     }
 }
 
+/**
+ * AUTH_EXPIRED 時の一元処理（sendToGAS / background verify 共用）
+ * @param {'user'|'shop'|'business'} mode
+ * @param {string=} source
+ */
+function ringHandleAuthExpired_(mode, source) {
+    if (typeof window !== 'undefined' && window.__ringAuthExpiredRedirecting) return;
+    if (typeof window !== 'undefined') window.__ringAuthExpiredRedirecting = true;
+    mode = ringNormalizeMode(mode || ringGetActiveMode());
+    console.error('[auth] session expired', mode, source || '');
+    if (typeof showToast === 'function') {
+        showToast('error', 'ログインの有効期限が切れました。再度ログインしてください。');
+    }
+    ringClearAuthSlot(mode);
+    if (typeof window !== 'undefined') {
+        window.__ringSessionVerified = false;
+        window.__ringAuthOptimistic = false;
+    }
+    setTimeout(function () {
+        location.replace(ringGetLoginUrlForMode(mode));
+    }, 400);
+}
+
+/**
+ * 初回描画後に非クリティカル処理を遅延実行
+ * @param {function(): void} fn
+ */
+function ringDeferAfterPaint_(fn) {
+    if (typeof fn !== 'function') return;
+    var run = function () {
+        try { fn(); } catch (e) { console.warn('[ringDeferAfterPaint_]', e); }
+    };
+    if (typeof requestIdleCallback === 'function') {
+        requestIdleCallback(run, { timeout: 2000 });
+    } else if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(function () { setTimeout(run, 0); });
+    } else {
+        setTimeout(run, 0);
+    }
+}
+
+function ringHasOptimisticSession_(mode) {
+    mode = ringNormalizeMode(mode);
+    var slot = ringReadAuthSlot(mode);
+    return !!(slot && slot.token && slot.profile);
+}
+
+/**
+ * ring_current_mode 優先でホーム URL を解決（splash/index 用）
+ * @returns {string|null}
+ */
+function ringTryOptimisticEntryRedirect_() {
+    ringMigrateLegacyAuth();
+    var mode = ringGetActiveMode();
+    if (ringHasOptimisticSession_(mode)) {
+        var slot = ringReadAuthSlot(mode);
+        ringApplyActiveSession(slot, mode);
+        if (typeof window !== 'undefined') {
+            window.__ringSessionVerified = true;
+            window.__ringAuthOptimistic = true;
+        }
+        ringVerifySessionBackground_(mode);
+        return ringGetHomeForMode(mode);
+    }
+    var modes = ['user', 'shop', 'business'];
+    var i;
+    for (i = 0; i < modes.length; i++) {
+        if (!ringHasOptimisticSession_(modes[i])) continue;
+        var s = ringReadAuthSlot(modes[i]);
+        ringSetCurrentMode(modes[i]);
+        ringApplyActiveSession(s, modes[i]);
+        if (typeof window !== 'undefined') {
+            window.__ringSessionVerified = true;
+            window.__ringAuthOptimistic = true;
+        }
+        ringVerifySessionBackground_(modes[i]);
+        return ringGetHomeForMode(modes[i]);
+    }
+    return null;
+}
+
+/**
+ * バックグラウンド verify（描画ブロックなし）。AUTH_EXPIRED のみ事後 logout。
+ * @param {'user'|'shop'|'business'} mode
+ */
+function ringVerifySessionBackground_(mode) {
+    mode = ringNormalizeMode(mode);
+    if (typeof window === 'undefined') return;
+    if (!window.__ringBgVerifyRunning) window.__ringBgVerifyRunning = {};
+    if (window.__ringBgVerifyRunning[mode]) return;
+    window.__ringBgVerifyRunning[mode] = true;
+
+    var slot = ringReadAuthSlot(mode);
+    if (!slot || !slot.token) {
+        window.__ringBgVerifyRunning[mode] = false;
+        return;
+    }
+
+    ringVerifySession(slot.token, mode).then(function (verified) {
+        if (verified && verified.success === true) {
+            var fresh = ringReadAuthSlot(mode) || slot;
+            if (verified.profile) fresh.profile = verified.profile;
+            fresh.verifiedAt = new Date().toISOString();
+            if (verified.authToken) fresh.token = verified.authToken;
+            ringWriteAuthSlot(mode, fresh);
+            ringApplyActiveSession(fresh, mode);
+            window.__ringAuthOptimistic = false;
+            return;
+        }
+        var err = String(verified && verified.error || '');
+        if (/AUTH_EXPIRED/i.test(err)) {
+            ringHandleAuthExpired_(mode, 'background_verify');
+            return;
+        }
+        console.warn('[auth] background verify soft-fail', mode, err);
+    }).catch(function (e) {
+        console.warn('[auth] background verify error', mode, e);
+    }).finally(function () {
+        window.__ringBgVerifyRunning[mode] = false;
+    });
+}
+
+/**
+ * Optimistic 起動: localStorage スロットを即信用し verify は background
+ * @param {'user'|'shop'|'business'} expectedMode
+ */
+function ringBootAuthOptimistic(expectedMode) {
+    ringMigrateLegacyAuth();
+    expectedMode = ringNormalizeMode(expectedMode);
+    ringSetCurrentMode(expectedMode);
+    var slot = ringReadAuthSlot(expectedMode);
+    if (!slot || !slot.token || !slot.profile) {
+        return { ok: false, reason: 'no_session', mode: expectedMode };
+    }
+    ringApplyActiveSession(slot, expectedMode);
+    if (typeof window !== 'undefined') {
+        window.__ringSessionVerified = true;
+        window.__ringAuthOptimistic = true;
+    }
+    ringVerifySessionBackground_(expectedMode);
+    return { ok: true, optimistic: true, profile: slot.profile, mode: expectedMode };
+}
+
 async function ringVerifyAndRefreshSlot(mode) {
     mode = ringNormalizeMode(mode);
     var slot = ringReadAuthSlot(mode);
@@ -492,29 +638,41 @@ async function ringVerifyAndRefreshSlot(mode) {
         if (verified.authToken) slot.token = verified.authToken;
         ringWriteAuthSlot(mode, slot);
         ringApplyActiveSession(slot, mode);
+        if (typeof window !== 'undefined') window.__ringAuthOptimistic = false;
         return { ok: true, profile: slot.profile, mode: mode };
     }
-    if (/AUTH_EXPIRED|AUTH_REQUIRED/.test(String(verified.error || ''))) {
+    if (/AUTH_EXPIRED/i.test(String(verified.error || ''))) {
         ringClearAuthSlot(mode);
+        return { ok: false, reason: verified.error || 'AUTH_EXPIRED', mode: mode };
     }
-    return { ok: false, reason: verified.error || 'verify_failed', mode: mode };
+    if (/AUTH_REQUIRED/i.test(String(verified.error || ''))) {
+        ringClearAuthSlot(mode);
+        return { ok: false, reason: verified.error || 'AUTH_REQUIRED', mode: mode };
+    }
+    return {
+        ok: true,
+        offline: true,
+        optimistic: true,
+        profile: slot.profile,
+        mode: mode,
+        reason: verified.error || 'NETWORK_ERROR'
+    };
 }
 
-async function ringBootAuth() {
+function ringBootAuth() {
     ringMigrateLegacyAuth();
     var mode = ringGetActiveMode();
-    return ringVerifyAndRefreshSlot(mode);
+    return ringBootAuthOptimistic(mode);
 }
 
 /**
- * 各ホーム画面用: 期待モードのスロットだけ verify
+ * 各ホーム画面用: Optimistic 即時 + background verify（await 不要）
  * @param {'user'|'shop'|'business'} expectedMode
  */
-async function ringBootAuthForMode(expectedMode) {
+function ringBootAuthForMode(expectedMode) {
     ringMigrateLegacyAuth();
     expectedMode = ringNormalizeMode(expectedMode);
-    ringSetCurrentMode(expectedMode);
-    var result = await ringVerifyAndRefreshSlot(expectedMode);
+    var result = ringBootAuthOptimistic(expectedMode);
     if (!result.ok) {
         result.redirect = ringGetLoginUrlForMode(expectedMode);
     }
@@ -605,25 +763,6 @@ async function ringEnsureAuthForOcr() {
             showToast('error', 'セッションが切れました。再度ログインしてください。');
         }
         throw new Error('AUTH_REQUIRED');
-    }
-    if (typeof window !== 'undefined' && window.__ringSessionVerified === true) return;
-    var v = await ringVerifySession(tok);
-    if (!v || (v.success !== true && !v.offline)) {
-        var errCode = (v && v.error) || 'AUTH_REQUIRED';
-        if (typeof showToast === 'function') {
-            showToast('error', errCode === 'AUTH_EXPIRED'
-                ? 'ログインの有効期限が切れました。再度ログインしてください。'
-                : '認証に失敗しました。再度ログインしてください。');
-        }
-        throw new Error(errCode);
-    }
-    if (v.profile) {
-        var activeMode = ringGetActiveMode();
-        var slot = ringReadAuthSlot(activeMode) || { profile: v.profile, token: tok };
-        slot.profile = v.profile;
-        slot.verifiedAt = new Date().toISOString();
-        ringWriteAuthSlot(activeMode, slot);
-        ringApplyActiveSession(slot, activeMode);
     }
     if (typeof window !== 'undefined') window.__ringSessionVerified = true;
 }
@@ -1599,6 +1738,9 @@ async function sendToGAS_Safe(actionType, data, opts) {
     return json;
     } catch (err) {
         var errMsg = String(err && err.message ? err.message : err || '');
+        if (/AUTH_EXPIRED/i.test(errMsg) && actionType !== 'verify_session') {
+            ringHandleAuthExpired_(ringGetActiveMode(), actionType);
+        }
         if (actionType !== 'system_log') {
             if (actionType === 'ocr_vin' && /AUTH_/i.test(errMsg)) {
                 ringLogSystemEvent('AUTH_ERROR', {
@@ -3379,7 +3521,9 @@ function createGlobalUI() {
     ringInitLinePromoSlots();
 }
 window.addEventListener('DOMContentLoaded', createGlobalUI);
-window.addEventListener('DOMContentLoaded', ringInitLinePromoSlots);
+window.addEventListener('DOMContentLoaded', function () {
+    ringDeferAfterPaint_(ringInitLinePromoSlots);
+});
 
 // 戻るリンク文言を全ページで統一
 window.addEventListener('DOMContentLoaded', () => {

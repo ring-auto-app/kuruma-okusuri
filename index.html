@@ -243,30 +243,24 @@
   </div>
 
   <script>
-    document.addEventListener("DOMContentLoaded", async () => {
-      if (typeof ringBootAuth === 'function') {
-        const boot = await ringBootAuth();
-        if (boot.ok && boot.profile) {
-          var homeUrl = typeof ringGetHomeForMode === 'function'
-            ? ringGetHomeForMode(boot.mode || ringGetActiveMode())
-            : (typeof ringGetHomeForProfile === 'function' ? ringGetHomeForProfile(boot.profile) : 'user_home.html');
-          location.replace(homeUrl);
-          return;
-        }
+    document.addEventListener("DOMContentLoaded", function () {
+      var homeUrl = typeof ringTryOptimisticEntryRedirect_ === 'function'
+        ? ringTryOptimisticEntryRedirect_()
+        : null;
+      if (homeUrl) {
+        location.replace(homeUrl);
+        return;
       }
 
       const profile = typeof getCurrentProfile === "function" ? getCurrentProfile() : null;
 
-      // ログイン済み・デモ中は各ホームへ即転送（verify 未完了の stale profile は上で除外済み）
+      // ログイン済み・デモ中は各ホームへ即転送
       if (profile && (localStorage.getItem('ring_auth_token') ||
           (typeof isRingDemoProfile === 'function' && isRingDemoProfile(profile)))) {
-        if (profile.shopType === 'factory') {
-          location.replace("factory_home.html");
-        } else if (profile.shopType === 'dealer') {
-          location.replace("dealer_home.html");
-        } else {
-          location.replace(typeof ringGetHomeForProfile === 'function' ? ringGetHomeForProfile(profile) : "user_home.html");
-        }
+        var modeHome = typeof ringGetHomeForMode === 'function'
+          ? ringGetHomeForMode(typeof ringGetActiveMode === 'function' ? ringGetActiveMode() : 'user')
+          : (typeof ringGetHomeForProfile === 'function' ? ringGetHomeForProfile(profile) : 'user_home.html');
+        location.replace(modeHome);
         return;
       }
 

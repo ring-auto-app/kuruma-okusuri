@@ -1,10 +1,18 @@
-const CACHE_NAME = "car-nappy-v15";
+const CACHE_NAME = "car-nappy-v16";
 const OFFLINE_URL = "./offline.html";
 
 const PRECACHE_URLS = [
   "./",
   "./index.html",
+  "./splash.html",
   "./offline.html",
+  "./login.html",
+  "./factory_home.html",
+  "./dealer_home.html",
+  "./user_home.html",
+  "./factory_input.html",
+  "./dealer_input.html",
+  "./car_add.html",
   "./common.css",
   "./app.js",
   "./theme.js",
@@ -55,27 +63,37 @@ self.addEventListener("fetch", event => {
     /\.(html|js|css|json)$/.test(url.pathname);
 
   if (isAppShell) {
-    event.respondWith((async function () {
-      try {
-        const res = await fetchWithTimeout(req, req.mode === "navigate" ? 5000 : 8000);
-        const copy = res.clone();
-        const cache = await caches.open(CACHE_NAME);
-        await cache.put(req, copy);
-        return res;
-      } catch (e) {
-        const cached = await caches.match(req);
-        if (cached) return cached;
-        if (req.mode === "navigate") {
-          const offline = await caches.match(OFFLINE_URL);
-          if (offline) return offline;
-        }
-        throw e;
-      }
-    })());
+    event.respondWith(
+      caches.open(CACHE_NAME).then(function (cache) {
+        return cache.match(req).then(function (cached) {
+          var networkUpdate = fetchWithTimeout(req, req.mode === "navigate" ? 5000 : 8000)
+            .then(function (res) {
+              if (res && res.ok) {
+                return cache.put(req, res.clone()).then(function () { return res; });
+              }
+              return res;
+            })
+            .catch(function () { return null; });
+
+          if (cached) {
+            networkUpdate.catch(function () {});
+            return cached;
+          }
+
+          return networkUpdate.then(function (res) {
+            if (res) return res;
+            if (req.mode === "navigate") {
+              return cache.match(OFFLINE_URL);
+            }
+            throw new Error("offline");
+          });
+        });
+      })
+    );
     return;
   }
 
   event.respondWith(
-    caches.match(req).then(cached => cached || fetch(req))
+    caches.match(req).then(function (cached) { return cached || fetch(req); })
   );
 });
