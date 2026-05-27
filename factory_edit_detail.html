@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
@@ -13,7 +13,7 @@
     <title>車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20260525-v19"></script>
+  <script src="app.js?v=20260527-v20"></script>
   <script src="theme.js"></script>
   
   <style>
@@ -82,16 +82,17 @@
         </div>
       </div>
       <div class="field">
-        <span class="label">整備区分</span>
-        <input id="inTitle" type="text" placeholder="例：車検、点検、修理">
+        <span class="label">整備区分 ※必須</span>
+        <select id="inTitle" required></select>
+        <div id="errTitle" style="display:none; color:#dc2626; font-size:12px; font-weight:800; margin-top:4px;">⚠ 整備区分を選択してください</div>
       </div>
       <div class="field">
         <span class="label">交換部品</span>
-        <textarea id="inParts" rows="3"></textarea>
+        <textarea id="inParts" class="ring-auto-grow" rows="3"></textarea>
       </div>
       <div class="field">
         <span class="label">整備メモ</span>
-        <textarea id="inMemo" rows="3"></textarea>
+        <textarea id="inMemo" class="ring-auto-grow" rows="3"></textarea>
       </div>
       <div class="field" style="margin-bottom: 0;">
         <span class="label">交換した部品の写真（変更・追加）</span>
@@ -151,9 +152,14 @@
       document.getElementById("inDate").value = dateVal;
       document.getElementById("dispDate").textContent = dateVal || "---";
       document.getElementById("inMileage").value = targetLog.mileage || "";
-      document.getElementById("inTitle").value = targetLog.title || "";
+      if (typeof ringSetWorkTitleSelectValue === 'function') {
+        ringSetWorkTitleSelectValue(document.getElementById("inTitle"), targetLog.title || "");
+      } else {
+        document.getElementById("inTitle").value = targetLog.title || "";
+      }
       document.getElementById("inParts").value = targetLog.parts || "";
       document.getElementById("inMemo").value = targetLog.memo || "";
+      if (typeof ringInitAutoGrowTextareas === 'function') ringInitAutoGrowTextareas();
 
       if (targetLog.partsPhoto) {
         document.getElementById("partsPhotoPreview").src = targetLog.partsPhoto;
@@ -187,6 +193,9 @@
     document.getElementById("saveLogBtn").addEventListener("click", async () => {
       if (typeof window !== 'undefined' && window.__ringSaving) {
         if (typeof showToast === 'function') showToast('info', '保存処理中です。');
+        return;
+      }
+      if (typeof ringValidateWorkTitleSelect === 'function' && !ringValidateWorkTitleSelect()) {
         return;
       }
       const date = document.getElementById('inDate').value;

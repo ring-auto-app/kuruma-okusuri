@@ -123,6 +123,10 @@ input[type="text"], input[type="date"], input[type="password"], input[type="numb
 }
 input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 textarea { line-height: 24px; min-height: 88px; }
+textarea.ring-auto-grow {
+  overflow-y: hidden;
+  resize: none;
+}
 
 /* =========================================
    保存ボタン（互換維持）
@@ -698,6 +702,34 @@ textarea { line-height: 24px; min-height: 88px; }
   box-sizing: border-box;
   font-size: 16px;
   font-family: inherit;
+}
+.ring-ocr-review__input--low-conf,
+.ring-ocr-review__part--low-conf .ring-ocr-review__part-input {
+  background: #fff3b0;
+}
+.ring-ocr-review__conf {
+  font-size: 10px;
+  font-weight: 900;
+  color: #b45309;
+  margin-left: 4px;
+}
+.ring-ocr-review__parts { display: flex; flex-direction: column; gap: 8px; }
+.ring-ocr-review__part {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.ring-ocr-review__part-input {
+  flex: 1;
+  min-width: 120px;
+  min-height: var(--tap-min);
+  padding: 8px 10px;
+  border: 2px solid var(--line);
+  border-radius: 10px;
+  font-size: 15px;
+  font-family: inherit;
+  box-sizing: border-box;
 }
 .ring-ocr-review__section {
   font-size: 13px;

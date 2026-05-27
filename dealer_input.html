@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
@@ -13,7 +13,7 @@
     <title>車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20260525-v19"></script>
+  <script src="app.js?v=20260527-v20"></script>
   <script src="theme.js"></script>
   
   <style>
@@ -122,8 +122,9 @@
       </div>
       <div class="row">
         <div class="field">
-          <span class="label">整備区分</span>
-          <input id="inTitle" type="text" placeholder="例：車検、修理、納車点検">
+          <span class="label">整備区分 ※必須</span>
+          <select id="inTitle" required></select>
+          <div id="errTitle" style="display:none; color:#dc2626; font-size:12px; font-weight:800; margin-top:4px;">⚠ 整備区分を選択してください</div>
         </div>
         <div class="field"><span class="label">走行距離 (km)</span><input id="inMileage" type="number" min="0"></div>
       </div>
@@ -174,7 +175,7 @@
     </div>
 
     <div class="footer-card">
-      <div class="field"><span class="label">作業メモ</span><textarea id="inMemo" rows="2" placeholder="その他作業、交換部品などがあれば入力"></textarea></div>
+      <div class="field"><span class="label">作業メモ</span><textarea id="inMemo" class="ring-auto-grow" rows="2" placeholder="その他作業、交換部品などがあれば入力"></textarea></div>
       <div class="photo-btn" onclick="document.getElementById('partsPhotoInput').click()">📷 交換部品・用品の写真を追加</div>
       <input type="file" id="partsPhotoInput" accept="image/*" hidden>
       <img id="partsPhotoPreview" class="photo-preview">
@@ -328,6 +329,9 @@
         if (!vin)    { errVin.style.display   = 'block'; hasErr = true; }
         if (!date)   { errDate.style.display  = 'block'; hasErr = true; }
         if (!shaken) { document.getElementById('errShaken').style.display = 'block'; hasErr = true; }
+        if (typeof ringValidateWorkTitleSelect === 'function' && !ringValidateWorkTitleSelect()) {
+          hasErr = true;
+        }
         if (hasErr) return;
 
         if (typeof window !== 'undefined' && window.__ringSaving) {
@@ -351,7 +355,7 @@
           date: date,
           mileage: document.getElementById('inMileage').value,
           nextShaken: shaken,
-          title: inputTitle || "一般整備",
+          title: inputTitle,
           parts: parts.join('\n'),
           memo: document.getElementById('inMemo').value,
           partsPhoto: document.getElementById('inPartsPhotoBase64').value,

@@ -1,4 +1,4 @@
-const CACHE_NAME = "car-nappy-v19";
+const CACHE_NAME = "car-nappy-v20";
 const OFFLINE_URL = "./offline.html";
 
 const PRECACHE_URLS = [
@@ -14,7 +14,7 @@ const PRECACHE_URLS = [
   "./dealer_input.html",
   "./car_add.html",
   "./common.css",
-  "./app.js?v=20260525-v19",
+  "./app.js?v=20260527-v20",
   "./theme.js",
   "./manifest.json",
   "./icons/icon-192.png",

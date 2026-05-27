@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
@@ -13,7 +13,7 @@
     <title>車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20260525-v19"></script>
+  <script src="app.js?v=20260527-v20"></script>
   <script src="theme.js"></script>
   
   <style>
@@ -55,6 +55,7 @@
     input[type="text"],
     input[type="number"],
     input[type="date"],
+    select,
     textarea {
       width: 100%;
       min-height: var(--tap-min);
@@ -155,11 +156,15 @@
         </div>
       </div>
       <div class="row">
-        <div class="field"><span class="label">整備区分</span><input id="inTitle" type="text" placeholder="例：車検、修理"></div>
+        <div class="field">
+          <span class="label">整備区分 ※必須</span>
+          <select id="inTitle" required></select>
+          <div id="errTitle" style="display:none; color:#dc2626; font-size:12px; font-weight:800; margin-top:4px;">⚠ 整備区分を選択してください</div>
+        </div>
         <div class="field"><span class="label">走行距離 (km)</span><input id="inMileage" type="number" min="0"></div>
       </div>
-      <div class="field"><span class="label">交換部品</span><textarea id="inParts" rows="3" placeholder="自動抽出されます"></textarea></div>
-      <div class="field"><span class="label">整備メモ</span><textarea id="inMemo" rows="2" placeholder="特記事項があれば入力"></textarea></div>
+      <div class="field"><span class="label">交換部品</span><textarea id="inParts" class="ring-auto-grow" rows="3" placeholder="自動抽出されます"></textarea></div>
+      <div class="field"><span class="label">整備メモ</span><textarea id="inMemo" class="ring-auto-grow" rows="2" placeholder="特記事項があれば入力"></textarea></div>
 
       <div class="field" style="margin-bottom: 0;">
         <span class="label">写真（任意）</span>
@@ -251,7 +256,6 @@
     const RING_OCR_FIELDS_FACTORY = [
       { key: 'vin', label: '車体番号', getCurrent: () => document.getElementById('inVin').value },
       { key: 'mileage', label: '走行距離(km)', getCurrent: () => document.getElementById('inMileage').value },
-      { key: 'workTitle', label: '整備区分', getCurrent: () => document.getElementById('inTitle').value },
       { key: 'parts', label: '交換部品', getCurrent: () => document.getElementById('inParts').value },
       { key: 'shaken', label: '車検満了日', getCurrent: () => document.getElementById('inShaken').value },
       { key: 'model', label: '型式', getCurrent: () => document.getElementById('inModel').value },
@@ -329,7 +333,7 @@
         engine:       document.getElementById('inEngine').value,
         classification: document.getElementById('inClass').value,
         typeDesignation: document.getElementById('inTypeDesig').value,
-        title: document.getElementById('inTitle').value || "一般整備",
+        title: document.getElementById('inTitle').value,
         parts: document.getElementById('inParts').value,
         memo: document.getElementById('inMemo').value,
         partsPhoto: document.getElementById('inPartsPhotoBase64').value,
@@ -415,6 +419,9 @@
       } else {
         document.getElementById('errShaken').style.display = 'none';
       }
+      if (typeof ringValidateWorkTitleSelect === 'function' && !ringValidateWorkTitleSelect()) {
+        hasErr = true;
+      }
       if (hasErr) return;
 
       const currentMileage = parseInt(mileageInput, 10);
@@ -446,7 +453,7 @@
         ringConfirmRow('車台番号(VIN)', vin) +
         ringConfirmRow('作業日', date) +
         ringConfirmRow('車検満了日', shaken) +
-        ringConfirmRow('整備区分', document.getElementById('inTitle').value || '一般整備') +
+        ringConfirmRow('整備区分', document.getElementById('inTitle').value) +
         ringConfirmRow('走行距離(km)', mileageInput || '—') +
         ringConfirmRow('型式', document.getElementById('inModel').value) +
         ringConfirmRow('原動機型式', document.getElementById('inEngine').value) +
@@ -458,7 +465,7 @@
 
       const saveLogBtn = document.getElementById("saveLogBtn");
       var piiWarn = typeof ringBuildPiiWarningHtml_ === 'function'
-        ? ringBuildPiiWarningHtml_(['inParts', 'inMemo', 'inTitle'])
+        ? ringBuildPiiWarningHtml_(['inParts', 'inMemo'])
         : '';
       showRingSaveConfirm({
         title: '整備記録の確認',
