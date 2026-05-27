@@ -500,8 +500,13 @@ function ringHandleAuthExpired_(mode, source) {
         window.__ringSessionVerified = false;
         window.__ringAuthOptimistic = false;
     }
+    var loginUrl = ringGetLoginUrlForMode(mode);
+    if (typeof location !== 'undefined' && String(location.pathname || '').indexOf('login.html') >= 0) {
+        window.__ringAuthExpiredRedirecting = false;
+        return;
+    }
     setTimeout(function () {
-        location.replace(ringGetLoginUrlForMode(mode));
+        location.replace(loginUrl);
     }, 400);
 }
 
@@ -529,6 +534,16 @@ function ringHasOptimisticSession_(mode) {
     return !!(slot && slot.token && slot.profile);
 }
 
+function ringProfileMatchesExpectedMode_(profile, expectedMode) {
+    expectedMode = ringNormalizeMode(expectedMode);
+    if (!profile) return false;
+    if (expectedMode === 'shop') return profile.shopType === 'factory';
+    if (expectedMode === 'business') return profile.shopType === 'dealer';
+    return typeof ringIsUserAccountProfile === 'function'
+        ? ringIsUserAccountProfile(profile)
+        : (profile.shopType === 'user' || profile.role === 'user' || profile.role === 'admin');
+}
+
 /**
  * ring_current_mode 優先でホーム URL を解決（splash/index 用）
  * @returns {string|null}
@@ -538,6 +553,9 @@ function ringTryOptimisticEntryRedirect_() {
     var mode = ringGetActiveMode();
     if (ringHasOptimisticSession_(mode)) {
         var slot = ringReadAuthSlot(mode);
+        if (!ringProfileMatchesExpectedMode_(slot.profile, mode)) {
+            return null;
+        }
         ringApplyActiveSession(slot, mode);
         if (typeof window !== 'undefined') {
             window.__ringSessionVerified = true;
@@ -551,6 +569,7 @@ function ringTryOptimisticEntryRedirect_() {
     for (i = 0; i < modes.length; i++) {
         if (!ringHasOptimisticSession_(modes[i])) continue;
         var s = ringReadAuthSlot(modes[i]);
+        if (!ringProfileMatchesExpectedMode_(s.profile, modes[i])) continue;
         ringSetCurrentMode(modes[i]);
         ringApplyActiveSession(s, modes[i]);
         if (typeof window !== 'undefined') {
@@ -616,6 +635,9 @@ function ringBootAuthOptimistic(expectedMode) {
     if (!slot || !slot.token || !slot.profile) {
         return { ok: false, reason: 'no_session', mode: expectedMode };
     }
+    if (!ringProfileMatchesExpectedMode_(slot.profile, expectedMode)) {
+        return { ok: false, reason: 'persona_mismatch', mode: expectedMode };
+    }
     ringApplyActiveSession(slot, expectedMode);
     if (typeof window !== 'undefined') {
         window.__ringSessionVerified = true;
@@ -631,6 +653,9 @@ async function ringVerifyAndRefreshSlot(mode) {
     if (!slot || !slot.token || !slot.profile) {
         return { ok: false, reason: 'no_session', mode: mode };
     }
+    if (!ringProfileMatchesExpectedMode_(slot.profile, mode)) {
+        return { ok: false, reason: 'persona_mismatch', mode: mode };
+    }
     var verified = await ringVerifySession(slot.token, mode);
     if (verified.success === true) {
         if (verified.profile) slot.profile = verified.profile;
@@ -639,7 +664,13 @@ async function ringVerifyAndRefreshSlot(mode) {
         ringWriteAuthSlot(mode, slot);
         ringApplyActiveSession(slot, mode);
         if (typeof window !== 'undefined') window.__ringAuthOptimistic = false;
-        return { ok: true, profile: slot.profile, mode: mode };
+        return {
+            ok: true,
+            verified: !verified.offline,
+            offline: !!verified.offline,
+            profile: slot.profile,
+            mode: mode
+        };
     }
     if (/AUTH_EXPIRED/i.test(String(verified.error || ''))) {
         ringClearAuthSlot(mode);
@@ -649,14 +680,7 @@ async function ringVerifyAndRefreshSlot(mode) {
         ringClearAuthSlot(mode);
         return { ok: false, reason: verified.error || 'AUTH_REQUIRED', mode: mode };
     }
-    return {
-        ok: true,
-        offline: true,
-        optimistic: true,
-        profile: slot.profile,
-        mode: mode,
-        reason: verified.error || 'NETWORK_ERROR'
-    };
+    return { ok: false, reason: verified.error || 'NETWORK_ERROR', mode: mode, offline: true };
 }
 
 function ringBootAuth() {

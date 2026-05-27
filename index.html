@@ -254,13 +254,19 @@
 
       const profile = typeof getCurrentProfile === "function" ? getCurrentProfile() : null;
 
-      // ログイン済み・デモ中は各ホームへ即転送
-      if (profile && (localStorage.getItem('ring_auth_token') ||
-          (typeof isRingDemoProfile === 'function' && isRingDemoProfile(profile)))) {
-        var modeHome = typeof ringGetHomeForMode === 'function'
-          ? ringGetHomeForMode(typeof ringGetActiveMode === 'function' ? ringGetActiveMode() : 'user')
-          : (typeof ringGetHomeForProfile === 'function' ? ringGetHomeForProfile(profile) : 'user_home.html');
+      // ログイン済み・デモ中は各ホームへ即転送（スロットが存在する場合のみ）
+      if (profile && typeof ringClassifyProfile === 'function' && typeof ringHasOptimisticSession_ === 'function'
+          && ringHasOptimisticSession_(ringClassifyProfile(profile))) {
+        var modeHome = typeof ringGetHomeForProfile === 'function'
+          ? ringGetHomeForProfile(profile)
+          : 'user_home.html';
         location.replace(modeHome);
+        return;
+      }
+      if (profile && typeof isRingDemoProfile === 'function' && isRingDemoProfile(profile)) {
+        location.replace(typeof ringGetHomeForProfile === 'function'
+          ? ringGetHomeForProfile(profile)
+          : 'user_home.html');
         return;
       }
 

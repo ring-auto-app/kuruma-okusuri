@@ -681,6 +681,8 @@
     }
 
     document.addEventListener('DOMContentLoaded', async function () {
+      if (typeof window !== 'undefined') window.__ringAuthExpiredRedirecting = false;
+
       var params = new URLSearchParams(window.location.search);
       var tab = params.get('tab');
       var persona = resolveLoginPersona(tab);
@@ -703,8 +705,10 @@
         : ringBootAuth;
       if (typeof bootAuthFn === 'function') {
         var boot = await bootAuthFn(persona);
-        if (boot.ok && boot.profile) {
-          location.replace(ringGetHomeForMode(boot.mode || ringGetActiveMode()));
+        if (boot.ok && boot.profile && boot.verified) {
+          location.replace(typeof ringGetHomeForProfile === 'function'
+            ? ringGetHomeForProfile(boot.profile)
+            : ringGetHomeForMode(boot.mode || ringGetActiveMode()));
         }
       }
     });
