@@ -493,7 +493,7 @@ function ringHandleAuthExpired_(mode, source) {
     mode = ringNormalizeMode(mode || ringGetActiveMode());
     console.error('[auth] session expired', mode, source || '');
     if (typeof showToast === 'function') {
-        showToast('error', 'ログインの有効期限が切れました。再度ログインしてください。');
+        showToast('error', 'ログイン期限が切れました。再ログインしてください。');
     }
     ringClearAuthSlot(mode);
     if (typeof window !== 'undefined') {
@@ -780,15 +780,66 @@ function ringSwitchToAdminDashboard() {
     location.href = 'admin_dashboard.html';
 }
 
+/** OCR 直前のみ GAS verify（Optimistic 起動とは独立） */
 async function ringEnsureAuthForOcr() {
+    var mode = ringGetActiveMode();
     var tok = ringResolveActiveAuthToken();
     if (!tok) {
         if (typeof showToast === 'function') {
-            showToast('error', 'セッションが切れました。再度ログインしてください。');
+            showToast('error', 'ログイン期限が切れました。再ログインしてください。');
         }
+        ringLogSystemEvent('AUTH_ERROR', {
+            error_message: 'AUTH_REQUIRED',
+            payload: { stage: 'ocr_preflight' }
+        });
+        setTimeout(function () {
+            location.replace(ringGetLoginUrlForMode(mode));
+        }, 400);
         throw new Error('AUTH_REQUIRED');
     }
-    if (typeof window !== 'undefined') window.__ringSessionVerified = true;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        if (typeof showToast === 'function') {
+            showToast('warning', '通信を確認しています。オンライン時にもう一度お試しください。');
+        }
+        throw new Error('OFFLINE');
+    }
+    if (typeof showToast === 'function') {
+        showToast('info', '通信確認中…');
+    }
+    var verified = await ringVerifySession(tok, mode);
+    if (verified.success === true) {
+        var slot = ringReadAuthSlot(mode);
+        if (slot) {
+            if (verified.authToken) slot.token = verified.authToken;
+            if (verified.profile) slot.profile = verified.profile;
+            slot.verifiedAt = new Date().toISOString();
+            ringWriteAuthSlot(mode, slot);
+            ringApplyActiveSession(slot, mode);
+        }
+        if (typeof window !== 'undefined') {
+            window.__ringSessionVerified = true;
+            window.__ringAuthOptimistic = false;
+        }
+        return;
+    }
+    if (/AUTH_REQUIRED|AUTH_EXPIRED/i.test(String(verified.error || ''))) {
+        ringClearAuthSlot(mode);
+        if (typeof showToast === 'function') {
+            showToast('error', 'ログイン期限が切れました。再ログインしてください。');
+        }
+        ringLogSystemEvent('AUTH_ERROR', {
+            error_message: verified.error || 'AUTH_EXPIRED',
+            payload: { stage: 'ocr_preflight' }
+        });
+        setTimeout(function () {
+            location.replace(ringGetLoginUrlForMode(mode));
+        }, 400);
+        throw new Error(verified.error || 'AUTH_EXPIRED');
+    }
+    if (typeof showToast === 'function') {
+        showToast('warning', '通信を確認しています。しばらくしてから再度お試しください。');
+    }
+    throw new Error(verified.error || 'NETWORK_ERROR');
 }
 
 function login(profile, authToken) {
@@ -879,10 +930,8 @@ function ringReportOcrAbort_(stage, err, opts) {
     console.error('[OCR abort]', stage, msg, opts.payload || '');
     var userMsg = opts.userMessage;
     if (userMsg == null) {
-        if (/AUTH_REQUIRED/i.test(msg)) {
-            userMsg = 'セッションが切れました。再度ログインしてください。';
-        } else if (/AUTH_EXPIRED/i.test(msg)) {
-            userMsg = 'ログインの有効期限が切れました。再度ログインしてください。';
+        if (/AUTH_REQUIRED|AUTH_EXPIRED/i.test(msg)) {
+            userMsg = 'ログイン期限が切れました。再ログインしてください。';
         } else if (/IMAGE_ENCODE|read_fail|IMAGE_REQUIRED/i.test(msg)) {
             userMsg = '画像の読み込みに失敗しました。別の写真をお試しください。';
         } else {
@@ -2734,9 +2783,7 @@ function gasFieldsToParsed_(fields, fileName, gasVin) {
 
 function ringShowAuthErrorForOcr_(alreadyShown) {
     if (alreadyShown) return true;
-    if (typeof showToast === 'function') {
-        showToast('error', 'セッションが切れました。再度ログインしてください。');
-    }
+    ringHandleAuthExpired_(ringGetActiveMode(), 'ocr_batch');
     return true;
 }
 
@@ -2984,7 +3031,7 @@ async function analyzeDocumentSingle(file, fileIndex) {
     } catch (e) {
         ringReportOcrAbort_('batch_page', e, {
             payload: { fileName: fileName },
-            toast: fileIndex === 0 && !/AUTH_/i.test(String(e && e.message ? e.message : e || ''))
+            toast: /AUTH_/i.test(String(e && e.message ? e.message : e || '')) || fileIndex === 0
         });
         var msg = String(e && e.message ? e.message : e || '');
         return { fileName: fileName, ok: false, partial: false, parsed: { work: [], parts: [] }, authError: /AUTH_/i.test(msg) };
@@ -3226,7 +3273,7 @@ async function ringHandleBatchDocumentScan(opts) {
         try {
             await ringEnsureAuthForOcr();
         } catch (e) {
-            ringReportOcrAbort_('batch_auth_preflight', e, { payload: { mode: opts.mode || 'factory' }, toast: false });
+            ringReportOcrAbort_('batch_auth_preflight', e, { payload: { mode: opts.mode || 'factory' } });
             return;
         }
     }
@@ -3338,10 +3385,9 @@ async function analyzeDocument(files) {
         });
         return null;
     } catch (e) {
-        var errMsg = String(e && e.message ? e.message : e || '');
         ringReportOcrAbort_('ocr_vin_request', e, {
             payload: { fileName: files[0].name || 'image' },
-            toast: !/AUTH_/i.test(errMsg)
+            toast: true
         });
         return null;
     }
