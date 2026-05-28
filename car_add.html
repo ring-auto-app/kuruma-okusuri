@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.json">
     <title>車のお薬手帳</title>
   <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20260527-v20"></script>
+  <script src="app.js?v=20260527-v21"></script>
   <script src="theme.js"></script>
   <style>
     body {
@@ -152,6 +152,11 @@
       </div>
 
       <div class="field">
+        <span class="label">車名 <span class="optional">※任意</span></span>
+        <input id="inVehicleName" type="text" placeholder="例：トヨタ プリウス">
+      </div>
+
+      <div class="field">
         <span class="label">車台番号 (VIN) <span class="required">※必須</span></span>
         <input id="inVin" type="text" placeholder="例：ZVW50-123456" autocomplete="off"
                oninput="clearErr('inVin')">
@@ -194,10 +199,10 @@
       </div>
 
       <div class="field">
-        <span class="label">初年度登録年月 <span class="required">※必須</span></span>
+        <span class="label">初度登録年月 <span class="required">※必須</span></span>
         <input id="inFirstReg" type="month" onchange="clearErr('inFirstReg')"
                placeholder="例：2021-03">
-        <div class="err-msg" id="errInFirstReg">⚠ 初年度登録年月は必須です</div>
+        <div class="err-msg" id="errInFirstReg">⚠ 初度登録年月は必須です</div>
       </div>
 
     </div><!-- /card -->
@@ -405,12 +410,18 @@
       const catEl = document.querySelector('input[name="vehicleCategory"]:checked');
       const vehicleCategory = catEl ? catEl.value : 'managed';
 
-      // 初年度登録年月（YYYY-MM形式で保存）
-      const firstReg = document.getElementById('inFirstReg').value;
+      // 初度登録年月（YYYY-MM形式で保存）
+      const firstReg = typeof ringNormalizeVehicleSaveValue_ === 'function'
+        ? ringNormalizeVehicleSaveValue_(document.getElementById('inFirstReg').value)
+        : document.getElementById('inFirstReg').value;
+      const vehicleName = typeof ringNormalizeVehicleSaveValue_ === 'function'
+        ? ringNormalizeVehicleSaveValue_(document.getElementById('inVehicleName').value)
+        : document.getElementById('inVehicleName').value.trim();
 
       const newVehicle = {
         vin:               vin,
         model:             document.getElementById('inName').value.trim() || '名称未設定',
+        vehicleName:       vehicleName,
         vehicleModel:      document.getElementById('inModel').value.trim(),
         engine:            document.getElementById('inEngine').value.trim(),
         category:          document.getElementById('inCategory').value.trim(),
@@ -519,7 +530,7 @@
 
       if (!vin)      { showErr('inVin',      '車台番号(VIN)は必須です');  valid = false; }
       if (!expiry)   { showErr('inExpiry',   '車検満了日は必須です');      valid = false; }
-      if (!firstReg) { showErr('inFirstReg', '初年度登録年月は必須です');  valid = false; }
+      if (!firstReg) { showErr('inFirstReg', '初度登録年月は必須です');  valid = false; }
       if (!valid) return;
 
       const vClass = document.getElementById('inClass');
@@ -530,9 +541,10 @@
       const bodyHtml =
         (isBiz ? ringConfirmRow('車両区分', catLabel) : '') +
         ringConfirmRow('表示名 / ニックネーム', document.getElementById('inName').value.trim() || '名称未設定') +
+        ringConfirmRow('車名', document.getElementById('inVehicleName').value) +
         ringConfirmRow('車台番号(VIN)', vin) +
         ringConfirmRow('車検満了日', expiry) +
-        ringConfirmRow('初年度登録年月', firstReg) +
+        ringConfirmRow('初度登録年月', firstReg) +
         ringConfirmRow('型式', document.getElementById('inModel').value) +
         ringConfirmRow('原動機型式', document.getElementById('inEngine').value) +
         ringConfirmRow('類別区分番号', document.getElementById('inCategory').value) +
@@ -550,9 +562,10 @@
     }
 
     const RING_OCR_FIELDS_CAR = [
+      { key: 'vehicleName', label: '車名', getCurrent: () => document.getElementById('inVehicleName').value },
       { key: 'vin', label: '車体番号', getCurrent: () => document.getElementById('inVin').value },
       { key: 'shaken', label: '車検満了日', getCurrent: () => document.getElementById('inExpiry').value },
-      { key: 'firstRegistration', label: '初年度登録年月', getCurrent: () => document.getElementById('inFirstReg').value },
+      { key: 'firstRegistration', label: '初度登録年月', getCurrent: () => document.getElementById('inFirstReg').value },
       { key: 'model', label: '型式', getCurrent: () => document.getElementById('inModel').value },
       { key: 'engine', label: '原動機型式', getCurrent: () => document.getElementById('inEngine').value },
       { key: 'class', label: '類別区分番号', getCurrent: () => document.getElementById('inCategory').value },
@@ -585,7 +598,7 @@
       }
       let res = null;
       try {
-        res = await analyzeDocument([file]);
+        res = await analyzeDocument([file], { documentType: 'registration' });
       } finally {
         if (typeof hideOcrAnalyzingOverlay === 'function') hideOcrAnalyzingOverlay();
         else if (typeof hideLoading === 'function') hideLoading();

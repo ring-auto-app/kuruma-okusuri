@@ -1398,6 +1398,7 @@ function mapGasVehicleRowToLocal(row) {
         model: row.model || "",
         vehicleCategory: row.vehicleCategory || "managed",
         firstRegistration: row.firstRegistration || "",
+        vehicleName: row.vehicleName || "",
         createdAt: row.createdAt || ""
     };
 }
@@ -1660,6 +1661,8 @@ async function addVehicle(v, options) {
     const i = list.findIndex(x => _normalize(x.vin) === _normalize(v.vin));
     const merged = i !== -1 ? { ...list[i], ...v } : { ...v };
     merged.createdAt = merged.createdAt || new Date().toISOString();
+    if (merged.vehicleName != null) merged.vehicleName = ringNormalizeVehicleSaveValue_(merged.vehicleName);
+    if (merged.firstRegistration != null) merged.firstRegistration = ringNormalizeVehicleSaveValue_(merged.firstRegistration);
     if (i !== -1) list[i] = merged; else list.push(merged);
     localStorage.setItem(DB_VEHICLES, JSON.stringify(list));
     try {
@@ -1803,7 +1806,7 @@ async function sendToGAS_Safe(actionType, data, opts) {
         body: JSON.stringify(payload)
     }, timeoutMs);
     if (!json || json.success !== true) {
-        if (actionType === 'ocr_vin' && json && (json.fields || json.ocrText)) {
+        if (actionType === 'ocr_vin' && json && (json.fields || json.ocrText || json.registration)) {
             return json;
         }
         throw new Error((json && json.error) || 'GAS保存に失敗しました');
@@ -2102,9 +2105,19 @@ function truncateRingConfirm(s, max) {
 }
 
 /** 確認モーダル1行 */
-function ringConfirmRow(label, value) {
+function ringConfirmRow(label, value, confidence) {
     var v = (value === undefined || value === null || String(value).trim() === '') ? '—' : String(value);
-    return '<div class="ring-save-confirm__row"><span class="ring-save-confirm__k">' + escapeHtml(label) + '</span><span class="ring-save-confirm__v">' + escapeHtml(v) + '</span></div>';
+    var low = confidence === 'low';
+    return '<div class="ring-save-confirm__row' + (low ? ' ring-save-confirm__row--low-conf' : '') + '">' +
+        '<span class="ring-save-confirm__k">' + escapeHtml(label) +
+        (low ? ' <span class="ring-ocr-review__conf">要確認</span>' : '') +
+        '</span><span class="ring-save-confirm__v">' + escapeHtml(v) + '</span></div>';
+}
+
+function ringNormalizeVehicleSaveValue_(v) {
+    var s = String(v == null ? '' : v).trim();
+    if (!s || s === '-' || s === '不明' || /^N\/A$/i.test(s)) return '';
+    return s;
 }
 
 /**
@@ -2296,7 +2309,8 @@ function fileToVisionBase64(file, maxSide) {
  * @param {File|Blob} file
  * @param {string=} fileName
  */
-async function ringOcrVinRequest_(file, fileName) {
+async function ringOcrVinRequest_(file, fileName, opts) {
+    opts = opts || {};
     fileName = fileName || (file && file.name) || 'image';
     var b64;
     try {
@@ -2312,7 +2326,9 @@ async function ringOcrVinRequest_(file, fileName) {
     }
     try {
         await ringEnsureAuthForOcr();
-        return await sendToGAS_Safe('ocr_vin', { imageBase64: b64 });
+        var payload = { imageBase64: b64 };
+        if (opts.documentType) payload.documentType = opts.documentType;
+        return await sendToGAS_Safe('ocr_vin', payload);
     } finally {
         b64 = null;
     }
@@ -2408,7 +2424,7 @@ function showOcrApplyConfirm(res, descriptors, onApply) {
     (descriptors || []).forEach(function (d) {
         if (d && d.key) descByKey[d.key] = d;
     });
-    var order = ['vin', 'shaken', 'firstRegistration', 'mileage', 'parts', 'model', 'engine', 'class', 'typeDesignation'];
+    var order = ['vin', 'vehicleName', 'shaken', 'firstRegistration', 'mileage', 'parts', 'model', 'engine', 'class', 'typeDesignation'];
     var keysToShow = [];
     order.forEach(function (k) {
         if (!descByKey[k]) return;
@@ -2563,10 +2579,40 @@ function ringValidateWorkTitleSelect(selectEl, errElId) {
     return ok;
 }
 
+function ringNormalizeRegistrationOcrResponse_(json) {
+    var reg = (json && json.registration) || {};
+    var f = reg.fields || {};
+    var flat = { _confidence: {} };
+    function pick(fieldKey, outKey, transform) {
+        var item = f[fieldKey];
+        if (!item || !item.value) return;
+        var val = transform ? transform(item.value) : item.value;
+        flat[outKey || fieldKey] = val;
+        flat._confidence[outKey || fieldKey] = item.confidence || 'high';
+    }
+    pick('vin', 'vin', function (v) {
+        return ringCorrectVinOcrMisread_(String(v).replace(/\s+/g, ''));
+    });
+    pick('vehicleName', 'vehicleName');
+    pick('vehicleModel', 'model');
+    pick('engine', 'engine');
+    pick('classification', 'class');
+    pick('typeDesignation', 'typeDesignation');
+    pick('firstRegistration', 'firstRegistration', function (v) {
+        return String(v).replace(/\//g, '-').slice(0, 7);
+    });
+    pick('shaken', 'shaken', function (v) {
+        return String(v).replace(/\//g, '-');
+    });
+    if (json && json.partial === true) flat.partial = true;
+    if (json && json.ocrStatus) flat.ocrStatus = json.ocrStatus;
+    return flat;
+}
+
 function ringHasOcrResult_(res) {
     if (!res || typeof res !== 'object') return false;
     if (res.partial === true) return true;
-    var keys = ['vin', 'mileage', 'shaken', 'firstRegistration', 'model', 'engine', 'class', 'typeDesignation', 'parts', 'memo'];
+    var keys = ['vin', 'vehicleName', 'mileage', 'shaken', 'firstRegistration', 'model', 'engine', 'class', 'typeDesignation', 'parts', 'memo'];
     var i;
     for (i = 0; i < keys.length; i++) {
         var v = res[keys[i]];
@@ -2577,6 +2623,7 @@ function ringHasOcrResult_(res) {
         if (f.mileage != null && !isNaN(f.mileage)) return true;
         if (f.shaken) return true;
         if (f.model || f.engine || f.class || f.typeDesignation) return true;
+        if (f.vehicleName || f.firstRegistration) return true;
         if (f.parts && f.parts.length) return true;
     }
     return false;
@@ -2592,6 +2639,8 @@ function ringNormalizeOcrResultPayload_(res) {
         if (res.fields.engine) flat.engine = res.fields.engine;
         if (res.fields.class) flat.class = res.fields.class;
         if (res.fields.typeDesignation) flat.typeDesignation = res.fields.typeDesignation;
+        if (res.fields.vehicleName) flat.vehicleName = res.fields.vehicleName;
+        if (res.fields.firstRegistration) flat.firstRegistration = res.fields.firstRegistration;
         if (res.fields.parts && res.fields.parts.length) flat.parts = res.fields.parts.join('\n');
         if (res.partial) flat.partial = true;
         return flat;
@@ -2609,14 +2658,21 @@ function ringNormalizeOcrResultPayload_(res) {
 
 function ringBuildOcrConfirmBodyHtml_(payload) {
     var html = '';
-    if (payload.vin) html += ringConfirmRow('車体番号', payload.vin);
-    if (payload.mileage != null && String(payload.mileage).trim() !== '') html += ringConfirmRow('走行距離(km)', payload.mileage);
-    if (payload.shaken) html += ringConfirmRow('車検満了日', payload.shaken);
-    if (payload.model) html += ringConfirmRow('型式', payload.model);
-    if (payload.engine) html += ringConfirmRow('原動機型式', payload.engine);
-    if (payload.class) html += ringConfirmRow('類別区分', payload.class);
-    if (payload.typeDesignation) html += ringConfirmRow('型式指定', payload.typeDesignation);
-    if (payload.parts) html += ringConfirmRow('部品', payload.parts);
+    var conf = payload._confidence || {};
+    function row(label, key) {
+        if (payload[key] == null || String(payload[key]).trim() === '') return;
+        html += ringConfirmRow(label, payload[key], conf[key]);
+    }
+    row('車名', 'vehicleName');
+    row('車体番号', 'vin');
+    row('車検満了日', 'shaken');
+    row('初度登録年月', 'firstRegistration');
+    row('走行距離(km)', 'mileage');
+    row('型式', 'model');
+    row('原動機型式', 'engine');
+    row('類別区分', 'class');
+    row('型式指定', 'typeDesignation');
+    if (payload.parts) html += ringConfirmRow('部品', payload.parts, conf.parts);
     return html || ringConfirmRow('読取項目', '（内容をご確認ください）');
 }
 
@@ -2637,6 +2693,7 @@ function ringApplyOcrToForm(scope, payload, opts) {
         }
     }
     if (scope === 'car') {
+        if (payload.vehicleName) { var vn = document.getElementById('inVehicleName'); if (vn) vn.value = payload.vehicleName; }
         if (payload.shaken) { var ex = document.getElementById('inExpiry'); if (ex) ex.value = payload.shaken; }
         if (payload.firstRegistration) { var fr = document.getElementById('inFirstReg'); if (fr) fr.value = payload.firstRegistration; }
         if (payload.model) { var mo = document.getElementById('inModel'); if (mo) mo.value = payload.model; }
@@ -2644,7 +2701,7 @@ function ringApplyOcrToForm(scope, payload, opts) {
         if (payload.class) { var ca = document.getElementById('inCategory'); if (ca) ca.value = payload.class; }
         if (payload.typeDesignation) { var td = document.getElementById('inTypeDesig'); if (td) td.value = payload.typeDesignation; }
         var det = document.querySelector('.card details');
-        if (det && (payload.model || payload.engine || payload.class || payload.typeDesignation)) det.open = true;
+        if (det && (payload.model || payload.engine || payload.class || payload.typeDesignation || payload.vehicleName)) det.open = true;
         if (typeof opts.onAfter === 'function') opts.onAfter(payload);
     } else {
         if (payload.mileage != null) { var mi = document.getElementById('inMileage'); if (mi) mi.value = payload.mileage; }
@@ -2692,7 +2749,7 @@ function handleOcrVinResultForForm(res, applyFn, ocrFieldDescriptors) {
     var payload = ringNormalizeOcrResultPayload_(res);
     var ocrStatus = res && res.ocrStatus ? res.ocrStatus : null;
     var demo = ringIsOcrDemoMode_();
-    var extraKeys = ['shaken', 'firstRegistration', 'mileage', 'parts', 'model', 'engine', 'class', 'typeDesignation'].filter(function (k) {
+    var extraKeys = ['vehicleName', 'shaken', 'firstRegistration', 'mileage', 'parts', 'model', 'engine', 'class', 'typeDesignation'].filter(function (k) {
         var v = payload[k];
         return v != null && String(v).trim() !== '';
     });
@@ -3467,12 +3524,14 @@ async function ringHandleBatchDocumentScan(opts) {
  * @param {File[]} files
  * @returns {Promise<null|{vin?: string, shaken?: string, mileage?: string, workTitle?: string, parts?: string, model?: string, engine?: string, class?: string, typeDesignation?: string}>}
  */
-async function analyzeDocument(files) {
+async function analyzeDocument(files, opts) {
+    opts = opts || {};
     if (!files || !files[0]) return null;
     if (ringIsOcrDemoMode_()) {
         await delay(900);
         return {
             vin: 'ZVW50-5012847',
+            vehicleName: 'トヨタ プリウス',
             shaken: '2026-12-15',
             firstRegistration: '2020-03',
             mileage: '',
@@ -3484,7 +3543,11 @@ async function analyzeDocument(files) {
         };
     }
     try {
-        var json = await ringOcrVinRequest_(files[0], files[0].name || 'image');
+        var json = await ringOcrVinRequest_(files[0], files[0].name || 'image', opts);
+        if (json && (json.documentType === 'registration' || json.registration)) {
+            var regFlat = ringNormalizeRegistrationOcrResponse_(json);
+            if (ringHasOcrResult_(regFlat)) return regFlat;
+        }
         if (json && (json.vin || json.fields || json.partial === true)) {
             var flat = {};
             if (json.vin) flat.vin = ringCorrectVinOcrMisread_(String(json.vin).replace(/\s+/g, ''));

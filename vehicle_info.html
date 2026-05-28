@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.json">
     <title>車のお薬手帳</title>
   <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20260527-v20"></script>
+  <script src="app.js?v=20260527-v21"></script>
   <script src="theme.js"></script>
   <style>
     body {
@@ -123,6 +123,11 @@
       </div>
 
       <div class="field">
+        <span class="label">車名 <span class="optional">※任意</span></span>
+        <input id="inVehicleName" type="text" placeholder="例：トヨタ プリウス">
+      </div>
+
+      <div class="field">
         <span class="label">車台番号 (VIN) <span class="required">※変更不可</span></span>
         <div class="vin-display" id="vinDisplay">読み込み中...</div>
       </div>
@@ -162,7 +167,7 @@
       </div>
 
       <div class="field">
-        <span class="label">初年度登録年月 <span class="required">※必須</span></span>
+        <span class="label">初度登録年月 <span class="required">※必須</span></span>
         <input id="inFirstReg" type="month" placeholder="例：2021-03">
       </div>
     </div>
@@ -290,12 +295,13 @@
 
       // 各フィールドを現在の値で埋める
       document.getElementById('inName').value      = car.model || car.nickname || '';
+      document.getElementById('inVehicleName').value = car.vehicleName || '';
       document.getElementById('inModel').value     = car.vehicleModel || '';
       document.getElementById('inEngine').value    = car.engine || '';
       document.getElementById('inCategory').value  = car.category || car.classification || '';
       document.getElementById('inTypeDesig').value = car.typeDesignation || '';
       document.getElementById('inExpiry').value    = car.nextShaken || '';
-      // 初年度登録年月（YYYY-MM形式）
+      // 初度登録年月（YYYY-MM形式）
       document.getElementById('inFirstReg').value  = car.firstRegistration || '';
 
       // セレクトの値をセット
@@ -378,13 +384,15 @@
     /* ── 保存処理 ── */
     function execSave() {
       const expiry   = document.getElementById('inExpiry').value;
-      const firstReg = document.getElementById('inFirstReg').value;
+      const firstReg = typeof ringNormalizeVehicleSaveValue_ === 'function'
+        ? ringNormalizeVehicleSaveValue_(document.getElementById('inFirstReg').value)
+        : document.getElementById('inFirstReg').value;
       if (!expiry) {
         alert('車検満了日を入力してください。');
         return;
       }
       if (!firstReg) {
-        alert('初年度登録年月を入力してください。');
+        alert('初度登録年月を入力してください。');
         document.getElementById('inFirstReg').focus();
         return;
       }
@@ -409,11 +417,16 @@
         const catEl = document.querySelector('input[name="vehicleCategory"]:checked');
         const newCategory = catEl ? catEl.value : (vehicles[idx].vehicleCategory || 'managed');
 
+        const vehicleName = typeof ringNormalizeVehicleSaveValue_ === 'function'
+          ? ringNormalizeVehicleSaveValue_(document.getElementById('inVehicleName').value)
+          : document.getElementById('inVehicleName').value.trim();
+
         // VIN以外を更新（既存のshopId・userId等は維持）
         vehicles[idx] = {
           ...vehicles[idx],
           model:            document.getElementById('inName').value.trim() || '名称未設定',
           nickname:         document.getElementById('inName').value.trim() || '名称未設定',
+          vehicleName:      vehicleName,
           vehicleModel:     document.getElementById('inModel').value.trim(),
           engine:           document.getElementById('inEngine').value.trim(),
           category:         document.getElementById('inCategory').value.trim(),

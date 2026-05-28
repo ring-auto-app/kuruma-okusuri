@@ -703,6 +703,9 @@ textarea.ring-auto-grow {
   font-size: 16px;
   font-family: inherit;
 }
+.ring-save-confirm__row--low-conf .ring-save-confirm__v {
+  background: #fff3b0;
+}
 .ring-ocr-review__input--low-conf,
 .ring-ocr-review__part--low-conf .ring-ocr-review__part-input {
   background: #fff3b0;

@@ -13,7 +13,7 @@
     <title>車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20260527-v20"></script>
+  <script src="app.js?v=20260527-v21"></script>
   <script src="theme.js"></script>
   
   <style>
@@ -258,7 +258,7 @@
       }
       var res = null;
       try {
-        res = await analyzeDocument([file]);
+        res = await analyzeDocument([file], { documentType: 'registration' });
       } catch (err) {
         console.error(err);
       } finally {
