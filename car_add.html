@@ -36,7 +36,7 @@
     }
     .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
-    input[type="text"], input[type="date"], select {
+    input[type="text"], input[type="date"], input[type="month"], select {
       width: 100%; padding: 14px; border: 2px solid var(--line); border-radius: 12px;
       background: var(--page-bg); font-size: 16px; font-weight: 700; color: var(--text);
       box-sizing: border-box; font-family: inherit; appearance: none;
@@ -152,15 +152,23 @@
       </div>
 
       <div class="field">
-        <span class="label">車名 <span class="optional">※任意</span></span>
-        <input id="inVehicleName" type="text" placeholder="例：トヨタ プリウス">
-      </div>
-
-      <div class="field">
         <span class="label">車台番号 (VIN) <span class="required">※必須</span></span>
         <input id="inVin" type="text" placeholder="例：ZVW50-123456" autocomplete="off"
                oninput="clearErr('inVin')">
         <div class="err-msg" id="errVin">⚠ 車台番号は必須です</div>
+      </div>
+
+      <div class="field">
+        <span class="label">初度登録年月 <span class="required">※必須</span></span>
+        <input id="inFirstReg" type="month" onchange="clearErr('inFirstReg')"
+               placeholder="例：2021-03">
+        <div class="err-msg" id="errInFirstReg">⚠ 初度登録年月は必須です</div>
+      </div>
+
+      <div class="field">
+        <span class="label">車検満了日 <span class="required">※必須</span></span>
+        <input id="inExpiry" type="date" onchange="clearErr('inExpiry'); updateSchedule()">
+        <div class="err-msg" id="errExpiry">⚠ 車検満了日は必須です</div>
       </div>
 
       <!-- 車両詳細情報（factory_input.html と同じ構成） -->
@@ -169,6 +177,10 @@
           ▶ 車両詳細情報を入力する（任意）
         </summary>
         <div style="margin-top:10px;">
+          <div class="field">
+            <span class="label">車名 <span class="optional">※任意</span></span>
+            <input id="inVehicleName" type="text" placeholder="例：トヨタ プリウス">
+          </div>
           <div class="row">
             <div class="field">
               <span class="label">型式 <span class="optional">※任意</span></span>
@@ -191,19 +203,6 @@
           </div>
         </div>
       </details>
-
-      <div class="field">
-        <span class="label">車検満了日 <span class="required">※必須</span></span>
-        <input id="inExpiry" type="date" onchange="clearErr('inExpiry'); updateSchedule()">
-        <div class="err-msg" id="errExpiry">⚠ 車検満了日は必須です</div>
-      </div>
-
-      <div class="field">
-        <span class="label">初度登録年月 <span class="required">※必須</span></span>
-        <input id="inFirstReg" type="month" onchange="clearErr('inFirstReg')"
-               placeholder="例：2021-03">
-        <div class="err-msg" id="errInFirstReg">⚠ 初度登録年月は必須です</div>
-      </div>
 
     </div><!-- /card -->
 

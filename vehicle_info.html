@@ -123,13 +123,18 @@
       </div>
 
       <div class="field">
-        <span class="label">車名 <span class="optional">※任意</span></span>
-        <input id="inVehicleName" type="text" placeholder="例：トヨタ プリウス">
+        <span class="label">車台番号 (VIN) <span class="required">※変更不可</span></span>
+        <div class="vin-display" id="vinDisplay">読み込み中...</div>
       </div>
 
       <div class="field">
-        <span class="label">車台番号 (VIN) <span class="required">※変更不可</span></span>
-        <div class="vin-display" id="vinDisplay">読み込み中...</div>
+        <span class="label">初度登録年月 <span class="required">※必須</span></span>
+        <input id="inFirstReg" type="month" placeholder="例：2021-03">
+      </div>
+
+      <div class="field">
+        <span class="label">車検満了日 <span class="required">※必須</span></span>
+        <input id="inExpiry" type="date" onchange="updateSchedule()">
       </div>
 
       <!-- 車両詳細情報 -->
@@ -138,6 +143,10 @@
           ▶ 車両詳細情報
         </summary>
         <div style="margin-top:10px;">
+          <div class="field">
+            <span class="label">車名 <span class="optional">※任意</span></span>
+            <input id="inVehicleName" type="text" placeholder="例：トヨタ プリウス">
+          </div>
           <div class="row">
             <div class="field">
               <span class="label">型式</span>
@@ -160,16 +169,6 @@
           </div>
         </div>
       </details>
-
-      <div class="field">
-        <span class="label">車検満了日 <span class="required">※必須</span></span>
-        <input id="inExpiry" type="date" onchange="updateSchedule()">
-      </div>
-
-      <div class="field">
-        <span class="label">初度登録年月 <span class="required">※必須</span></span>
-        <input id="inFirstReg" type="month" placeholder="例：2021-03">
-      </div>
     </div>
 
     <!-- 車種・用途 -->
