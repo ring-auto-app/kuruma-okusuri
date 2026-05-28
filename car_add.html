@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.json">
     <title>車のお薬手帳</title>
   <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20260528-v25"></script>
+  <script src="app.js?v=20260528-v26"></script>
   <script src="theme.js"></script>
   <style>
     body {
@@ -48,6 +48,7 @@
     }
     input:focus, select:focus { outline: none; border-color: var(--accent); background: var(--paper, #fff); }
     input.error-field { border-color: #ef4444 !important; }
+    select.error-field { border-color: #ef4444 !important; }
 
     .err-msg {
       display: none; color: #ef4444; font-size: 12px; font-weight: 800;
@@ -164,8 +165,11 @@
 
       <div class="field">
         <span class="label">初度登録年月 <span class="required">※必須</span></span>
-        <input id="inFirstReg" type="month" onchange="clearErr('inFirstReg')"
-               placeholder="例：2021-03">
+        <div class="first-reg-wareki-row">
+          <select id="firstRegEraYear" aria-label="初度登録年（和暦）" onchange="clearErr('inFirstReg')"></select>
+          <select id="firstRegMonth" aria-label="初度登録月" onchange="clearErr('inFirstReg')"></select>
+        </div>
+        <input type="hidden" id="inFirstReg">
         <div class="err-msg" id="errInFirstReg">⚠ 初度登録年月は必須です</div>
       </div>
 
@@ -310,13 +314,27 @@
 
     /* ── バリデーション ── */
     function clearErr(id) {
-      document.getElementById(id).classList.remove('error-field');
+      if (id === 'inFirstReg') {
+        var ey = document.getElementById('firstRegEraYear');
+        var em = document.getElementById('firstRegMonth');
+        if (ey) ey.classList.remove('error-field');
+        if (em) em.classList.remove('error-field');
+      } else {
+        document.getElementById(id).classList.remove('error-field');
+      }
       const errId = 'err' + id.charAt(0).toUpperCase() + id.slice(1);
       const el = document.getElementById(errId);
       if (el) el.classList.remove('show');
     }
     function showErr(id, msg) {
-      document.getElementById(id).classList.add('error-field');
+      if (id === 'inFirstReg') {
+        var ey = document.getElementById('firstRegEraYear');
+        var em = document.getElementById('firstRegMonth');
+        if (ey) { ey.classList.add('error-field'); ey.focus(); }
+        if (em) em.classList.add('error-field');
+      } else {
+        document.getElementById(id).classList.add('error-field');
+      }
       const errId = 'err' + id.charAt(0).toUpperCase() + id.slice(1);
       const el = document.getElementById(errId);
       if (el) { el.textContent = '⚠ ' + msg; el.classList.add('show'); }

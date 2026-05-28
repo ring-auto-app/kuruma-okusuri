@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.json">
     <title>車のお薬手帳</title>
   <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20260528-v25"></script>
+  <script src="app.js?v=20260528-v26"></script>
   <script src="theme.js"></script>
   <style>
     body {
@@ -133,7 +133,11 @@
 
       <div class="field">
         <span class="label">初度登録年月 <span class="required">※必須</span></span>
-        <input id="inFirstReg" type="month" placeholder="例：2021-03">
+        <div class="first-reg-wareki-row">
+          <select id="firstRegEraYear" aria-label="初度登録年（和暦）"></select>
+          <select id="firstRegMonth" aria-label="初度登録月"></select>
+        </div>
+        <input type="hidden" id="inFirstReg">
       </div>
 
       <div class="field">
@@ -396,7 +400,8 @@
       }
       if (!firstReg) {
         alert('初度登録年月を入力してください。');
-        document.getElementById('inFirstReg').focus();
+        var frFocus = document.getElementById('firstRegEraYear') || document.getElementById('inFirstReg');
+        if (frFocus && typeof frFocus.focus === 'function') frFocus.focus();
         return;
       }
 

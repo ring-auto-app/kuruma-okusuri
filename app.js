@@ -2206,6 +2206,113 @@ function ringNormalizeVehicleSaveValue_(v) {
     return s;
 }
 
+/** 西暦年 → 和暦表示（例: 2021 → 令和3年） */
+function ringFormatWarekiYearLabel_(westernYear) {
+    var y = parseInt(westernYear, 10);
+    if (isNaN(y)) return String(westernYear || '');
+    if (y >= 2019) return '令和' + (y - 2018) + '年';
+    if (y >= 1989) return '平成' + (y - 1988) + '年';
+    if (y >= 1926) return '昭和' + (y - 1925) + '年';
+    return y + '年';
+}
+
+/** #firstRegMonth の 1〜12 月 option を生成 */
+function ringBuildFirstRegMonthOptions_(monthSel) {
+    if (!monthSel) return;
+    monthSel.innerHTML = '<option value="">月</option>';
+    for (var m = 1; m <= 12; m++) {
+        var mm = m < 10 ? '0' + m : String(m);
+        var opt = document.createElement('option');
+        opt.value = mm;
+        opt.textContent = m + '月';
+        monthSel.appendChild(opt);
+    }
+}
+
+/** #firstRegEraYear の昭和〜令和 option（value=西暦年）を生成 */
+function ringBuildFirstRegEraYearOptions_(eraYearSel) {
+    if (!eraYearSel) return;
+    var nowYear = new Date().getFullYear();
+    var startYear = 1926;
+    eraYearSel.innerHTML = '<option value="">年</option>';
+    for (var y = nowYear; y >= startYear; y--) {
+        var opt = document.createElement('option');
+        opt.value = String(y);
+        opt.textContent = ringFormatWarekiYearLabel_(y);
+        eraYearSel.appendChild(opt);
+    }
+}
+
+/** YYYY-MM を年・月セレクトへ反映（change イベントは発火しない） */
+function ringSyncFirstRegHiddenToSelects_(hidden, eraYearSel, monthSel) {
+    if (!hidden || !eraYearSel || !monthSel) return;
+    var raw = String(hidden.value || '').trim().replace(/\//g, '-');
+    var m = raw.match(/^(\d{4})-(\d{1,2})$/);
+    if (m) {
+        eraYearSel.value = m[1];
+        var mo = parseInt(m[2], 10);
+        monthSel.value = mo >= 1 && mo <= 12 ? (mo < 10 ? '0' + mo : String(mo)) : '';
+    } else {
+        eraYearSel.value = '';
+        monthSel.value = '';
+    }
+}
+
+/** 年・月セレクト → #inFirstReg(hidden) へ YYYY-MM 同期 */
+function ringSyncFirstRegSelectsToHidden_(hidden, eraYearSel, monthSel) {
+    if (!hidden || !eraYearSel || !monthSel) return;
+    var protoVal = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+    var y = eraYearSel.value;
+    var mo = monthSel.value;
+    var next = (y && mo) ? (y + '-' + mo) : '';
+    if (protoVal.get.call(hidden) === next) return;
+    protoVal.set.call(hidden, next);
+    hidden.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+/**
+ * 初度登録年月: 和暦セレクト + hidden(#inFirstReg) プロキシ初期化
+ * @param {string=} hiddenId
+ */
+function ringInitFirstRegWareki_(hiddenId) {
+    hiddenId = hiddenId || 'inFirstReg';
+    var hidden = document.getElementById(hiddenId);
+    var eraYearSel = document.getElementById('firstRegEraYear');
+    var monthSel = document.getElementById('firstRegMonth');
+    if (!hidden || !eraYearSel || !monthSel || hidden.dataset.warekiInit === '1') return;
+
+    ringBuildFirstRegEraYearOptions_(eraYearSel);
+    ringBuildFirstRegMonthOptions_(monthSel);
+
+    eraYearSel.addEventListener('change', function () {
+        ringSyncFirstRegSelectsToHidden_(hidden, eraYearSel, monthSel);
+    });
+    monthSel.addEventListener('change', function () {
+        ringSyncFirstRegSelectsToHidden_(hidden, eraYearSel, monthSel);
+    });
+
+    var protoVal = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+    Object.defineProperty(hidden, 'value', {
+        get: function () { return protoVal.get.call(this); },
+        set: function (v) {
+            protoVal.set.call(this, v);
+            ringSyncFirstRegHiddenToSelects_(hidden, eraYearSel, monthSel);
+        },
+        configurable: true
+    });
+
+    ringSyncFirstRegHiddenToSelects_(hidden, eraYearSel, monthSel);
+    hidden.dataset.warekiInit = '1';
+}
+
+/** OCR 等から #inFirstReg へプログラム反映する際の公開 API */
+function ringSetFirstRegValue_(value) {
+    var hidden = document.getElementById('inFirstReg');
+    if (!hidden) return;
+    if (hidden.dataset.warekiInit !== '1') ringInitFirstRegWareki_('inFirstReg');
+    hidden.value = value == null ? '' : String(value);
+}
+
 /**
  * 保存完了のフルスクリーン演出（成功／オフラインキュー）
  * @param {{ variant?: 'success'|'queued', message?: string, durationMs?: number, onDone?: () => void }} opts
@@ -2781,7 +2888,10 @@ function ringApplyOcrToForm(scope, payload, opts) {
     if (scope === 'car') {
         if (payload.vehicleName) { var vn = document.getElementById('inVehicleName'); if (vn) vn.value = payload.vehicleName; }
         if (payload.shaken) { var ex = document.getElementById('inExpiry'); if (ex) ex.value = payload.shaken; }
-        if (payload.firstRegistration) { var fr = document.getElementById('inFirstReg'); if (fr) fr.value = payload.firstRegistration; }
+        if (payload.firstRegistration) {
+            if (typeof ringSetFirstRegValue_ === 'function') ringSetFirstRegValue_(payload.firstRegistration);
+            else { var fr = document.getElementById('inFirstReg'); if (fr) fr.value = payload.firstRegistration; }
+        }
         if (payload.model) { var mo = document.getElementById('inModel'); if (mo) mo.value = payload.model; }
         if (payload.engine) { var en = document.getElementById('inEngine'); if (en) en.value = payload.engine; }
         if (payload.class) { var ca = document.getElementById('inCategory'); if (ca) ca.value = payload.class; }
@@ -3877,6 +3987,11 @@ function createGlobalUI() {
 window.addEventListener('DOMContentLoaded', createGlobalUI);
 window.addEventListener('DOMContentLoaded', function () {
     ringDeferAfterPaint_(ringInitLinePromoSlots);
+});
+window.addEventListener('DOMContentLoaded', function () {
+    if (document.getElementById('inFirstReg') && document.getElementById('firstRegEraYear')) {
+        ringInitFirstRegWareki_('inFirstReg');
+    }
 });
 
 // 戻るリンク文言を全ページで統一
