@@ -488,6 +488,7 @@ async function ringVerifySession(token, mode) {
  * @param {string=} source
  */
 function ringHandleAuthExpired_(mode, source) {
+    if (ringIsDemoGasOffline_()) return;
     if (typeof window !== 'undefined' && window.__ringAuthExpiredRedirecting) return;
     if (typeof window !== 'undefined') window.__ringAuthExpiredRedirecting = true;
     mode = ringNormalizeMode(mode || ringGetActiveMode());
@@ -975,6 +976,28 @@ function ringIsOcrDemoMode_() {
     }
 }
 
+/** デモ中は GAS へ送らずローカル完結（RING_DEMO_LOCAL / OCR デモ） */
+function ringIsDemoGasOffline_() {
+    if (ringIsOcrDemoMode_()) return true;
+    try {
+        var tok = typeof ringResolveActiveAuthToken === 'function'
+            ? ringResolveActiveAuthToken()
+            : (localStorage.getItem('ring_auth_token') || '');
+        return tok === RING_DEMO_LOCAL_TOKEN;
+    } catch (e) {
+        return false;
+    }
+}
+
+/** sendToGAS_Safe デモ短路用の最小レスポンス */
+function ringDemoGasStubResponse_(actionType) {
+    if (actionType === 'get_vehicles') return { success: true, vehicles: [] };
+    if (actionType === 'verify_session') return { success: true };
+    if (actionType === 'get_daily_history') return { success: true, logs: [] };
+    if (actionType === 'ocr_vin') return { success: true, partial: true, demo: true };
+    return { success: true, demo: true };
+}
+
 /**
  * OCR 中断時の明示報告（console + toast + 監視ログ）。サイレント abort 禁止。
  * @param {string} stage
@@ -1198,8 +1221,8 @@ function seedDemoEnvironment(role) {
   } else {
     vehicles.push(baseV({
       vin: 'ZVW50-6021939',
-      model: '通勤のプリウス',
-      nickname: '通勤のプリウス',
+      model: '１号車',
+      nickname: '１号車',
       vehicleModel: 'DBA-ZVW50',
       engine: '2ZR-FXE',
       category: '12001',
@@ -1232,8 +1255,8 @@ function seedDemoEnvironment(role) {
     }));
     vehicles.push(baseV({
       vin: 'GR3-2201188',
-      model: '週末ドライブ',
-      nickname: '週末ドライブ',
+      model: 'フィット',
+      nickname: 'フィット',
       vehicleModel: 'DBA-GR3',
       engine: 'L15B',
       category: '13001',
@@ -1496,6 +1519,7 @@ function mergeVehiclesLocalAndServer(localList, serverList) {
  * 車両一覧画面用: get_vehicles でサーバとローカルをマージして保存
  */
 async function syncVehiclesFromServer() {
+    if (ringIsDemoGasOffline_()) return loadVehicles();
     const token = typeof ringResolveActiveAuthToken === 'function'
         ? ringResolveActiveAuthToken()
         : localStorage.getItem("ring_auth_token");
@@ -1840,6 +1864,9 @@ async function fetchJsonWithTimeout(url, options, timeoutMs) {
  * @param {{ timeoutMs?: number }} [opts]
  */
 async function sendToGAS_Safe(actionType, data, opts) {
+    if (ringIsDemoGasOffline_()) {
+        return ringDemoGasStubResponse_(actionType);
+    }
     try {
     const payload = JSON.parse(JSON.stringify(data || {}));
     payload.action = actionType;
@@ -1953,6 +1980,7 @@ let __ringRetryFlushBusy = false;
  * オンライン復帰などで再送キューを空に近づける（C-01）
  */
 async function flushRetryQueue() {
+    if (ringIsDemoGasOffline_()) return;
     if (__ringRetryFlushBusy) return;
     __ringRetryFlushBusy = true;
     try {
@@ -3010,6 +3038,7 @@ function gasFieldsToParsed_(fields, fileName, gasVin) {
 
 function ringShowAuthErrorForOcr_(alreadyShown) {
     if (alreadyShown) return true;
+    if (ringIsDemoGasOffline_()) return true;
     ringHandleAuthExpired_(ringGetActiveMode(), 'ocr_batch');
     return true;
 }
