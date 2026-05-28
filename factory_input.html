@@ -13,7 +13,7 @@
     <title>車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20260528-v24"></script>
+  <script src="app.js?v=20260528-v25"></script>
   <script src="theme.js"></script>
   
   <style>
@@ -60,16 +60,25 @@
       width: 100%;
       max-width: 100%;
       min-width: 0;
+      flex-shrink: 1;
       min-height: var(--tap-min);
-      padding: 12px;
+      padding: 8px 10px;
       border: 2px solid var(--line) !important; /* ここで枠線の色を統一 */
       border-radius: 10px;
       box-sizing: border-box;
       font-size: 16px;
       background: #fff;
       outline: none;
+      -webkit-appearance: none;
+      appearance: none;
     }
-    input[type="date"] { display: block; }
+    input[type="date"] {
+      display: block;
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      flex-shrink: 1;
+    }
     textarea { min-height: 88px; }
 
     #inVin {

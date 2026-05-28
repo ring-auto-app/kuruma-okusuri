@@ -115,14 +115,45 @@ textarea {
 .field { margin-bottom: 17px; min-width: 0; max-width: 100%; }
 .label { display: block; font-size: 12px; font-weight: 800; color: var(--muted); line-height: 17px; margin-bottom: 4px; }
 
-input[type="text"], input[type="date"], input[type="month"], input[type="password"], input[type="number"], input[type="tel"], input[type="email"], input[type="url"], input[type="search"], select, textarea {
-  width: 100%; max-width: 100%; min-width: 0; min-height: var(--tap-min); padding: 12px 14px;
+input[type="text"], input[type="date"], input[type="month"], input[type="password"], input[type="number"], input[type="tel"], input[type="email"], input[type="url"], input[type="search"], textarea {
+  width: 100%; max-width: 100%; min-width: 0; flex-shrink: 1; min-height: var(--tap-min); padding: 12px 14px;
+  border: 2px solid var(--line); border-radius: 10px;
+  background: var(--paper); font-size: 16px; font-weight: 700; color: var(--text);
+  box-sizing: border-box; outline: none; font-family: inherit;
+  -webkit-appearance: none;
+  appearance: none;
+}
+select {
+  width: 100%; max-width: 100%; min-width: 0; flex-shrink: 1; min-height: var(--tap-min); padding: 12px 14px;
   border: 2px solid var(--line); border-radius: 10px;
   background: var(--paper); font-size: 16px; font-weight: 700; color: var(--text);
   box-sizing: border-box; outline: none; font-family: inherit;
 }
 input[type="date"], input[type="month"] {
   display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  flex-shrink: 1;
+  padding: 8px 10px;
+  -webkit-appearance: none;
+  appearance: none;
+}
+input[type="date"]::-webkit-date-and-time-value,
+input[type="month"]::-webkit-date-and-time-value {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-align: left;
+  margin: 0;
+  padding: 0;
+}
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="month"]::-webkit-calendar-picker-indicator {
+  margin: 0;
+  padding: 0;
+  flex-shrink: 0;
 }
 input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 textarea { line-height: 24px; min-height: 88px; }
@@ -136,7 +167,8 @@ textarea.ring-auto-grow {
 .basic-info-card .row,
 .note-card .row,
 .detail-card .row,
-.car-info .row {
+.car-info .row,
+.row:has(> .field) {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px;
@@ -147,7 +179,8 @@ textarea.ring-auto-grow {
 .basic-info-card .row > .field,
 .note-card .row > .field,
 .detail-card .row > .field,
-.car-info .row > .field {
+.car-info .row > .field,
+.row:has(> .field) > .field {
   min-width: 0;
   max-width: 100%;
 }
@@ -156,13 +189,64 @@ textarea.ring-auto-grow {
 .note-card .row input,
 .detail-card .row input,
 .car-info .row input,
+.row:has(> .field) input,
 .card .row select,
 .basic-info-card .row select,
 .note-card .row select,
 .detail-card .row select,
-.car-info .row select {
+.car-info .row select,
+.row:has(> .field) select {
   width: 100%;
   max-width: 100%;
+  min-width: 0;
+  flex-shrink: 1;
+  box-sizing: border-box;
+}
+.card .row input[type="date"],
+.basic-info-card .row input[type="date"],
+.note-card .row input[type="date"],
+.detail-card .row input[type="date"],
+.car-info .row input[type="date"],
+.row:has(> .field) input[type="date"],
+.card .row input[type="month"],
+.basic-info-card .row input[type="month"],
+.note-card .row input[type="month"],
+.detail-card .row input[type="month"],
+.car-info .row input[type="month"],
+.row:has(> .field) input[type="month"],
+.card .row input[type="text"],
+.basic-info-card .row input[type="text"],
+.note-card .row input[type="text"],
+.detail-card .row input[type="text"],
+.car-info .row input[type="text"],
+.row:has(> .field) input[type="text"] {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* flex 親内の入力枠 — iOS Safari で縮まないバグ対策 */
+[style*="display: flex"] input[type="text"],
+[style*="display: flex"] input[type="date"],
+[style*="display: flex"] input[type="month"],
+[style*="display:flex"] input[type="text"],
+[style*="display:flex"] input[type="date"],
+[style*="display:flex"] input[type="month"],
+.flex input[type="text"],
+.flex input[type="date"],
+.flex input[type="month"],
+[class*="flex"] input[type="date"],
+[class*="flex"] input[type="month"],
+[class*="flex"] input[type="text"],
+.field input[type="text"],
+.field input[type="date"],
+.field input[type="month"],
+.field input[type="number"],
+.field select,
+.field textarea {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  flex-shrink: 1;
   box-sizing: border-box;
 }
 

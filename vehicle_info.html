@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.json">
     <title>車のお薬手帳</title>
   <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20260528-v24"></script>
+  <script src="app.js?v=20260528-v25"></script>
   <script src="theme.js"></script>
   <style>
     body {
@@ -38,12 +38,16 @@
       content: "▼"; position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
       font-size: 12px; color: var(--muted); pointer-events: none;
     }
-    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; min-width: 0; max-width: 100%; }
+    .row > .field { min-width: 0; max-width: 100%; }
 
     input[type="text"], input[type="date"], input[type="month"], select {
-      width: 100%; padding: 14px; border: 2px solid var(--line); border-radius: 12px;
+      width: 100%; max-width: 100%; min-width: 0; flex-shrink: 1; padding: 8px 10px;
+      border: 2px solid var(--line); border-radius: 12px;
       background: var(--page-bg); font-size: 16px; font-weight: 700; color: var(--text);
-      box-sizing: border-box; font-family: inherit; appearance: none;
+      box-sizing: border-box; font-family: inherit;
+      -webkit-appearance: none;
+      appearance: none;
       transition: border-color 0.15s;
     }
     input:focus, select:focus { outline: none; border-color: var(--accent); background: var(--paper, #fff); }
