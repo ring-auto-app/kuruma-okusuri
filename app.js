@@ -4064,6 +4064,77 @@ function showToast(type, message, duration) {
     }, ms);
 }
 
+/**
+ * 作業日（#inDate type="date"）の選択可能範囲: 過去14日〜本日（JST ローカル日付）
+ * @returns {{ min: string, max: string, today: string }}
+ */
+function ringGetWorkDateBounds_() {
+    var today = new Date();
+    var offset = today.getTimezoneOffset() * 60000;
+    var localToday = new Date(today.getTime() - offset);
+    var todayStr = localToday.toISOString().split('T')[0];
+    var limitDate = new Date(localToday.getTime());
+    limitDate.setDate(limitDate.getDate() - 14);
+    var minStr = limitDate.toISOString().split('T')[0];
+    return { min: minStr, max: todayStr, today: todayStr };
+}
+
+/** 作業日入力のみ対象（#inShaken / #inExpiry / hidden #inDate は除外） */
+function ringIsWorkDateInput_(el) {
+    return !!(
+        el &&
+        el instanceof HTMLInputElement &&
+        el.id === 'inDate' &&
+        el.type === 'date'
+    );
+}
+
+/** 第1防衛: ピッカー表示直前に min/max を動的付与 */
+function ringApplyWorkDateBounds_(el) {
+    if (!ringIsWorkDateInput_(el)) return;
+    var bounds = ringGetWorkDateBounds_();
+    el.setAttribute('min', bounds.min);
+    el.setAttribute('max', bounds.max);
+}
+
+/** 第2防衛: 範囲外の選択を本日にクランプ */
+function ringClampWorkDateInput_(el) {
+    if (!ringIsWorkDateInput_(el)) return;
+    var val = el.value;
+    if (!val) return;
+    var bounds = ringGetWorkDateBounds_();
+    if (val >= bounds.min && val <= bounds.max) return;
+    alert('作業日は本日か、過去14日以内のみ選択可能です。');
+    el.value = bounds.today;
+}
+
+/** document 委譲による作業日カレンダーロック（iOS ネイティブ date 対策） */
+function ringInitWorkDateCalendarLock_() {
+    if (typeof document === 'undefined' || typeof window === 'undefined') return;
+    if (window.__ringWorkDateLockInit) return;
+    window.__ringWorkDateLockInit = true;
+
+    document.addEventListener('focusin', function (e) {
+        try {
+            if (ringIsWorkDateInput_(e.target)) ringApplyWorkDateBounds_(e.target);
+        } catch (_) {}
+    });
+
+    document.addEventListener('click', function (e) {
+        try {
+            if (ringIsWorkDateInput_(e.target)) ringApplyWorkDateBounds_(e.target);
+        } catch (_) {}
+    });
+
+    document.addEventListener('change', function (e) {
+        try {
+            if (ringIsWorkDateInput_(e.target)) ringClampWorkDateInput_(e.target);
+        } catch (_) {}
+    });
+}
+
+ringInitWorkDateCalendarLock_();
+
 if (typeof document !== 'undefined') {
     document.addEventListener('DOMContentLoaded', function () {
         ringInitAutoGrowTextareas();
