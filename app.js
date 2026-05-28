@@ -531,7 +531,7 @@ function ringDeferAfterPaint_(fn) {
 function ringHasOptimisticSession_(mode) {
     mode = ringNormalizeMode(mode);
     var slot = ringReadAuthSlot(mode);
-    return !!(slot && slot.token && slot.profile);
+    return ringHasValidSession_(slot);
 }
 
 function ringProfileMatchesExpectedMode_(profile, expectedMode) {
@@ -561,7 +561,9 @@ function ringTryOptimisticEntryRedirect_() {
             window.__ringSessionVerified = true;
             window.__ringAuthOptimistic = true;
         }
-        ringVerifySessionBackground_(mode);
+        if (!ringIsDemoSession_(slot)) {
+            ringVerifySessionBackground_(mode);
+        }
         return ringGetHomeForMode(mode);
     }
     var modes = ['user', 'shop', 'business'];
@@ -576,7 +578,9 @@ function ringTryOptimisticEntryRedirect_() {
             window.__ringSessionVerified = true;
             window.__ringAuthOptimistic = true;
         }
-        ringVerifySessionBackground_(modes[i]);
+        if (!ringIsDemoSession_(s)) {
+            ringVerifySessionBackground_(modes[i]);
+        }
         return ringGetHomeForMode(modes[i]);
     }
     return null;
@@ -595,6 +599,10 @@ function ringVerifySessionBackground_(mode) {
 
     var slot = ringReadAuthSlot(mode);
     if (!slot || !slot.token) {
+        window.__ringBgVerifyRunning[mode] = false;
+        return;
+    }
+    if (ringIsDemoSession_(slot)) {
         window.__ringBgVerifyRunning[mode] = false;
         return;
     }
@@ -632,7 +640,7 @@ function ringBootAuthOptimistic(expectedMode) {
     expectedMode = ringNormalizeMode(expectedMode);
     ringSetCurrentMode(expectedMode);
     var slot = ringReadAuthSlot(expectedMode);
-    if (!slot || !slot.token || !slot.profile) {
+    if (!ringHasValidSession_(slot)) {
         return { ok: false, reason: 'no_session', mode: expectedMode };
     }
     if (!ringProfileMatchesExpectedMode_(slot.profile, expectedMode)) {
@@ -643,7 +651,9 @@ function ringBootAuthOptimistic(expectedMode) {
         window.__ringSessionVerified = true;
         window.__ringAuthOptimistic = true;
     }
-    ringVerifySessionBackground_(expectedMode);
+    if (!ringIsDemoSession_(slot)) {
+        ringVerifySessionBackground_(expectedMode);
+    }
     return { ok: true, optimistic: true, profile: slot.profile, mode: expectedMode };
 }
 
@@ -782,6 +792,7 @@ function ringSwitchToAdminDashboard() {
 
 /** OCR 直前のみ GAS verify（Optimistic 起動とは独立） */
 async function ringEnsureAuthForOcr() {
+    if (ringIsOcrDemoMode_()) return;
     var mode = ringGetActiveMode();
     var tok = ringResolveActiveAuthToken();
     if (!tok) {
@@ -871,9 +882,38 @@ function logout() {
         window.__ringSessionVerified = false;
         window.__RING_OCR_DEMO__ = false;
     }
+    try {
+        sessionStorage.removeItem(RING_OCR_DEMO_SESSION_KEY);
+    } catch (e) { /* ignore */ }
 }
 
 // ★ 全ページ共通のログアウト処理
+/** 利用タイプ選択（index.html #mainMenu）へ明示的に戻る */
+function ringGoToTopMenu() {
+    try {
+        sessionStorage.setItem('splashShown', '1');
+    } catch (e) { /* ignore */ }
+    location.href = 'index.html?menu=1';
+}
+
+/** index.html でタイプ選択メニューを強制表示するか（?menu=1 / ?top=1） */
+function ringIsTopMenuForced_() {
+    try {
+        var p = new URLSearchParams(window.location.search);
+        return p.get('menu') === '1' || p.get('top') === '1';
+    } catch (e) {
+        return false;
+    }
+}
+
+function ringIsIndexTopUrl_(url) {
+    if (url == null || url === '') return false;
+    var path = String(url).split('?')[0].split('#')[0];
+    if (path === 'index.html' || path === './index.html') return true;
+    if (path.endsWith('/index.html')) return true;
+    return path === '/' || path === './';
+}
+
 function logoutApp() {
   showRingConfirm({
     title: 'ログアウト',
@@ -883,12 +923,15 @@ function logoutApp() {
   }).then(function (ok) {
     if (!ok) return;
     logout();
-    location.href = 'splash.html';
+    ringGoToTopMenu();
   });
 }
 
 /** デモログイン時に投入するデータの識別子（再ログインで古いデモだけ差し替え） */
 var DEMO_DATA_TAG = 'ringAutoDemo';
+/** デモ専用ローカルトークン（GAS verify 対象外） */
+var RING_DEMO_LOCAL_TOKEN = 'RING_DEMO_LOCAL';
+var RING_OCR_DEMO_SESSION_KEY = 'ring_ocr_demo';
 
 /**
  * 配列からデモタグ付き要素だけ除去する
@@ -911,11 +954,25 @@ function isRingDemoProfile(profile) {
   return false;
 }
 
-/** 本番 OCR は GAS 必須。デモ stub はデモプロフィールかつ明示フラグ両方のときのみ */
+/** auth スロットがデモセッションか */
+function ringIsDemoSession_(slot) {
+  return !!(slot && slot.profile && isRingDemoProfile(slot.profile));
+}
+
+/** プロフィールあり +（本番 token またはデモセッション） */
+function ringHasValidSession_(slot) {
+  return !!(slot && slot.profile && (slot.token || ringIsDemoSession_(slot)));
+}
+
+/** 本番 OCR は GAS 必須。デモ stub はデモプロフィールまたは sessionStorage フラグ */
 function ringIsOcrDemoMode_() {
-    if (typeof window === 'undefined' || window.__RING_OCR_DEMO__ !== true) return false;
     var p = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
-    return isRingDemoProfile(p);
+    if (isRingDemoProfile(p)) return true;
+    try {
+        return sessionStorage.getItem(RING_OCR_DEMO_SESSION_KEY) === '1';
+    } catch (e) {
+        return false;
+    }
 }
 
 /**
@@ -1269,11 +1326,11 @@ function ringStartIndexDemo(role) {
   }
   setTimeout(function () {
     try {
-      localStorage.removeItem('ring_auth_token');
       if (typeof window !== 'undefined') {
         window.__ringSessionVerified = false;
         window.__RING_OCR_DEMO__ = true;
       }
+      sessionStorage.setItem(RING_OCR_DEMO_SESSION_KEY, '1');
     } catch (e) { /* ignore */ }
 
     var demoShopId = role === 'factory' ? 'SHOP-DEMO-F' : (role === 'dealer' ? 'SHOP-DEMO-D' : '');
@@ -1296,7 +1353,8 @@ function ringStartIndexDemo(role) {
     }
 
     seedDemoEnvironment(role);
-    login(dummyProfile);
+    login(dummyProfile, RING_DEMO_LOCAL_TOKEN);
+    if (typeof hideLoading === 'function') hideLoading();
     location.replace(typeof ringGetHomeForProfile === 'function' ? ringGetHomeForProfile(dummyProfile) : 'user_home.html');
   }, 450);
 }
@@ -3946,13 +4004,17 @@ function showWelcomePopup(isAlreadyRegistered) {
  */
 function goBackSmart(fallbackUrl) {
     if (fallbackUrl) {
+        if (typeof ringIsIndexTopUrl_ === 'function' && ringIsIndexTopUrl_(fallbackUrl)) {
+            ringGoToTopMenu();
+            return;
+        }
         window.location.href = fallbackUrl;
         return;
     }
     if (history.length > 1) {
         history.back();
     } else {
-        window.location.href = 'index.html';
+        ringGoToTopMenu();
     }
 }
 

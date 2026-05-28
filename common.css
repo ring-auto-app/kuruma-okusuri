@@ -112,20 +112,58 @@ textarea {
 /* =========================================
    入力フォーム
 ========================================= */
-.field { margin-bottom: 17px; }
+.field { margin-bottom: 17px; min-width: 0; max-width: 100%; }
 .label { display: block; font-size: 12px; font-weight: 800; color: var(--muted); line-height: 17px; margin-bottom: 4px; }
 
-input[type="text"], input[type="date"], input[type="password"], input[type="number"], input[type="tel"], input[type="email"], input[type="url"], input[type="search"], select, textarea {
-  width: 100%; min-height: var(--tap-min); padding: 12px 14px;
+input[type="text"], input[type="date"], input[type="month"], input[type="password"], input[type="number"], input[type="tel"], input[type="email"], input[type="url"], input[type="search"], select, textarea {
+  width: 100%; max-width: 100%; min-width: 0; min-height: var(--tap-min); padding: 12px 14px;
   border: 2px solid var(--line); border-radius: 10px;
   background: var(--paper); font-size: 16px; font-weight: 700; color: var(--text);
   box-sizing: border-box; outline: none; font-family: inherit;
+}
+input[type="date"], input[type="month"] {
+  display: block;
 }
 input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 textarea { line-height: 24px; min-height: 88px; }
 textarea.ring-auto-grow {
   overflow-y: hidden;
   resize: none;
+}
+
+/* フォーム2カラム（作業日・車検満了日など）— iOS date 入力のはみ出し防止 */
+.card .row,
+.basic-info-card .row,
+.note-card .row,
+.detail-card .row,
+.car-info .row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+  max-width: 100%;
+}
+.card .row > .field,
+.basic-info-card .row > .field,
+.note-card .row > .field,
+.detail-card .row > .field,
+.car-info .row > .field {
+  min-width: 0;
+  max-width: 100%;
+}
+.card .row input,
+.basic-info-card .row input,
+.note-card .row input,
+.detail-card .row input,
+.car-info .row input,
+.card .row select,
+.basic-info-card .row select,
+.note-card .row select,
+.detail-card .row select,
+.car-info .row select {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 /* =========================================

@@ -13,7 +13,7 @@
   
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20260528-v22"></script>
+  <script src="app.js?v=20260528-v23"></script>
   <script src="theme.js"></script>
   
   <style>
@@ -243,7 +243,68 @@
   </div>
 
   <script>
+    function setupRingA2hs() {
+      var IOS_KEY = 'ring_a2hs_ios_hint_v1';
+      function isIos() {
+        return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+          (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      }
+      function isStandalone() {
+        return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+      }
+      var panel = document.getElementById('ringA2hsPanel');
+      var iosEl = document.getElementById('ringA2hsIos');
+      var androidBtn = document.getElementById('ringA2hsAndroidBtn');
+      var dismiss = document.getElementById('ringA2hsDismiss');
+      var androidHint = document.getElementById('ringA2hsAndroidHint');
+
+      if (!panel) return;
+      if (isStandalone()) return;
+
+      if (dismiss) {
+        dismiss.onclick = function () {
+          panel.style.display = 'none';
+          try { localStorage.setItem(IOS_KEY, '1'); } catch (e) {}
+        };
+      }
+
+      window.addEventListener('beforeinstallprompt', function (e) {
+        e.preventDefault();
+        window.__ringDeferredPrompt = e;
+        panel.style.display = 'block';
+        if (iosEl) iosEl.style.display = 'none';
+        if (androidHint) androidHint.style.display = 'block';
+        if (androidBtn) androidBtn.style.display = 'block';
+      });
+
+      if (androidBtn) {
+        androidBtn.onclick = function () {
+          var dp = window.__ringDeferredPrompt;
+          if (!dp) return;
+          dp.prompt();
+          dp.userChoice.finally(function () {
+            window.__ringDeferredPrompt = null;
+            panel.style.display = 'none';
+          });
+        };
+      }
+
+      if (isIos() && !localStorage.getItem(IOS_KEY)) {
+        panel.style.display = 'block';
+        if (iosEl) iosEl.style.display = 'block';
+        if (androidHint) androidHint.style.display = 'none';
+        if (androidBtn) androidBtn.style.display = 'none';
+      }
+    }
+
     document.addEventListener("DOMContentLoaded", function () {
+      if (typeof ringIsTopMenuForced_ === 'function' && ringIsTopMenuForced_()) {
+        sessionStorage.setItem('splashShown', '1');
+        document.getElementById('mainMenu').style.display = 'flex';
+        setupRingA2hs();
+        return;
+      }
+
       var homeUrl = typeof ringTryOptimisticEntryRedirect_ === 'function'
         ? ringTryOptimisticEntryRedirect_()
         : null;
@@ -277,60 +338,7 @@
       }
 
       document.getElementById('mainMenu').style.display = 'flex';
-
-      (function setupRingA2hs() {
-        var IOS_KEY = 'ring_a2hs_ios_hint_v1';
-        function isIos() {
-          return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-            (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-        }
-        function isStandalone() {
-          return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
-        }
-        var panel = document.getElementById('ringA2hsPanel');
-        var iosEl = document.getElementById('ringA2hsIos');
-        var androidBtn = document.getElementById('ringA2hsAndroidBtn');
-        var dismiss = document.getElementById('ringA2hsDismiss');
-        var androidHint = document.getElementById('ringA2hsAndroidHint');
-
-        if (!panel) return;
-        if (isStandalone()) return;
-
-        if (dismiss) {
-          dismiss.onclick = function () {
-            panel.style.display = 'none';
-            try { localStorage.setItem(IOS_KEY, '1'); } catch (e) {}
-          };
-        }
-
-        window.addEventListener('beforeinstallprompt', function (e) {
-          e.preventDefault();
-          window.__ringDeferredPrompt = e;
-          panel.style.display = 'block';
-          if (iosEl) iosEl.style.display = 'none';
-          if (androidHint) androidHint.style.display = 'block';
-          if (androidBtn) androidBtn.style.display = 'block';
-        });
-
-        if (androidBtn) {
-          androidBtn.onclick = function () {
-            var dp = window.__ringDeferredPrompt;
-            if (!dp) return;
-            dp.prompt();
-            dp.userChoice.finally(function () {
-              window.__ringDeferredPrompt = null;
-              panel.style.display = 'none';
-            });
-          };
-        }
-
-        if (isIos() && !localStorage.getItem(IOS_KEY)) {
-          panel.style.display = 'block';
-          if (iosEl) iosEl.style.display = 'block';
-          if (androidHint) androidHint.style.display = 'none';
-          if (androidBtn) androidBtn.style.display = 'none';
-        }
-      })();
+      setupRingA2hs();
     });
 
     if ("serviceWorker" in navigator) {

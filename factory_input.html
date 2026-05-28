@@ -13,7 +13,7 @@
     <title>車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20260528-v22"></script>
+  <script src="app.js?v=20260528-v23"></script>
   <script src="theme.js"></script>
   
   <style>
@@ -58,6 +58,8 @@
     select,
     textarea {
       width: 100%;
+      max-width: 100%;
+      min-width: 0;
       min-height: var(--tap-min);
       padding: 12px;
       border: 2px solid var(--line) !important; /* ここで枠線の色を統一 */
@@ -67,6 +69,7 @@
       background: #fff;
       outline: none;
     }
+    input[type="date"] { display: block; }
     textarea { min-height: 88px; }
 
     #inVin {
@@ -74,7 +77,8 @@
       text-transform: uppercase; letter-spacing: 0.05em;
     }
 
-    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; min-width: 0; max-width: 100%; }
+    .row > .field { min-width: 0; max-width: 100%; }
 
     .photo-area { display: flex; flex-direction: column; align-items: center; gap: 10px; }
     .photo-btn {
