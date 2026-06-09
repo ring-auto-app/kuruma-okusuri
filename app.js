@@ -995,6 +995,13 @@ function ringDemoGasStubResponse_(actionType) {
     if (actionType === 'verify_session') return { success: true };
     if (actionType === 'get_daily_history') return { success: true, logs: [] };
     if (actionType === 'ocr_vin') return { success: true, partial: true, demo: true };
+    if (actionType === 'ocr_vin_search') {
+        return {
+            success: true,
+            demo: true,
+            candidates: ['ZVW505012847', 'ZVW5O5012847']
+        };
+    }
     return { success: true, demo: true };
 }
 
@@ -1891,7 +1898,10 @@ async function sendToGAS_Safe(actionType, data, opts) {
         body: JSON.stringify(payload)
     }, timeoutMs);
     if (!json || json.success !== true) {
-        if (actionType === 'ocr_vin' && json && (json.fields || json.ocrText || json.registration)) {
+        if (actionType === 'ocr_vin' && json && (json.fields || json.ocrText || json.registration || json.error === 'OCR_DISABLED')) {
+            return json;
+        }
+        if (actionType === 'ocr_vin_search' && json && (Array.isArray(json.candidates) || /VIN_NOT_FOUND|OCR_NOT_CONFIGURED|IMAGE_REQUIRED/i.test(String(json.error || '')))) {
             return json;
         }
         throw new Error((json && json.error) || 'GAS保存に失敗しました');
@@ -1903,12 +1913,13 @@ async function sendToGAS_Safe(actionType, data, opts) {
             ringHandleAuthExpired_(ringGetActiveMode(), actionType);
         }
         if (actionType !== 'system_log') {
-            if (actionType === 'ocr_vin' && /AUTH_/i.test(errMsg)) {
+            if ((actionType === 'ocr_vin' || actionType === 'ocr_vin_search') && /AUTH_/i.test(errMsg)) {
                 ringLogSystemEvent('AUTH_ERROR', {
                     error_message: errMsg,
                     payload: { gasAction: actionType }
                 });
-            } else if (!(actionType === 'ocr_vin' && /VIN_NOT_FOUND|NO_FIELDS/i.test(errMsg))) {
+            } else if (!(actionType === 'ocr_vin' && /VIN_NOT_FOUND|NO_FIELDS|OCR_DISABLED/i.test(errMsg))
+                && !(actionType === 'ocr_vin_search' && /VIN_NOT_FOUND|OCR_NOT_CONFIGURED|IMAGE_REQUIRED/i.test(errMsg))) {
                 ringLogSystemEvent('GAS_ERROR', {
                     error_message: errMsg,
                     payload: { gasAction: actionType }
@@ -2772,36 +2783,6 @@ function ringValidateWorkTitleSelect(selectEl, errElId) {
     return ok;
 }
 
-function ringNormalizeRegistrationOcrResponse_(json) {
-    var reg = (json && json.registration) || {};
-    var f = reg.fields || {};
-    var flat = { _confidence: {} };
-    function pick(fieldKey, outKey, transform) {
-        var item = f[fieldKey];
-        if (!item || !item.value) return;
-        var val = transform ? transform(item.value) : item.value;
-        flat[outKey || fieldKey] = val;
-        flat._confidence[outKey || fieldKey] = item.confidence || 'high';
-    }
-    pick('vin', 'vin', function (v) {
-        return ringCorrectVinOcrMisread_(String(v).replace(/\s+/g, ''));
-    });
-    pick('vehicleName', 'vehicleName');
-    pick('vehicleModel', 'model');
-    pick('engine', 'engine');
-    pick('classification', 'class');
-    pick('typeDesignation', 'typeDesignation');
-    pick('firstRegistration', 'firstRegistration', function (v) {
-        return String(v).replace(/\//g, '-').slice(0, 7);
-    });
-    pick('shaken', 'shaken', function (v) {
-        return String(v).replace(/\//g, '-');
-    });
-    if (json && json.partial === true) flat.partial = true;
-    if (json && json.ocrStatus) flat.ocrStatus = json.ocrStatus;
-    return flat;
-}
-
 function ringHasOcrResult_(res) {
     if (!res || typeof res !== 'object') return false;
     if (res.partial === true) return true;
@@ -3089,61 +3070,15 @@ function ringOcrConfIsLow_(conf) {
     return conf === 'low' || conf === 'medium';
 }
 
-function ocrV2ToParsed_(ocrV2, fileName, gasVin) {
-    var src = fileName || 'image';
-    var out = { parts: [] };
-    var vi = (ocrV2 && ocrV2.vehicleInfo) || {};
-    var conf = vi.confidence || {};
-    var vinVal = gasVin || vi.vin;
-    if (vinVal) {
-        out.vin = {
-            value: ringCorrectVinOcrMisread_(String(vinVal).replace(/\s+/g, '')),
-            source: src,
-            confidence: conf.vin || 'high'
-        };
-    }
-    if (vi.mileage != null && !isNaN(vi.mileage)) {
-        out.mileage = { value: Number(vi.mileage), source: src, confidence: conf.mileage || 'high' };
-    }
-    if (vi.shaken) out.shaken = { value: String(vi.shaken), source: src, confidence: conf.shaken || 'high' };
-    if (vi.model) out.model = { value: String(vi.model), source: src, confidence: conf.model || 'high' };
-    if (vi.engine) out.engine = { value: String(vi.engine), source: src, confidence: conf.engine || 'high' };
-    if (vi.class) out.class = { value: String(vi.class), source: src, confidence: conf.class || 'high' };
-    if (vi.typeDesignation) {
-        out.typeDesignation = { value: String(vi.typeDesignation), source: src, confidence: conf.typeDesignation || 'high' };
-    }
-    (ocrV2 && ocrV2.parts || []).forEach(function (p) {
-        var v = normalizePartName_(String(p.name || '').trim());
-        if (v && !isPiiOrBillingMetaLine_(v)) {
-            out.parts.push({
-                value: v,
-                source: src,
-                confidence: p.confidence || 'medium',
-                quantity: p.quantity || ''
-            });
-        }
-    });
-    return out;
+/** GAS が OCR 無効スタブを返したか */
+function ringIsOcrDisabledResponse_(json) {
+    return !!(json && String(json.error || '') === 'OCR_DISABLED');
 }
 
-function gasFieldsToParsed_(fields, fileName, gasVin) {
-    var src = fileName || 'image';
-    var out = { parts: [] };
-    if (gasVin) out.vin = { value: ringCorrectVinOcrMisread_(String(gasVin).replace(/\s+/g, '')), source: src };
-    if (!fields || typeof fields !== 'object') return out;
-    if (fields.mileage != null && !isNaN(fields.mileage)) {
-        out.mileage = { value: Number(fields.mileage), source: src };
+function ringNotifyOcrDisabled_() {
+    if (typeof showToast === 'function') {
+        showToast('info', 'OCRは現在準備中です。手入力で続行してください。');
     }
-    if (fields.shaken) out.shaken = { value: String(fields.shaken), source: src };
-    if (fields.model) out.model = { value: String(fields.model), source: src };
-    if (fields.engine) out.engine = { value: String(fields.engine), source: src };
-    if (fields.class) out.class = { value: String(fields.class), source: src };
-    if (fields.typeDesignation) out.typeDesignation = { value: String(fields.typeDesignation), source: src };
-    (fields.parts || []).forEach(function (p) {
-        var v = normalizePartName_(String(p || '').trim());
-        if (v && !isPiiOrBillingMetaLine_(v)) out.parts.push({ value: v, source: src });
-    });
-    return out;
 }
 
 function ringShowAuthErrorForOcr_(alreadyShown) {
@@ -3171,12 +3106,6 @@ function isPiiOrBillingMetaLine_(line) {
     return false;
 }
 
-function isInvoiceExcludeLine_(line) {
-    var t = String(line || '').trim();
-    if (!t) return true;
-    return /工賃|諸費用|廃棄|印紙|消費税|値引|リサイクル|法定費用|車検代|重量税|自賠責/.test(t);
-}
-
 function normalizePartName_(s) {
     var t = String(s || '').trim();
     if (!t) return '';
@@ -3184,92 +3113,6 @@ function normalizePartName_(s) {
     if (/^E\/G\s*オイル|^EGオイル/i.test(t)) return 'エンジンオイル';
     if (/^LLC$/i.test(t)) return 'ロングライフクーラント';
     return t;
-}
-
-function parseJapaneseDateToIso_(raw) {
-    var s = String(raw || '').trim();
-    if (!s) return '';
-    var m = s.match(/(\d{4})[\/\-.年](\d{1,2})[\/\-.月](\d{1,2})/);
-    if (m) {
-        return m[1] + '-' + String(m[2]).padStart(2, '0') + '-' + String(m[3]).padStart(2, '0');
-    }
-    var rm = s.match(/(?:令和|R)\s*(\d{1,2})[\/\-.年](\d{1,2})[\/\-.月](\d{1,2})/i);
-    if (rm) {
-        var y = 2018 + parseInt(rm[1], 10);
-        return y + '-' + String(rm[2]).padStart(2, '0') + '-' + String(rm[3]).padStart(2, '0');
-    }
-    var hm = s.match(/(?:平成|H)\s*(\d{1,2})[\/\-.年](\d{1,2})[\/\-.月](\d{1,2})/i);
-    if (hm) {
-        var y2 = 1988 + parseInt(hm[1], 10);
-        return y2 + '-' + String(hm[2]).padStart(2, '0') + '-' + String(hm[3]).padStart(2, '0');
-    }
-    return '';
-}
-
-function parseLabelValue_(line, labels) {
-    var t = String(line || '').trim();
-    for (var i = 0; i < labels.length; i++) {
-        var re = new RegExp('^' + labels[i] + '[\\s:：]*(.+)$', 'i');
-        var m = t.match(re);
-        if (m && m[1]) return m[1].trim();
-    }
-    return '';
-}
-
-function parseInvoiceLabelsFromOcrText(ocrText, sourceFileName, gasVin) {
-    var src = sourceFileName || 'image';
-    var out = { parts: [] };
-    if (gasVin) out.vin = { value: String(gasVin).toUpperCase(), source: src };
-    if (!ocrText) return out;
-    var lines = String(ocrText).split(/[\n\r]+/);
-    var skipNext = 0;
-    var inParts = false;
-    for (var li = 0; li < lines.length; li++) {
-        if (skipNext > 0) { skipNext--; continue; }
-        var line = lines[li].trim();
-        if (!line || isPiiOrBillingMetaLine_(line)) {
-            inParts = false;
-            if (/お客様|顧客名|氏名|ご住所|請求先/.test(line)) skipNext = 2;
-            continue;
-        }
-        if (/^部品|^品名|^パーツ|^交換部品/.test(line)) { inParts = true; continue; }
-        if (/^作業内容|^整備内容|^摘要/.test(line)) { inParts = false; continue; }
-        var vinVal = parseLabelValue_(line, ['車体番号', '車台番号', 'VIN']);
-        if (vinVal && !isPiiOrBillingMetaLine_(vinVal)) {
-            out.vin = { value: vinVal.replace(/\s/g, '').toUpperCase(), source: src };
-        }
-        var mileVal = parseLabelValue_(line, ['走行距離', '走行', 'ODO', 'ｵﾄﾞ', 'オドメータ']);
-        if (!mileVal && /走行|ODO|ｵﾄﾞ|km/i.test(line)) mileVal = line;
-        if (mileVal && !isPiiOrBillingMetaLine_(mileVal)) {
-            var mn = mileVal.replace(/[^\d]/g, '');
-            if (mn && mn.length >= 3 && mn.length <= 7) out.mileage = { value: parseInt(mn, 10), source: src };
-        }
-        var modelVal = parseLabelValue_(line, ['型式', '自動車型式', 'MODEL']);
-        if (modelVal && !isPiiOrBillingMetaLine_(modelVal)) out.model = { value: modelVal, source: src };
-        var engVal = parseLabelValue_(line, ['原動機型式', 'エンジン型式', '原動機']);
-        if (engVal && !isPiiOrBillingMetaLine_(engVal)) out.engine = { value: engVal, source: src };
-        var clsVal = parseLabelValue_(line, ['類別区分番号', '類別区分', '類別', '類別型式']);
-        if (clsVal && !isPiiOrBillingMetaLine_(clsVal)) {
-            var cn = clsVal.replace(/[^\d]/g, '');
-            if (cn) out.class = { value: cn, source: src };
-        }
-        var tdVal = parseLabelValue_(line, ['型式指定番号', '型式指定']);
-        if (tdVal && !isPiiOrBillingMetaLine_(tdVal)) {
-            var tn = tdVal.replace(/[^\d]/g, '');
-            if (tn) out.typeDesignation = { value: tn, source: src };
-        }
-        var shRaw = parseLabelValue_(line, ['車検満了日', '車検満期', '満了日', '車検有効', '有効期限']);
-        if (!shRaw && /車検.*(?:満了|満期)/.test(line)) shRaw = line;
-        if (shRaw) {
-            var iso = parseJapaneseDateToIso_(shRaw);
-            if (iso) out.shaken = { value: iso, source: src };
-        }
-        if (inParts && !isInvoiceExcludeLine_(line)) {
-            var pn = normalizePartName_(line);
-            if (pn && pn.length >= 2 && !isPiiOrBillingMetaLine_(pn)) out.parts.push({ value: pn, source: src });
-        }
-    }
-    return out;
 }
 
 function mergeOCRResults(pageResults) {
@@ -3358,27 +3201,15 @@ async function analyzeDocumentSingle(file, fileIndex) {
     }
     try {
         var json = await ringOcrVinRequest_(file, fileName);
-        var gasVin = json && json.vin ? String(json.vin).toUpperCase() : '';
-        var parsed;
-        if (json && json.ocrV2) {
-            parsed = ocrV2ToParsed_(json.ocrV2, fileName, gasVin);
-        } else if (json && json.fields) {
-            parsed = gasFieldsToParsed_(json.fields, fileName, gasVin);
-        } else if (json && json.ocrText) {
-            parsed = parseInvoiceLabelsFromOcrText(json.ocrText, fileName, gasVin);
-        } else {
-            parsed = gasFieldsToParsed_({}, fileName, gasVin);
-        }
-        var hasData = !!(parsed.vin || parsed.mileage || parsed.shaken || parsed.model || parsed.engine ||
-            parsed.class || parsed.typeDesignation || parsed.parts.length);
-        if (hasData || (json && json.success === true)) {
-            return { fileName: fileName, ok: true, partial: !!(json && json.partial), parsed: parsed };
+        if (ringIsOcrDisabledResponse_(json)) {
+            if (fileIndex === 0) ringNotifyOcrDisabled_();
+            return { fileName: fileName, ok: false, partial: false, parsed: { parts: [] }, ocrDisabled: true };
         }
         ringLogSystemEvent('OCR_FAIL', {
             error_message: (json && json.error) || 'NO_FIELDS',
             payload: { stage: 'batch_page', fileName: fileName }
         });
-        return { fileName: fileName, ok: false, partial: false, parsed: parsed };
+        return { fileName: fileName, ok: false, partial: false, parsed: { parts: [] } };
     } catch (e) {
         ringReportOcrAbort_('batch_page', e, {
             payload: { fileName: fileName },
@@ -3702,6 +3533,7 @@ async function ringHandleBatchDocumentScan(opts) {
     if (!batchResult || !batchResult.pageResults) return;
     if (wasOcrAnalyzingCancelled()) return;
     var merged = mergeOCRResults(batchResult.pageResults);
+    if (!merged.stats.successCount) return;
     showOcrBatchReviewModal(merged, {
         mode: opts.mode || 'factory',
         onApply: function (payload) {
@@ -3741,37 +3573,9 @@ async function analyzeDocument(files, opts) {
     }
     try {
         var json = await ringOcrVinRequest_(files[0], files[0].name || 'image', opts);
-        if (json && (json.documentType === 'registration' || json.registration)) {
-            var regFlat = ringNormalizeRegistrationOcrResponse_(json);
-            if (ringHasOcrResult_(regFlat)) return regFlat;
-        }
-        if (json && (json.vin || json.fields || json.partial === true)) {
-            var flat = {};
-            if (json.vin) flat.vin = ringCorrectVinOcrMisread_(String(json.vin).replace(/\s+/g, ''));
-            if (json.ocrV2) {
-                var parsedV2 = ocrV2ToParsed_(json.ocrV2, files[0].name || 'image', json.vin || '');
-                var mergedV2 = mergeOCRResults([{ fileName: files[0].name, ok: true, parsed: parsedV2 }]);
-                flat = ringMergedToFlatApply_(mergedV2);
-            } else if (json.fields) {
-                var parsed = gasFieldsToParsed_(json.fields, files[0].name || 'image', json.vin || '');
-                var merged = mergeOCRResults([{ fileName: files[0].name, ok: true, parsed: parsed }]);
-                flat = ringMergedToFlatApply_(merged);
-            } else if (json.ocrText) {
-                var parsedLegacy = parseInvoiceLabelsFromOcrText(json.ocrText, files[0].name || 'image', json.vin);
-                var mergedLegacy = mergeOCRResults([{ fileName: files[0].name, ok: true, parsed: parsedLegacy }]);
-                flat = ringMergedToFlatApply_(mergedLegacy);
-            }
-            if (json.partial === true) flat.partial = true;
-            if (json.ocrStatus) flat.ocrStatus = json.ocrStatus;
-            if (ringHasOcrResult_(flat)) return flat;
-        }
-        if (json && json.ocrText) {
-            var parsedOnly = parseInvoiceLabelsFromOcrText(json.ocrText, files[0].name || 'image', '');
-            var hasAny = !!(parsedOnly.vin || parsedOnly.mileage || parsedOnly.parts.length);
-            if (hasAny) {
-                var m2 = mergeOCRResults([{ fileName: files[0].name, ok: true, parsed: parsedOnly }]);
-                return ringMergedToFlatApply_(m2);
-            }
+        if (ringIsOcrDisabledResponse_(json)) {
+            ringNotifyOcrDisabled_();
+            return null;
         }
         ringLogSystemEvent('OCR_FAIL', {
             error_message: (json && json.error) || 'NO_FIELDS',

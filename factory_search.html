@@ -14,6 +14,7 @@
   
   <link rel="stylesheet" href="common.css">
   <script src="app.js?v=20260528-v26"></script>
+  <script src="vin-search.js?v=20260528-v27"></script>
   <script src="theme.js"></script>
   
   <style>
@@ -87,89 +88,89 @@
   </div>
 
   <script>
-    // OCRスキャン処理
-    document.getElementById('docInput').addEventListener('change', async (e) => {
-      const file = e.target.files[0]; if(!file) return;
-      let previewUrl = '';
+    function runVinHistorySearch(rawInput) {
+      var errorMsg = document.getElementById('errorMsg');
+      if (!String(rawInput || '').trim()) {
+        errorMsg.innerText = '車台番号を入力してください。';
+        errorMsg.style.display = 'block';
+        return;
+      }
+      var hit = searchByVinCandidates([rawInput]);
+      if (hit) {
+        ringVinSearchNavigateToHistory_(hit);
+      } else {
+        errorMsg.innerHTML = '該当する車両が見つかりません。<br>車台番号を最後まで入力してください。';
+        errorMsg.style.display = 'block';
+      }
+    }
+
+    document.getElementById('docInput').addEventListener('change', async function (e) {
+      var file = e.target.files[0];
+      if (!file) return;
+      e.target.value = '';
+
+      var previewUrl = '';
       try {
-        previewUrl = await new Promise((resolve, reject) => {
-          const r = new FileReader();
-          r.onload = () => resolve(String(r.result || ''));
+        previewUrl = await new Promise(function (resolve, reject) {
+          var r = new FileReader();
+          r.onload = function () { resolve(String(r.result || '')); };
           r.onerror = reject;
           r.readAsDataURL(file);
         });
       } catch (err) {
         console.error(err);
+        ringVinSearchFocusManual_({ message: '画像の読み込みに失敗しました。手入力で検索してください。' });
         return;
       }
+
       document.getElementById('docPreviewImg').src = previewUrl;
       document.getElementById('docPreviewArea').style.display = 'block';
 
       if (typeof showOcrAnalyzingOverlay === 'function') {
         showOcrAnalyzingOverlay({ previewDataUrl: previewUrl, title: 'VIN を読み取っています' });
       } else {
-        showLoading("分析中", "AIがVINを探索しています...");
+        showLoading('分析中', 'VINを読み取っています...');
       }
 
-      let res = null;
+      var ocrRes = null;
+      var candidates = null;
       try {
-        res = await analyzeDocument([file], { documentType: 'registration' });
+        var b64 = await ringVinSearchPreprocessImage_(file);
+        ocrRes = await ringVinSearchRequestOcr_(b64);
+        if (ocrRes && ocrRes.success && ocrRes.candidates && ocrRes.candidates.length) {
+          candidates = ocrRes.candidates;
+          var hit = searchByVinCandidates(candidates);
+          if (hit) {
+            ringVinSearchNavigateToHistory_(hit);
+            return;
+          }
+        }
       } catch (err) {
         console.error(err);
       } finally {
         if (typeof hideOcrAnalyzingOverlay === 'function') hideOcrAnalyzingOverlay();
         else hideLoading();
       }
+
       if (typeof wasOcrAnalyzingCancelled === 'function' && wasOcrAnalyzingCancelled()) return;
 
-      handleOcrVinResultForForm(res, function (r) {
-        document.getElementById('vinInput').value = r.vin;
-        document.getElementById('errorMsg').style.display = 'none';
-      });
+      if (candidates && candidates.length) {
+        ringVinSearchFocusManual_({
+          prefill: candidates[0],
+          message: '読み取りましたが該当車両が見つかりませんでした。<br>内容を確認して手入力で検索してください。',
+          toast: false
+        });
+      } else {
+        ringVinSearchFocusManual_({
+          message: 'VINを読み取れませんでした。<br>車台番号を手入力して検索してください。',
+          toast: true
+        });
+      }
     });
 
-    /**
-     * VINの正規化処理（共通ルール）
-     */
-    function normalizeVin(vin) {
-      if (!vin) return "";
-      return vin.replace(/[Ａ-Ｚａ-ｚ０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0))
-                .toUpperCase().replace(/[ー‐\-－—_,\.，、\s]/g, '');
-    }
-
-    // 検索実行処理
-    document.getElementById('searchBtn').addEventListener('click', () => {
-      const rawInput = document.getElementById('vinInput').value;
-      const errorMsg = document.getElementById('errorMsg');
-      
-      if (!rawInput.trim()) {
-        errorMsg.innerText = "車台番号を入力してください。";
-        errorMsg.style.display = 'block'; 
-        return;
-      }
-
-      /* ローカル照合は一瞬で終わるため全画面ローディングは使わない（kannsa: 嘘ローディング回避） */
-      const searchVin = normalizeVin(rawInput);
-      const vehicles = JSON.parse(localStorage.getItem('nappy_vehicles_v1') || '[]');
-      let foundOriginalVin = null;
-
-      for (const v of vehicles) {
-        if (normalizeVin(v.vin) === searchVin) { foundOriginalVin = v.vin; break; }
-      }
-
-      if (!foundOriginalVin) {
-        const logs = JSON.parse(localStorage.getItem("nappy_logs_v1") || "[]");
-        for (const log of logs) {
-          if (normalizeVin(log.vin) === searchVin) { foundOriginalVin = log.vin; break; }
-        }
-      }
-
-      if (foundOriginalVin) {
-        errorMsg.style.display = 'none';
-        location.href = `factory_history.html?vin=${encodeURIComponent(foundOriginalVin)}`;
-      } else {
-        errorMsg.style.display = 'block';
-      }
+    document.getElementById('searchBtn').addEventListener('click', function () {
+      document.getElementById('errorMsg').style.display = 'none';
+      runVinHistorySearch(document.getElementById('vinInput').value);
     });
   </script>
 </body>
