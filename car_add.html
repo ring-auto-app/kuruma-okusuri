@@ -46,9 +46,68 @@
       appearance: none;
       transition: border-color 0.15s;
     }
+    input[type="number"].era-date-box {
+      width: 3.2em;
+      min-width: 48px;
+      max-width: 72px;
+      padding: 10px 6px;
+      text-align: center;
+      font-size: 18px;
+      font-weight: 900;
+      border-radius: 10px;
+      flex-shrink: 0;
+      border: 2px solid var(--line);
+      background: var(--page-bg);
+      color: var(--text);
+      box-sizing: border-box;
+      font-family: inherit;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+    .era-date-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .era-date-row select.era-date-era {
+      width: auto;
+      min-width: 88px;
+      flex: 0 0 auto;
+      padding: 10px 28px 10px 12px;
+      font-size: 15px;
+      font-weight: 900;
+    }
+    .era-date-unit {
+      font-size: 14px;
+      font-weight: 900;
+      color: var(--text);
+      flex-shrink: 0;
+    }
+    .seireki-preview {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--muted);
+      margin-top: 6px;
+      padding-left: 4px;
+      line-height: 1.4;
+      min-height: 0;
+    }
+    .seireki-preview:not(:empty) { min-height: 1.2em; }
+    .jibaiseki-alert {
+      display: none;
+      font-size: 12px;
+      font-weight: 800;
+      color: #dc2626;
+      margin: 6px 0 0;
+      line-height: 1.45;
+    }
     input:focus, select:focus { outline: none; border-color: var(--accent); background: var(--paper, #fff); }
+    input.era-date-box:focus { outline: none; border-color: var(--accent); background: var(--paper, #fff); }
     input.error-field { border-color: #ef4444 !important; }
     select.error-field { border-color: #ef4444 !important; }
+    input.era-date-box.error-field { border-color: #ef4444 !important; }
 
     .err-msg {
       display: none; color: #ef4444; font-size: 12px; font-weight: 800;
@@ -153,16 +212,6 @@
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     }
 
-    .wareki-preview {
-      font-size: 11px;
-      font-weight: 700;
-      color: var(--muted);
-      margin-top: 6px;
-      padding-left: 4px;
-      line-height: 1.4;
-      min-height: 0;
-    }
-    .wareki-preview:not(:empty) { min-height: 1.2em; }
   </style>
 </head>
 <body>
@@ -212,19 +261,44 @@
 
       <div class="field">
         <span class="label">初度登録年月 <span class="required">※必須</span></span>
-        <div class="first-reg-wareki-row">
-          <select id="firstRegEraYear" aria-label="初度登録年（和暦）" onchange="clearErr('inFirstReg')"></select>
-          <select id="firstRegMonth" aria-label="初度登録月" onchange="clearErr('inFirstReg')"></select>
+        <div class="era-date-row">
+          <div class="select-wrap" style="width:auto;flex:0 0 auto;">
+            <select id="firstRegEra" class="era-date-era" aria-label="初度登録元号" onchange="clearErr('inFirstReg')">
+              <option value="">元号</option>
+              <option value="昭和">昭和</option>
+              <option value="平成">平成</option>
+              <option value="令和">令和</option>
+            </select>
+          </div>
+          <input id="firstRegYear" class="era-date-box" type="number" min="1" max="99" placeholder="年" inputmode="numeric" aria-label="初度登録和暦年" oninput="clearErr('inFirstReg')">
+          <span class="era-date-unit">年</span>
+          <input id="firstRegMonth" class="era-date-box" type="number" min="1" max="12" placeholder="月" inputmode="numeric" aria-label="初度登録月" oninput="clearErr('inFirstReg')">
+          <span class="era-date-unit">月</span>
         </div>
         <input type="hidden" id="inFirstReg">
-        <div class="wareki-preview" id="firstRegWarekiPreview" aria-live="polite"></div>
+        <div class="seireki-preview" id="firstRegSeirekiPreview" aria-live="polite"></div>
         <div class="err-msg" id="errInFirstReg">⚠ 初度登録年月は必須です</div>
       </div>
 
       <div class="field">
         <span class="label">車検満了日 <span class="required">※必須</span></span>
-        <input id="inExpiry" type="date" onchange="clearErr('inExpiry'); updateSchedule()">
-        <div class="wareki-preview" id="expiryWarekiPreview" aria-live="polite"></div>
+        <p class="jibaiseki-alert" id="expiryJibaisekiAlert">※車検のない車両は『自賠責保険の満了日』を入力してください</p>
+        <div class="era-date-row">
+          <div class="select-wrap" style="width:auto;flex:0 0 auto;">
+            <select id="expiryEra" class="era-date-era" aria-label="車検満了日元号" onchange="clearErr('inExpiry')">
+              <option value="">元号</option>
+              <option value="令和">令和</option>
+            </select>
+          </div>
+          <input id="expiryYear" class="era-date-box" type="number" min="1" max="99" placeholder="年" inputmode="numeric" aria-label="車検満了和暦年" oninput="clearErr('inExpiry')">
+          <span class="era-date-unit">年</span>
+          <input id="expiryMonth" class="era-date-box" type="number" min="1" max="12" placeholder="月" inputmode="numeric" aria-label="車検満了月" oninput="clearErr('inExpiry')">
+          <span class="era-date-unit">月</span>
+          <input id="expiryDay" class="era-date-box" type="number" min="1" max="31" placeholder="日" inputmode="numeric" aria-label="車検満了日" oninput="clearErr('inExpiry')">
+          <span class="era-date-unit">日</span>
+        </div>
+        <input type="hidden" id="inExpiry">
+        <div class="seireki-preview" id="expirySeirekiPreview" aria-live="polite"></div>
         <div class="err-msg" id="errExpiry">⚠ 車検満了日は必須です</div>
       </div>
 
@@ -322,7 +396,7 @@
       <div class="field" style="margin-top:16px;">
         <span class="label">車体の形状</span>
         <div class="select-wrap">
-          <select id="inBodyShape">
+          <select id="inBodyShape" onchange="if(typeof ringCarAddUpdateJibaisekiAlert==='function')ringCarAddUpdateJibaisekiAlert()">
             <option value="">未選択</option>
             <option value="箱型">箱型</option>
             <option value="幌型">幌型</option>
@@ -355,6 +429,7 @@
     </div>
   </div>
   <script src="config.js"></script>
+  <script src="car-add-date.js"></script>
   <script src="gemini-ocr.js"></script>
   <script>
     const profile = (typeof getCurrentProfile === 'function')
@@ -377,8 +452,8 @@
         document.getElementById('categoryField').style.display = '';
       }
       updateSchedule();
-      if (typeof ringCarAddInitWarekiPreview === 'function') {
-        ringCarAddInitWarekiPreview();
+      if (typeof ringCarAddInitDateFields === 'function') {
+        ringCarAddInitDateFields();
       }
     });
 
@@ -391,29 +466,33 @@
     /* ── バリデーション ── */
     function clearErr(id) {
       if (id === 'inFirstReg') {
-        var ey = document.getElementById('firstRegEraYear');
-        var em = document.getElementById('firstRegMonth');
-        if (ey) ey.classList.remove('error-field');
-        if (em) em.classList.remove('error-field');
+        if (typeof ringCarAddMarkDateFieldsError === 'function') ringCarAddMarkDateFieldsError('firstReg', false);
+      } else if (id === 'inExpiry') {
+        if (typeof ringCarAddMarkDateFieldsError === 'function') ringCarAddMarkDateFieldsError('expiry', false);
       } else {
-        document.getElementById(id).classList.remove('error-field');
+        var el = document.getElementById(id);
+        if (el) el.classList.remove('error-field');
       }
       const errId = 'err' + id.charAt(0).toUpperCase() + id.slice(1);
-      const el = document.getElementById(errId);
-      if (el) el.classList.remove('show');
+      const errEl = document.getElementById(errId);
+      if (errEl) errEl.classList.remove('show');
     }
     function showErr(id, msg) {
       if (id === 'inFirstReg') {
-        var ey = document.getElementById('firstRegEraYear');
-        var em = document.getElementById('firstRegMonth');
-        if (ey) { ey.classList.add('error-field'); ey.focus(); }
-        if (em) em.classList.add('error-field');
+        if (typeof ringCarAddMarkDateFieldsError === 'function') ringCarAddMarkDateFieldsError('firstReg', true);
+        var fy = document.getElementById('firstRegYear');
+        if (fy) fy.focus();
+      } else if (id === 'inExpiry') {
+        if (typeof ringCarAddMarkDateFieldsError === 'function') ringCarAddMarkDateFieldsError('expiry', true);
+        var ey = document.getElementById('expiryYear');
+        if (ey) ey.focus();
       } else {
-        document.getElementById(id).classList.add('error-field');
+        var field = document.getElementById(id);
+        if (field) field.classList.add('error-field');
       }
       const errId = 'err' + id.charAt(0).toUpperCase() + id.slice(1);
-      const el = document.getElementById(errId);
-      if (el) { el.textContent = '⚠ ' + msg; el.classList.add('show'); }
+      const errEl = document.getElementById(errId);
+      if (errEl) { errEl.textContent = '⚠ ' + msg; errEl.classList.add('show'); }
     }
 
     /* ── 法定点検スケジュール計算 ── */
@@ -495,6 +574,7 @@
         return;
       }
       if (typeof window !== 'undefined') window.__ringSaving = true;
+      if (typeof ringCarAddSyncAllDateHidden === 'function') ringCarAddSyncAllDateHidden();
       const vin    = document.getElementById('inVin').value.trim().toUpperCase();
       const expiry = document.getElementById('inExpiry').value;
       const btn = document.getElementById('saveBtn');
@@ -621,6 +701,7 @@
     }
 
     function execSave() {
+      if (typeof ringCarAddSyncAllDateHidden === 'function') ringCarAddSyncAllDateHidden();
       const vin      = document.getElementById('inVin').value.trim().toUpperCase();
       const expiry   = document.getElementById('inExpiry').value;
       const firstReg = document.getElementById('inFirstReg').value;
@@ -696,6 +777,7 @@
         result = await ringGeminiOcrShaken(file);
         ringGeminiShowOcrDebug(result);
         const applied = ringGeminiApplyToCarAddForm(result);
+        if (typeof ringCarAddUpdateJibaisekiAlert === 'function') ringCarAddUpdateJibaisekiAlert();
         if (typeof updateSchedule === 'function') updateSchedule();
         if (typeof showToast === 'function') {
           showToast(

@@ -1,6 +1,6 @@
 /**
  * 車検証画像 → Gemini Flash OCR（マイカー登録・管理車両登録共通）
- * Phase 2: 固定IDマッピング経由のフォーム反映・正規化・和暦プレビュー
+ * Phase 3: 元号分離日付UI連動・固定IDマッピング・正規化
  */
 (function (global) {
     'use strict';
@@ -10,12 +10,13 @@
 
     /**
      * Gemini OCRキー → car_add.html 固定要素ID（曖昧なDOM探索禁止）
-     * type: text | date | firstReg | select
+     * type: text | firstRegIso | expiryIso | select
+     * 日付は hidden (inFirstReg / inExpiry) へ西暦を保持し、UI分解は car-add-date.js が担当
      */
     var OCR_FIELD_MAPPING = {
         vin:                     { elementId: 'inVin',           type: 'text' },
-        firstRegistrationDate:   { elementId: 'inFirstReg',      type: 'firstReg' },
-        expiryDate:              { elementId: 'inExpiry',        type: 'date' },
+        firstRegistrationDate:   { elementId: 'inFirstReg',      type: 'firstRegIso' },
+        expiryDate:              { elementId: 'inExpiry',        type: 'expiryIso' },
         carName:                 { elementId: 'inVehicleName',   type: 'text', normalize: 'carName' },
         model:                   { elementId: 'inModel',         type: 'text' },
         engineModel:             { elementId: 'inEngine',        type: 'text' },
@@ -87,8 +88,7 @@
         '- purpose: 用途\n' +
         '- useCategory: 自家用・事業用の別\n' +
         '- bodyShape: 車体の形状（『車体の形状』欄に注目し、『オートバイ』『二輪』などの記載があれば、その文字をそのまま抽出）\n' +
-        '純粋なJSON文字列のみを出力すること。\n' +
-        '読み取れない項目は空文字列とし、推測や補完はしないこと。';
+        '純粋なJSON文字列のみを出力すること。マークダウンや説明文は一切含めないでください。';
 
     function ringGeminiGetApiKey_() {
         if (typeof GEMINI_API_KEY === 'string' && GEMINI_API_KEY.trim()) {
@@ -164,22 +164,17 @@
         el.dispatchEvent(new Event('input', { bubbles: true }));
     }
 
-    function ringGeminiApplyDateField_(mapping, value) {
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return;
-        var el = ringGeminiGetElementByMapping_(mapping);
-        if (!el) return;
-        el.value = value;
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-        el.dispatchEvent(new Event('input', { bubbles: true }));
+    function ringGeminiApplyFirstRegIso_(value) {
+        if (!/^\d{4}-\d{2}$/.test(value)) return;
+        if (typeof ringCarAddSetFirstRegFromIso === 'function') {
+            ringCarAddSetFirstRegFromIso(value);
+        }
     }
 
-    function ringGeminiApplyFirstRegField_(mapping, value) {
-        if (!/^\d{4}-\d{2}$/.test(value)) return;
-        if (typeof ringSetFirstRegValue_ === 'function') {
-            ringSetFirstRegValue_(value);
-        } else {
-            var el = ringGeminiGetElementByMapping_(mapping);
-            if (el) el.value = value;
+    function ringGeminiApplyExpiryIso_(value) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return;
+        if (typeof ringCarAddSetExpiryFromIso === 'function') {
+            ringCarAddSetExpiryFromIso(value);
         }
     }
 
@@ -220,11 +215,11 @@
                 if (key === 'vin') value = value.toUpperCase();
                 ringGeminiApplyTextField_(mapping, value);
                 applied.push(key);
-            } else if (mapping.type === 'date') {
-                ringGeminiApplyDateField_(mapping, value);
+            } else if (mapping.type === 'expiryIso') {
+                ringGeminiApplyExpiryIso_(value);
                 applied.push(key);
-            } else if (mapping.type === 'firstReg') {
-                ringGeminiApplyFirstRegField_(mapping, value);
+            } else if (mapping.type === 'firstRegIso') {
+                ringGeminiApplyFirstRegIso_(value);
                 applied.push(key);
             } else if (mapping.type === 'select') {
                 ringGeminiApplySelectField_(mapping, value);
@@ -237,80 +232,9 @@
             if (det) det.open = true;
         }
 
-        ringCarAddUpdateWarekiPreviews_();
+        if (typeof ringCarAddUpdateSeirekiPreviews === 'function') ringCarAddUpdateSeirekiPreviews();
+        if (typeof ringCarAddUpdateJibaisekiAlert === 'function') ringCarAddUpdateJibaisekiAlert();
         return applied;
-    }
-
-    /** @returns {Date|null} */
-    function ringCarAddParseIsoDate_(iso, withDay) {
-        if (!iso || typeof iso !== 'string') return null;
-        var s = iso.trim().replace(/\//g, '-');
-        var m = withDay
-            ? s.match(/^(\d{4})-(\d{2})-(\d{2})$/)
-            : s.match(/^(\d{4})-(\d{2})$/);
-        if (!m) return null;
-        var d = withDay
-            ? new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10))
-            : new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, 1);
-        return isNaN(d.getTime()) ? null : d;
-    }
-
-    function ringCarAddFormatWarekiLabel_(date, withDay) {
-        if (!date || isNaN(date.getTime())) return '';
-        var opts = { era: 'long', year: 'numeric', month: 'long' };
-        if (withDay) opts.day = 'numeric';
-        try {
-            return new Intl.DateTimeFormat('ja-JP', opts).format(date);
-        } catch (e) {
-            return '';
-        }
-    }
-
-    function ringCarAddUpdateWarekiPreviews_() {
-        var firstRegEl = document.getElementById('inFirstReg');
-        var firstPreview = document.getElementById('firstRegWarekiPreview');
-        if (firstRegEl && firstPreview) {
-            var frDate = ringCarAddParseIsoDate_(firstRegEl.value, false);
-            firstPreview.textContent = frDate
-                ? ('└ 車検証表記：' + ringCarAddFormatWarekiLabel_(frDate, false))
-                : '';
-        }
-
-        var expiryEl = document.getElementById('inExpiry');
-        var expiryPreview = document.getElementById('expiryWarekiPreview');
-        if (expiryEl && expiryPreview) {
-            var exDate = ringCarAddParseIsoDate_(expiryEl.value, true);
-            expiryPreview.textContent = exDate
-                ? ('└ 車検証表記：' + ringCarAddFormatWarekiLabel_(exDate, true))
-                : '';
-        }
-    }
-
-    /** 初度登録・車検満了日の和暦プレビュー初期化 */
-    function ringCarAddInitWarekiPreview() {
-        var expiryEl = document.getElementById('inExpiry');
-        var eraYear = document.getElementById('firstRegEraYear');
-        var monthSel = document.getElementById('firstRegMonth');
-        var firstRegHidden = document.getElementById('inFirstReg');
-
-        if (expiryEl && !expiryEl.dataset.warekiPreviewBound) {
-            expiryEl.addEventListener('change', ringCarAddUpdateWarekiPreviews_);
-            expiryEl.addEventListener('input', ringCarAddUpdateWarekiPreviews_);
-            expiryEl.dataset.warekiPreviewBound = '1';
-        }
-        if (eraYear && !eraYear.dataset.warekiPreviewBound) {
-            eraYear.addEventListener('change', ringCarAddUpdateWarekiPreviews_);
-            eraYear.dataset.warekiPreviewBound = '1';
-        }
-        if (monthSel && !monthSel.dataset.warekiPreviewBound) {
-            monthSel.addEventListener('change', ringCarAddUpdateWarekiPreviews_);
-            monthSel.dataset.warekiPreviewBound = '1';
-        }
-        if (firstRegHidden && !firstRegHidden.dataset.warekiPreviewBound) {
-            firstRegHidden.addEventListener('change', ringCarAddUpdateWarekiPreviews_);
-            firstRegHidden.dataset.warekiPreviewBound = '1';
-        }
-        ringCarAddUpdateWarekiPreviews_();
     }
 
     function ringGeminiParseJsonText_(text) {
@@ -430,6 +354,4 @@
     global.ringGeminiShowOcrDebug = ringGeminiShowOcrDebug;
     global.ringGeminiEmptyShakenResult = ringGeminiEmptyShakenResult_;
     global.ringGeminiApplyToCarAddForm = ringGeminiApplyToCarAddForm;
-    global.ringCarAddInitWarekiPreview = ringCarAddInitWarekiPreview;
-    global.ringCarAddUpdateWarekiPreviews = ringCarAddUpdateWarekiPreviews_;
 }(typeof window !== 'undefined' ? window : globalThis));
