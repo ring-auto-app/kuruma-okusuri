@@ -1,6 +1,6 @@
 /**
  * 車検証画像 → Gemini Flash OCR（マイカー登録・管理車両登録共通）
- * フォーム自動入力は行わず JSON 取得・デバッグ表示のみ。
+ * Phase 2: 固定IDマッピング経由のフォーム反映・正規化・和暦プレビュー
  */
 (function (global) {
     'use strict';
@@ -8,57 +8,99 @@
     var RING_GEMINI_MODEL = 'gemini-3-flash-preview';
     var RING_GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models/';
 
-    var RING_GEMINI_SHAKEN_KEYS = [
-        'vin',
-        'firstRegistrationDate',
-        'expiryDate',
-        'carName',
-        'model',
-        'engineModel',
-        'typeDesignationNumber',
-        'classificationNumber',
-        'vehicleType',
-        'purpose',
-        'useCategory'
-    ];
+    /**
+     * Gemini OCRキー → car_add.html 固定要素ID（曖昧なDOM探索禁止）
+     * type: text | date | firstReg | select
+     */
+    var OCR_FIELD_MAPPING = {
+        vin:                     { elementId: 'inVin',           type: 'text' },
+        firstRegistrationDate:   { elementId: 'inFirstReg',      type: 'firstReg' },
+        expiryDate:              { elementId: 'inExpiry',        type: 'date' },
+        carName:                 { elementId: 'inVehicleName',   type: 'text', normalize: 'carName' },
+        model:                   { elementId: 'inModel',         type: 'text' },
+        engineModel:             { elementId: 'inEngine',        type: 'text' },
+        typeDesignationNumber:   { elementId: 'inTypeDesig',     type: 'text' },
+        classificationNumber:    { elementId: 'inCategory',      type: 'text' },
+        vehicleType:             { elementId: 'inClass',         type: 'select', normalize: 'vehicleType' },
+        purpose:                 { elementId: 'inUsage',         type: 'select', normalize: 'purpose' },
+        useCategory:             { elementId: 'inOwnerType',     type: 'select', normalize: 'useCategory' },
+        bodyShape:               { elementId: 'inBodyShape',     type: 'select', normalize: 'bodyShape' }
+    };
+
+    var RING_GEMINI_SHAKEN_KEYS = Object.keys(OCR_FIELD_MAPPING);
+
+    var RING_GEMINI_NORM_ALIASES = {
+        purpose: {
+            '乗用': '乗用', '乗用車': '乗用', '乗用自動車': '乗用',
+            '貨物': '貨物', '貨物車': '貨物', '貨物用': '貨物', '貨物自動車': '貨物',
+            '乗合': '乗合', '乗合車': '乗合', '乗合自動車': '乗合', 'バス': '乗合',
+            '特種': '特種', '特種車': '特種', '特種自動車': '特種'
+        },
+        useCategory: {
+            '自家用': '自家用', '自家用車': '自家用', '自家用自動車': '自家用',
+            '事業用': '事業用', '事業用車': '事業用', '事業用自動車': '事業用',
+            'レンタカー': 'レンタカー', 'レンタル': 'レンタカー', 'レンタル車': 'レンタカー'
+        },
+        vehicleType: {
+            '軽自動車': '軽自動車', '軽': '軽自動車', '軽四': '軽自動車',
+            '小型乗用': '小型乗用', '小型乗用車': '小型乗用',
+            '小型貨物': '小型貨物', '小型貨物車': '小型貨物',
+            '小型乗合': '小型乗合', '小型乗合車': '小型乗合',
+            '小型特種': '小型特種', '小型特種車': '小型特種',
+            '普通乗用': '普通乗用', '普通乗用車': '普通乗用',
+            '普通貨物': '普通貨物', '普通貨物車': '普通貨物',
+            '普通乗合': '普通乗合', '普通乗合車': '普通乗合',
+            '普通特種': '普通特種', '普通特種車': '普通特種',
+            '大型特殊': '大型特殊', '大型特殊自動車': '大型特殊',
+            '小型特殊': '小型特殊', '小型特殊自動車': '小型特殊'
+        },
+        bodyShape: {
+            'オートバイ': 'オートバイ', 'auto bike': 'オートバイ', 'autobike': 'オートバイ',
+            '二輪': '二輪', '二輪車': '二輪', '2輪': '二輪', '二輪自動車': '二輪',
+            '箱型': '箱型', '幌型': '幌型', 'ステーションワゴン': 'ステーションワゴン',
+            'セダン': 'セダン', 'ハッチバック': 'ハッチバック', 'オープン': 'オープン',
+            'ピックアップ': 'ピックアップ', 'バン': 'バン', 'その他': 'その他'
+        }
+    };
+
+    var RING_GEMINI_CAR_NAME_BRANDS = {
+        'TOYOTA': 'トヨタ', 'NISSAN': '日産', 'HONDA': 'ホンダ', 'MAZDA': 'マツダ',
+        'SUBARU': 'スバル', 'SUZUKI': 'スズキ', 'MITSUBISHI': '三菱', 'DAIHATSU': 'ダイハツ',
+        'LEXUS': 'レクサス', 'ISUZU': 'いすゞ', 'HINO': '日野', 'UD TRUCKS': 'UDトラックス',
+        'MERCEDES-BENZ': 'メルセデス・ベンツ', 'BMW': 'BMW', 'VOLKSWAGEN': 'フォルクスワーゲン',
+        'AUDI': 'アウディ', 'VOLVO': 'ボルボ', 'PEUGEOT': 'プジョー', 'CITROEN': 'シトロエン',
+        'FORD': 'フォード', 'CHEVROLET': 'シボレー', 'JEEP': 'ジープ', 'LAND ROVER': 'ランドローバー',
+        'MINI': 'ミニ', 'PORSCHE': 'ポルシェ', 'FERRARI': 'フェラーリ', 'LAMBORGHINI': 'ランボルギーニ'
+    };
 
     var RING_GEMINI_SHAKEN_PROMPT =
-        'この車検証（自動車検査証）の画像から以下の情報を抽出してください。\n' +
-        '返却形式は JSON のみ。\n' +
-        'マークダウン、説明文、コードブロック、補足文章は一切出力しないこと。\n\n' +
-        '出力形式：\n' +
-        '{\n' +
-        '"vin": "",\n' +
-        '"firstRegistrationDate": "",\n' +
-        '"expiryDate": "",\n' +
-        '"carName": "",\n' +
-        '"model": "",\n' +
-        '"engineModel": "",\n' +
-        '"typeDesignationNumber": "",\n' +
-        '"classificationNumber": "",\n' +
-        '"vehicleType": "",\n' +
-        '"purpose": "",\n' +
-        '"useCategory": ""\n' +
-        '}\n\n' +
-        '抽出ルール：\n' +
-        '* vin = 車台番号\n' +
-        '* firstRegistrationDate = 初度検査年月または初度登録年月（YYYY-MM形式へ変換）\n' +
-        '* expiryDate = 有効期間の満了する日（YYYY-MM-DD形式へ変換）\n' +
-        '* carName = 車名\n' +
-        '* model = 型式\n' +
-        '* engineModel = 原動機型式\n' +
-        '* typeDesignationNumber = 型式指定番号\n' +
-        '* classificationNumber = 類別区分番号\n' +
-        '* vehicleType = 自動車の種別\n' +
-        '* purpose = 用途\n' +
-        '* useCategory = 自家用・事業用\n' +
-        '※読み取れない場合は空文字列とする。';
+        'この車両書類の画像から情報を抽出し、JSON形式で返してください。\n' +
+        '- vin: 車台番号\n' +
+        '- firstRegistrationDate: 初度登録年月（YYYY-MM形式）\n' +
+        '- expiryDate: 有効期間の満了する日（YYYY-MM-DD形式。記載がない場合は空文字列）\n' +
+        '- carName: 車名\n' +
+        '- model: 型式\n' +
+        '- engineModel: 原動機型式\n' +
+        '- typeDesignationNumber: 型式指定番号\n' +
+        '- classificationNumber: 類別区分番号\n' +
+        '- vehicleType: 自動車の種別\n' +
+        '- purpose: 用途\n' +
+        '- useCategory: 自家用・事業用の別\n' +
+        '- bodyShape: 車体の形状（『車体の形状』欄に注目し、『オートバイ』『二輪』などの記載があれば、その文字をそのまま抽出）\n' +
+        '純粋なJSON文字列のみを出力すること。\n' +
+        '読み取れない項目は空文字列とし、推測や補完はしないこと。';
 
     function ringGeminiGetApiKey_() {
         if (typeof GEMINI_API_KEY === 'string' && GEMINI_API_KEY.trim()) {
             return GEMINI_API_KEY.trim();
         }
         return '';
+    }
+
+    function ringGeminiIsEmptyOcrValue_(v) {
+        if (v == null) return true;
+        var s = String(v).trim();
+        return s === '' || s === '-' || s === '不明' || /^N\/A$/i.test(s);
     }
 
     function ringGeminiEmptyShakenResult_() {
@@ -71,14 +113,206 @@
         var base = ringGeminiEmptyShakenResult_();
         if (!raw || typeof raw !== 'object') return base;
         RING_GEMINI_SHAKEN_KEYS.forEach(function (k) {
-            if (raw[k] != null && raw[k] !== '') {
+            if (!ringGeminiIsEmptyOcrValue_(raw[k])) {
                 base[k] = String(raw[k]).trim();
             }
         });
         return base;
     }
 
-    /** Gemini が稀に返す markdown / 前後テキストを除去して JSON をパース */
+    function ringGeminiNormalizeCarName_(raw) {
+        var s = String(raw || '').trim();
+        if (!s) return '';
+        Object.keys(RING_GEMINI_CAR_NAME_BRANDS).forEach(function (en) {
+            s = s.replace(new RegExp('\\b' + en.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'gi'), RING_GEMINI_CAR_NAME_BRANDS[en]);
+        });
+        return s.trim();
+    }
+
+    function ringGeminiNormalizeAlias_(kind, raw) {
+        var s = String(raw || '').trim();
+        if (!s) return '';
+        var table = RING_GEMINI_NORM_ALIASES[kind] || {};
+        if (table[s]) return table[s];
+        var compact = s.replace(/\s+/g, '');
+        if (table[compact]) return table[compact];
+        return s;
+    }
+
+    function ringGeminiNormalizeFieldValue_(kind, raw) {
+        if (ringGeminiIsEmptyOcrValue_(raw)) return '';
+        if (kind === 'carName') return ringGeminiNormalizeCarName_(raw);
+        if (RING_GEMINI_NORM_ALIASES[kind]) return ringGeminiNormalizeAlias_(kind, raw);
+        return String(raw).trim();
+    }
+
+    function ringGeminiSelectHasOption_(selectEl, value) {
+        if (!selectEl || value == null || value === '') return false;
+        return Array.prototype.some.call(selectEl.options, function (opt) {
+            return opt.value === value;
+        });
+    }
+
+    function ringGeminiGetElementByMapping_(mapping) {
+        return document.getElementById(mapping.elementId);
+    }
+
+    function ringGeminiApplyTextField_(mapping, value) {
+        var el = ringGeminiGetElementByMapping_(mapping);
+        if (!el) return;
+        el.value = value;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    function ringGeminiApplyDateField_(mapping, value) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return;
+        var el = ringGeminiGetElementByMapping_(mapping);
+        if (!el) return;
+        el.value = value;
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    function ringGeminiApplyFirstRegField_(mapping, value) {
+        if (!/^\d{4}-\d{2}$/.test(value)) return;
+        if (typeof ringSetFirstRegValue_ === 'function') {
+            ringSetFirstRegValue_(value);
+        } else {
+            var el = ringGeminiGetElementByMapping_(mapping);
+            if (el) el.value = value;
+        }
+    }
+
+    function ringGeminiApplySelectField_(mapping, value) {
+        var el = ringGeminiGetElementByMapping_(mapping);
+        if (!el) return;
+        if (ringGeminiSelectHasOption_(el, value)) {
+            el.value = value;
+        } else {
+            el.value = '';
+        }
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    /**
+     * Gemini OCR 結果を car_add.html へ反映（空欄はスキップ・自動保存なし）
+     * @param {object} rawResult
+     * @returns {string[]} 反映した OCR キー一覧
+     */
+    function ringGeminiApplyToCarAddForm(rawResult) {
+        var result = ringGeminiNormalizeShakenResult_(rawResult);
+        var applied = [];
+        var detailKeys = ['carName', 'model', 'engineModel', 'typeDesignationNumber', 'classificationNumber'];
+
+        RING_GEMINI_SHAKEN_KEYS.forEach(function (key) {
+            if (ringGeminiIsEmptyOcrValue_(result[key])) return;
+
+            var mapping = OCR_FIELD_MAPPING[key];
+            if (!mapping) return;
+
+            var value = mapping.normalize
+                ? ringGeminiNormalizeFieldValue_(mapping.normalize, result[key])
+                : String(result[key]).trim();
+
+            if (ringGeminiIsEmptyOcrValue_(value)) return;
+
+            if (mapping.type === 'text') {
+                if (key === 'vin') value = value.toUpperCase();
+                ringGeminiApplyTextField_(mapping, value);
+                applied.push(key);
+            } else if (mapping.type === 'date') {
+                ringGeminiApplyDateField_(mapping, value);
+                applied.push(key);
+            } else if (mapping.type === 'firstReg') {
+                ringGeminiApplyFirstRegField_(mapping, value);
+                applied.push(key);
+            } else if (mapping.type === 'select') {
+                ringGeminiApplySelectField_(mapping, value);
+                applied.push(key);
+            }
+        });
+
+        if (applied.some(function (k) { return detailKeys.indexOf(k) >= 0; })) {
+            var det = document.getElementById('carDetailSection');
+            if (det) det.open = true;
+        }
+
+        ringCarAddUpdateWarekiPreviews_();
+        return applied;
+    }
+
+    /** @returns {Date|null} */
+    function ringCarAddParseIsoDate_(iso, withDay) {
+        if (!iso || typeof iso !== 'string') return null;
+        var s = iso.trim().replace(/\//g, '-');
+        var m = withDay
+            ? s.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+            : s.match(/^(\d{4})-(\d{2})$/);
+        if (!m) return null;
+        var d = withDay
+            ? new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10))
+            : new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, 1);
+        return isNaN(d.getTime()) ? null : d;
+    }
+
+    function ringCarAddFormatWarekiLabel_(date, withDay) {
+        if (!date || isNaN(date.getTime())) return '';
+        var opts = { era: 'long', year: 'numeric', month: 'long' };
+        if (withDay) opts.day = 'numeric';
+        try {
+            return new Intl.DateTimeFormat('ja-JP', opts).format(date);
+        } catch (e) {
+            return '';
+        }
+    }
+
+    function ringCarAddUpdateWarekiPreviews_() {
+        var firstRegEl = document.getElementById('inFirstReg');
+        var firstPreview = document.getElementById('firstRegWarekiPreview');
+        if (firstRegEl && firstPreview) {
+            var frDate = ringCarAddParseIsoDate_(firstRegEl.value, false);
+            firstPreview.textContent = frDate
+                ? ('└ 車検証表記：' + ringCarAddFormatWarekiLabel_(frDate, false))
+                : '';
+        }
+
+        var expiryEl = document.getElementById('inExpiry');
+        var expiryPreview = document.getElementById('expiryWarekiPreview');
+        if (expiryEl && expiryPreview) {
+            var exDate = ringCarAddParseIsoDate_(expiryEl.value, true);
+            expiryPreview.textContent = exDate
+                ? ('└ 車検証表記：' + ringCarAddFormatWarekiLabel_(exDate, true))
+                : '';
+        }
+    }
+
+    /** 初度登録・車検満了日の和暦プレビュー初期化 */
+    function ringCarAddInitWarekiPreview() {
+        var expiryEl = document.getElementById('inExpiry');
+        var eraYear = document.getElementById('firstRegEraYear');
+        var monthSel = document.getElementById('firstRegMonth');
+        var firstRegHidden = document.getElementById('inFirstReg');
+
+        if (expiryEl && !expiryEl.dataset.warekiPreviewBound) {
+            expiryEl.addEventListener('change', ringCarAddUpdateWarekiPreviews_);
+            expiryEl.addEventListener('input', ringCarAddUpdateWarekiPreviews_);
+            expiryEl.dataset.warekiPreviewBound = '1';
+        }
+        if (eraYear && !eraYear.dataset.warekiPreviewBound) {
+            eraYear.addEventListener('change', ringCarAddUpdateWarekiPreviews_);
+            eraYear.dataset.warekiPreviewBound = '1';
+        }
+        if (monthSel && !monthSel.dataset.warekiPreviewBound) {
+            monthSel.addEventListener('change', ringCarAddUpdateWarekiPreviews_);
+            monthSel.dataset.warekiPreviewBound = '1';
+        }
+        if (firstRegHidden && !firstRegHidden.dataset.warekiPreviewBound) {
+            firstRegHidden.addEventListener('change', ringCarAddUpdateWarekiPreviews_);
+            firstRegHidden.dataset.warekiPreviewBound = '1';
+        }
+        ringCarAddUpdateWarekiPreviews_();
+    }
+
     function ringGeminiParseJsonText_(text) {
         var s = String(text || '').trim();
         if (!s) throw new Error('GEMINI_EMPTY_RESPONSE');
@@ -112,11 +346,6 @@
         return parts.map(function (p) { return p.text || ''; }).join('').trim();
     }
 
-    /**
-     * 車検証画像を Gemini Flash へ送信し、正規化済み JSON を返す
-     * @param {File|Blob} file
-     * @returns {Promise<object>}
-     */
     async function ringGeminiOcrShaken(file) {
         var apiKey = ringGeminiGetApiKey_();
         if (!apiKey) throw new Error('GEMINI_API_KEY_MISSING');
@@ -176,11 +405,6 @@
         return ringGeminiNormalizeShakenResult_(parsed);
     }
 
-    /**
-     * デバッグ領域へ JSON 表示（console.log も実行）
-     * @param {object|null} result
-     * @param {{ container?: HTMLElement, body?: HTMLElement, error?: string }} opts
-     */
     function ringGeminiShowOcrDebug(result, opts) {
         opts = opts || {};
         var container = opts.container || document.getElementById('geminiOcrDebug');
@@ -201,7 +425,11 @@
         container.classList.remove('gemini-ocr-debug--error');
     }
 
+    global.OCR_FIELD_MAPPING = OCR_FIELD_MAPPING;
     global.ringGeminiOcrShaken = ringGeminiOcrShaken;
     global.ringGeminiShowOcrDebug = ringGeminiShowOcrDebug;
     global.ringGeminiEmptyShakenResult = ringGeminiEmptyShakenResult_;
+    global.ringGeminiApplyToCarAddForm = ringGeminiApplyToCarAddForm;
+    global.ringCarAddInitWarekiPreview = ringCarAddInitWarekiPreview;
+    global.ringCarAddUpdateWarekiPreviews = ringCarAddUpdateWarekiPreviews_;
 }(typeof window !== 'undefined' ? window : globalThis));

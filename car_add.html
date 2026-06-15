@@ -152,6 +152,17 @@
       overflow: auto;
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     }
+
+    .wareki-preview {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--muted);
+      margin-top: 6px;
+      padding-left: 4px;
+      line-height: 1.4;
+      min-height: 0;
+    }
+    .wareki-preview:not(:empty) { min-height: 1.2em; }
   </style>
 </head>
 <body>
@@ -165,7 +176,7 @@
 
     <div class="doc-scan-btn" onclick="document.getElementById('docInput').click()">
       📄 車検証をスキャン（Gemini AI読取）
-      <div class="scan-hint">写真から車台番号・満了日・型式などを Gemini で読み取ります（デバッグ確認用）。</div>
+      <div class="scan-hint">写真から車台番号・満了日・型式などを読み取り、フォームへ反映します（登録は手動確認後）。</div>
     </div>
     <input type="file" id="docInput" accept="image/*" capture="environment" hidden>
     <div class="doc-preview-area" id="docPreviewArea"><img id="docPreviewImg" src="" alt=""></div>
@@ -206,17 +217,19 @@
           <select id="firstRegMonth" aria-label="初度登録月" onchange="clearErr('inFirstReg')"></select>
         </div>
         <input type="hidden" id="inFirstReg">
+        <div class="wareki-preview" id="firstRegWarekiPreview" aria-live="polite"></div>
         <div class="err-msg" id="errInFirstReg">⚠ 初度登録年月は必須です</div>
       </div>
 
       <div class="field">
         <span class="label">車検満了日 <span class="required">※必須</span></span>
         <input id="inExpiry" type="date" onchange="clearErr('inExpiry'); updateSchedule()">
+        <div class="wareki-preview" id="expiryWarekiPreview" aria-live="polite"></div>
         <div class="err-msg" id="errExpiry">⚠ 車検満了日は必須です</div>
       </div>
 
       <!-- 車両詳細情報（factory_input.html と同じ構成） -->
-      <details style="margin-bottom:10px;">
+      <details id="carDetailSection" style="margin-bottom:10px;">
         <summary style="font-size:13px; font-weight:900; color:var(--muted); cursor:pointer; padding:6px 0; user-select:none;">
           ▶ 車両詳細情報を入力する（任意）
         </summary>
@@ -256,6 +269,7 @@
           <span class="label">自動車の種別</span>
           <div class="select-wrap">
             <select id="inClass" onchange="updateSchedule()">
+              <option value="">未選択</option>
               <optgroup label="軽自動車（660cc以下）">
                 <option value="軽自動車">軽自動車</option>
               </optgroup>
@@ -283,6 +297,7 @@
           <span class="label">用途</span>
           <div class="select-wrap">
             <select id="inUsage" onchange="updateSchedule()">
+              <option value="">未選択</option>
               <option value="乗用">乗用</option>
               <option value="貨物" selected>貨物</option>
               <option value="乗合">乗合（バス）</option>
@@ -296,9 +311,30 @@
         <span class="label">自家用 / 事業用の別</span>
         <div class="select-wrap">
           <select id="inOwnerType" onchange="updateSchedule()">
+            <option value="">未選択</option>
             <option value="自家用">自家用</option>
             <option value="事業用">事業用</option>
             <option value="レンタカー">レンタカー</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field" style="margin-top:16px;">
+        <span class="label">車体の形状</span>
+        <div class="select-wrap">
+          <select id="inBodyShape">
+            <option value="">未選択</option>
+            <option value="箱型">箱型</option>
+            <option value="幌型">幌型</option>
+            <option value="ステーションワゴン">ステーションワゴン</option>
+            <option value="セダン">セダン</option>
+            <option value="ハッチバック">ハッチバック</option>
+            <option value="オープン">オープン</option>
+            <option value="ピックアップ">ピックアップ</option>
+            <option value="バン">バン</option>
+            <option value="オートバイ">オートバイ</option>
+            <option value="二輪">二輪</option>
+            <option value="その他">その他</option>
           </select>
         </div>
       </div>
@@ -341,6 +377,9 @@
         document.getElementById('categoryField').style.display = '';
       }
       updateSchedule();
+      if (typeof ringCarAddInitWarekiPreview === 'function') {
+        ringCarAddInitWarekiPreview();
+      }
     });
 
     function goBackHome() {
@@ -490,6 +529,7 @@
         vClass:            document.getElementById('inClass').value,
         usage:             document.getElementById('inUsage').value,
         ownerType:         document.getElementById('inOwnerType').value,
+        bodyShape:         document.getElementById('inBodyShape').value,
         inspectMonths:     months,
         vehicleCategory:   vehicleCategory,  // managed / loaner
         createdAt:         new Date().toISOString(),
@@ -609,7 +649,10 @@
         ringConfirmRow('型式指定番号', document.getElementById('inTypeDesig').value) +
         ringConfirmRow('自動車の種別', vClass.options[vClass.selectedIndex].text) +
         ringConfirmRow('用途', vUsage.options[vUsage.selectedIndex].text) +
-        ringConfirmRow('自家用/事業用', vOwner.options[vOwner.selectedIndex].text);
+        ringConfirmRow('自家用/事業用', vOwner.options[vOwner.selectedIndex].text) +
+        (document.getElementById('inBodyShape').value
+          ? ringConfirmRow('車体の形状', document.getElementById('inBodyShape').options[document.getElementById('inBodyShape').selectedIndex].text)
+          : '');
 
       showRingSaveConfirm({
         title: '車両登録の確認',
@@ -619,7 +662,7 @@
       });
     }
 
-    /* マイカー登録・管理車両登録 共通：Gemini OCR（フォーム反映は未実装） */
+    /* マイカー登録・管理車両登録 共通：Gemini OCR → フォーム反映（自動保存なし） */
     document.getElementById('docInput').addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
@@ -652,8 +695,15 @@
         }
         result = await ringGeminiOcrShaken(file);
         ringGeminiShowOcrDebug(result);
+        const applied = ringGeminiApplyToCarAddForm(result);
+        if (typeof updateSchedule === 'function') updateSchedule();
         if (typeof showToast === 'function') {
-          showToast('success', 'Gemini OCR が完了しました（デバッグ表示を確認してください）');
+          showToast(
+            applied.length ? 'info' : 'warning',
+            applied.length
+              ? '読取結果をフォームに反映しました。内容をご確認のうえ「内容を確認して登録」を押してください。'
+              : '読取項目がありませんでした。手入力で続行してください。'
+          );
         }
       } catch (err) {
         const msg = String(err && err.message ? err.message : err);
