@@ -171,16 +171,6 @@
       font-family: inherit;
     }
     .demo-btn:active { transform: scale(0.98); }
-    .demo-preview-link-wrap { margin: 0 0 14px; text-align: center; }
-    .demo-preview-link {
-      display: inline-block;
-      font-size: 13px;
-      font-weight: 900;
-      color: var(--text);
-      text-decoration: underline;
-      text-underline-offset: 3px;
-    }
-    .demo-preview-link:active { opacity: 0.85; }
   </style>
 </head>
 
@@ -220,9 +210,6 @@
     <div class="demo-public" id="demoPublicBlock">
       <p class="demo-public-title">デモで試してみる</p>
       <p class="demo-public-note">登録なしで画面の流れを体験できます。サンプルの車両・履歴が表示されます。</p>
-      <p class="demo-preview-link-wrap">
-        <a href="demo_preview.html" class="demo-preview-link">保存なし・サンプル一覧を見るだけ</a>
-      </p>
       <div class="demo-btn-row">
         <button type="button" class="demo-btn" onclick="ringStartIndexDemo('factory')">工場デモで体験</button>
         <button type="button" class="demo-btn" onclick="ringStartIndexDemo('dealer')">事業者デモで体験</button>
