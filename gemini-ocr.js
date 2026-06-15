@@ -5,7 +5,7 @@
 (function (global) {
     'use strict';
 
-    var RING_GEMINI_MODEL = 'gemini-2.0-flash';
+    var RING_GEMINI_MODEL = 'gemini-3-flash-preview';
     var RING_GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models/';
 
     var RING_GEMINI_SHAKEN_KEYS = [
