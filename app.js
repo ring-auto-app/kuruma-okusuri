@@ -1002,6 +1002,26 @@ function ringDemoGasStubResponse_(actionType) {
             candidates: ['ZVW505012847', 'ZVW5O5012847']
         };
     }
+    if (actionType === 'ocr_gemini_shaken') {
+        return {
+            success: true,
+            demo: true,
+            ocrResult: {
+                vin: 'ZVW50-5012847',
+                firstRegistrationDate: '2020-03',
+                expiryDate: '2026-12-15',
+                carName: 'トヨタ プリウス',
+                model: 'DBA-ZVW50',
+                engineModel: '2ZR-FXE',
+                typeDesignationNumber: '17456',
+                classificationNumber: '12001',
+                vehicleType: '普通',
+                purpose: '乗用',
+                useCategory: '自家用',
+                bodyShape: ''
+            }
+        };
+    }
     return { success: true, demo: true };
 }
 
@@ -1913,13 +1933,14 @@ async function sendToGAS_Safe(actionType, data, opts) {
             ringHandleAuthExpired_(ringGetActiveMode(), actionType);
         }
         if (actionType !== 'system_log') {
-            if ((actionType === 'ocr_vin' || actionType === 'ocr_vin_search') && /AUTH_/i.test(errMsg)) {
+            if ((actionType === 'ocr_vin' || actionType === 'ocr_vin_search' || actionType === 'ocr_gemini_shaken') && /AUTH_/i.test(errMsg)) {
                 ringLogSystemEvent('AUTH_ERROR', {
                     error_message: errMsg,
                     payload: { gasAction: actionType }
                 });
             } else if (!(actionType === 'ocr_vin' && /VIN_NOT_FOUND|NO_FIELDS|OCR_DISABLED/i.test(errMsg))
-                && !(actionType === 'ocr_vin_search' && /VIN_NOT_FOUND|OCR_NOT_CONFIGURED|IMAGE_REQUIRED/i.test(errMsg))) {
+                && !(actionType === 'ocr_vin_search' && /VIN_NOT_FOUND|OCR_NOT_CONFIGURED|IMAGE_REQUIRED/i.test(errMsg))
+                && !(actionType === 'ocr_gemini_shaken' && /GEMINI_|IMAGE_REQUIRED|PROMPT_REQUIRED/i.test(errMsg))) {
                 ringLogSystemEvent('GAS_ERROR', {
                     error_message: errMsg,
                     payload: { gasAction: actionType }

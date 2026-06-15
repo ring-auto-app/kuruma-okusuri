@@ -1,12 +1,14 @@
 /**
- * 車検証画像 → Gemini Flash OCR（マイカー登録・管理車両登録共通）
- * Phase 3: 元号分離日付UI連動・固定IDマッピング・正規化
+ * 車検証画像 OCR（マイカー登録・管理車両登録共通）
+ * PWA ➔ GAS プロキシ ➔ Gemini（APIキーは GAS スクリプトプロパティのみ）
  */
 (function (global) {
     'use strict';
 
-    var RING_GEMINI_MODEL = 'gemini-3-flash-preview';
-    var RING_GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models/';
+    /** GAS ルータ action（app.js の GAS_URL へ POST） */
+    var RING_GEMINI_OCR_GAS_ACTION = 'ocr_gemini_shaken';
+    /** Gemini OCR は応答が遅いため長め */
+    var RING_GEMINI_OCR_TIMEOUT_MS = 90000;
 
     /**
      * Gemini OCRキー → car_add.html 固定要素ID（曖昧なDOM探索禁止）
@@ -79,9 +81,10 @@
         '- bodyShape: 車体の形状（『車体の形状』欄に注目し、『オートバイ』『二輪』などの記載があれば、その文字をそのまま抽出）\n' +
         '純粋なJSON文字列のみを出力すること。マークダウンや説明文は一切含めないでください。';
 
-    function ringGeminiGetApiKey_() {
-        if (typeof GEMINI_API_KEY === 'string' && GEMINI_API_KEY.trim()) {
-            return GEMINI_API_KEY.trim();
+    function ringGeminiGetGasUrl_() {
+        if (typeof GAS_URL !== 'undefined' && GAS_URL) return String(GAS_URL).trim();
+        if (typeof global !== 'undefined' && global.__RING_GAS_URL__) {
+            return String(global.__RING_GAS_URL__).trim();
         }
         return '';
     }
@@ -256,7 +259,7 @@
 
     function ringGeminiParseJsonText_(text) {
         var s = String(text || '').trim();
-        if (!s) throw new Error('GEMINI_EMPTY_RESPONSE');
+        if (!s) throw new Error('OCR_EMPTY_RESPONSE');
 
         var fence = s.match(/```(?:json)?\s*([\s\S]*?)```/i);
         if (fence) s = fence[1].trim();
@@ -273,24 +276,55 @@
         }
     }
 
-    function ringGeminiExtractResponseText_(json) {
-        var parts = json &&
-            json.candidates &&
-            json.candidates[0] &&
-            json.candidates[0].content &&
-            json.candidates[0].content.parts;
-        if (!parts || !parts.length) {
-            var block = json && json.promptFeedback && json.promptFeedback.blockReason;
-            if (block) throw new Error('GEMINI_BLOCKED:' + block);
-            throw new Error('GEMINI_NO_CANDIDATES');
+    /**
+     * GAS プロキシへ OCR リクエスト（{ prompt, image } + action）
+     * @param {string} prompt
+     * @param {string} imageBase64
+     * @returns {Promise<object>}
+     */
+    async function ringGeminiOcrShakenViaGas_(prompt, imageBase64) {
+        var gasUrl = ringGeminiGetGasUrl_();
+        if (!gasUrl) throw new Error('GAS_URL_MISSING');
+
+        if (typeof ringEnsureAuthForOcr === 'function') {
+            await ringEnsureAuthForOcr();
         }
-        return parts.map(function (p) { return p.text || ''; }).join('').trim();
+
+        var payload = {
+            action: RING_GEMINI_OCR_GAS_ACTION,
+            prompt: prompt,
+            image: imageBase64
+        };
+
+        var json;
+        if (typeof sendToGAS_Safe === 'function') {
+            json = await sendToGAS_Safe(RING_GEMINI_OCR_GAS_ACTION, {
+                prompt: prompt,
+                image: imageBase64
+            }, { timeoutMs: RING_GEMINI_OCR_TIMEOUT_MS });
+        } else if (typeof fetchJsonWithTimeout === 'function') {
+            var authToken = typeof ringResolveActiveAuthToken === 'function'
+                ? ringResolveActiveAuthToken() : '';
+            if (authToken) payload.authToken = authToken;
+            json = await fetchJsonWithTimeout(gasUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain' },
+                body: JSON.stringify(payload)
+            }, RING_GEMINI_OCR_TIMEOUT_MS);
+            if (!json || json.success !== true) {
+                throw new Error((json && json.error) || 'GAS_OCR_FAIL');
+            }
+        } else {
+            throw new Error('GAS_CLIENT_UNAVAILABLE');
+        }
+
+        var raw = json.ocrResult != null ? json.ocrResult : json.data;
+        if (typeof raw === 'string') raw = ringGeminiParseJsonText_(raw);
+        if (!raw || typeof raw !== 'object') throw new Error('OCR_RESULT_INVALID');
+        return raw;
     }
 
     async function ringGeminiOcrShaken(file) {
-        var apiKey = ringGeminiGetApiKey_();
-        if (!apiKey) throw new Error('GEMINI_API_KEY_MISSING');
-
         var b64;
         if (typeof fileToVisionBase64 === 'function') {
             b64 = await fileToVisionBase64(file, 2400);
@@ -308,45 +342,16 @@
         }
         if (!b64) throw new Error('IMAGE_ENCODE_EMPTY');
 
-        var url = RING_GEMINI_API_BASE + encodeURIComponent(RING_GEMINI_MODEL) +
-            ':generateContent?key=' + encodeURIComponent(apiKey);
-
-        var body = {
-            contents: [{
-                parts: [
-                    { text: RING_GEMINI_SHAKEN_PROMPT },
-                    { inline_data: { mime_type: 'image/jpeg', data: b64 } }
-                ]
-            }],
-            generationConfig: {
-                responseMimeType: 'application/json',
-                temperature: 0.1
-            }
-        };
-
-        var resp;
         try {
-            resp = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body)
-            });
+            var parsed = await ringGeminiOcrShakenViaGas_(RING_GEMINI_SHAKEN_PROMPT, b64);
+            return ringGeminiNormalizeShakenResult_(parsed);
         } finally {
             b64 = null;
         }
-
-        var json = await resp.json().catch(function () { return null; });
-        if (!resp.ok) {
-            var errMsg = (json && json.error && json.error.message) || ('HTTP_' + resp.status);
-            throw new Error('GEMINI_API_ERROR:' + errMsg);
-        }
-
-        var text = ringGeminiExtractResponseText_(json);
-        var parsed = ringGeminiParseJsonText_(text);
-        return ringGeminiNormalizeShakenResult_(parsed);
     }
 
     global.OCR_FIELD_MAPPING = OCR_FIELD_MAPPING;
+    global.RING_GEMINI_OCR_GAS_ACTION = RING_GEMINI_OCR_GAS_ACTION;
     global.ringGeminiOcrShaken = ringGeminiOcrShaken;
     global.ringGeminiEmptyShakenResult = ringGeminiEmptyShakenResult_;
     global.ringGeminiApplyToCarAddForm = ringGeminiApplyToCarAddForm;
