@@ -30,6 +30,8 @@
 
     var RING_GEMINI_SHAKEN_KEYS = Object.keys(OCR_FIELD_MAPPING);
 
+    var RING_VEHICLE_TYPE_CANONICAL = ['普通', '小型', '軽自動車', '大型特殊', '小型特殊'];
+
     var RING_GEMINI_NORM_ALIASES = {
         purpose: {
             '乗用': '乗用', '乗用車': '乗用', '乗用自動車': '乗用',
@@ -41,19 +43,6 @@
             '自家用': '自家用', '自家用車': '自家用', '自家用自動車': '自家用',
             '事業用': '事業用', '事業用車': '事業用', '事業用自動車': '事業用',
             'レンタカー': 'レンタカー', 'レンタル': 'レンタカー', 'レンタル車': 'レンタカー'
-        },
-        vehicleType: {
-            '軽自動車': '軽自動車', '軽': '軽自動車', '軽四': '軽自動車',
-            '小型乗用': '小型乗用', '小型乗用車': '小型乗用',
-            '小型貨物': '小型貨物', '小型貨物車': '小型貨物',
-            '小型乗合': '小型乗合', '小型乗合車': '小型乗合',
-            '小型特種': '小型特種', '小型特種車': '小型特種',
-            '普通乗用': '普通乗用', '普通乗用車': '普通乗用',
-            '普通貨物': '普通貨物', '普通貨物車': '普通貨物',
-            '普通乗合': '普通乗合', '普通乗合車': '普通乗合',
-            '普通特種': '普通特種', '普通特種車': '普通特種',
-            '大型特殊': '大型特殊', '大型特殊自動車': '大型特殊',
-            '小型特殊': '小型特殊', '小型特殊自動車': '小型特殊'
         },
         bodyShape: {
             'オートバイ': 'オートバイ', 'auto bike': 'オートバイ', 'autobike': 'オートバイ',
@@ -84,7 +73,7 @@
         '- engineModel: 原動機型式\n' +
         '- typeDesignationNumber: 型式指定番号\n' +
         '- classificationNumber: 類別区分番号\n' +
-        '- vehicleType: 自動車の種別\n' +
+        '- vehicleType: 自動車の種別（普通・小型・軽自動車・大型特殊・小型特殊のいずれか）\n' +
         '- purpose: 用途\n' +
         '- useCategory: 自家用・事業用の別\n' +
         '- bodyShape: 車体の形状（『車体の形状』欄に注目し、『オートバイ』『二輪』などの記載があれば、その文字をそのまま抽出）\n' +
@@ -129,6 +118,33 @@
         return s.trim();
     }
 
+    function ringGeminiNormalizeVehicleType_(raw) {
+        var s = String(raw || '').trim();
+        if (!s) return '';
+        var compact = s.replace(/\s+/g, '');
+
+        var exact = {
+            '普通': '普通', '普通自動車': '普通',
+            '普通乗用': '普通', '普通貨物': '普通', '普通乗合': '普通', '普通特種': '普通',
+            '小型': '小型', '小型自動車': '小型',
+            '小型乗用': '小型', '小型貨物': '小型', '小型乗合': '小型', '小型特種': '小型',
+            '軽': '軽自動車', '軽四': '軽自動車', '軽自動車': '軽自動車',
+            '大型特殊': '大型特殊', '大型特殊自動車': '大型特殊',
+            '小型特殊': '小型特殊', '小型特殊自動車': '小型特殊'
+        };
+        if (exact[s]) return exact[s];
+        if (exact[compact]) return exact[compact];
+        if (RING_VEHICLE_TYPE_CANONICAL.indexOf(compact) >= 0) return compact;
+
+        if (compact.indexOf('軽自動車') >= 0 || /^軽/.test(compact)) return '軽自動車';
+        if (compact.indexOf('大型特殊') >= 0) return '大型特殊';
+        if (compact.indexOf('小型特殊') >= 0) return '小型特殊';
+        if (compact.indexOf('小型') >= 0) return '小型';
+        if (compact.indexOf('普通') >= 0) return '普通';
+
+        return '';
+    }
+
     function ringGeminiNormalizeAlias_(kind, raw) {
         var s = String(raw || '').trim();
         if (!s) return '';
@@ -142,6 +158,7 @@
     function ringGeminiNormalizeFieldValue_(kind, raw) {
         if (ringGeminiIsEmptyOcrValue_(raw)) return '';
         if (kind === 'carName') return ringGeminiNormalizeCarName_(raw);
+        if (kind === 'vehicleType') return ringGeminiNormalizeVehicleType_(raw);
         if (RING_GEMINI_NORM_ALIASES[kind]) return ringGeminiNormalizeAlias_(kind, raw);
         return String(raw).trim();
     }
@@ -329,29 +346,8 @@
         return ringGeminiNormalizeShakenResult_(parsed);
     }
 
-    function ringGeminiShowOcrDebug(result, opts) {
-        opts = opts || {};
-        var container = opts.container || document.getElementById('geminiOcrDebug');
-        var bodyEl = opts.body || document.getElementById('geminiOcrDebugBody');
-        if (!container || !bodyEl) return;
-
-        if (opts.error) {
-            console.error('[Gemini OCR]', opts.error, result || '');
-            bodyEl.textContent = opts.error + (result ? '\n\n' + JSON.stringify(result, null, 2) : '');
-            container.style.display = 'block';
-            container.classList.add('gemini-ocr-debug--error');
-            return;
-        }
-
-        console.log(result);
-        bodyEl.textContent = JSON.stringify(result, null, 2);
-        container.style.display = 'block';
-        container.classList.remove('gemini-ocr-debug--error');
-    }
-
     global.OCR_FIELD_MAPPING = OCR_FIELD_MAPPING;
     global.ringGeminiOcrShaken = ringGeminiOcrShaken;
-    global.ringGeminiShowOcrDebug = ringGeminiShowOcrDebug;
     global.ringGeminiEmptyShakenResult = ringGeminiEmptyShakenResult_;
     global.ringGeminiApplyToCarAddForm = ringGeminiApplyToCarAddForm;
 }(typeof window !== 'undefined' ? window : globalThis));
