@@ -120,6 +120,38 @@
     .cat-radio-input:checked + .cat-radio-label {
       background: var(--accent); color: #fff; border-color: var(--accent);
     }
+
+    .gemini-ocr-debug {
+      display: none;
+      margin-bottom: 20px;
+      border: 2px dashed var(--accent);
+      border-radius: 12px;
+      background: var(--paper, #fff);
+      overflow: hidden;
+    }
+    .gemini-ocr-debug--error { border-color: #ef4444; }
+    .gemini-ocr-debug__title {
+      padding: 10px 14px;
+      font-size: 12px;
+      font-weight: 900;
+      color: var(--accent);
+      border-bottom: 1px solid var(--line);
+      background: var(--page-bg);
+    }
+    .gemini-ocr-debug--error .gemini-ocr-debug__title { color: #ef4444; }
+    .gemini-ocr-debug__body {
+      margin: 0;
+      padding: 12px 14px;
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1.5;
+      color: var(--text);
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-height: 280px;
+      overflow: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
   </style>
 </head>
 <body>
@@ -132,12 +164,16 @@
     </div>
 
     <div class="doc-scan-btn" onclick="document.getElementById('docInput').click()">
-      📄 車検証をスキャン（AI読取）
-      <div class="scan-hint">整備入力と同じく、写真から車台番号・満了日・型式などを読み取ります。</div>
+      📄 車検証をスキャン（Gemini AI読取）
+      <div class="scan-hint">写真から車台番号・満了日・型式などを Gemini で読み取ります（デバッグ確認用）。</div>
     </div>
     <input type="file" id="docInput" accept="image/*" capture="environment" hidden>
     <div class="doc-preview-area" id="docPreviewArea"><img id="docPreviewImg" src="" alt=""></div>
     <div class="discard-notice" id="discardNotice" style="display:none;">※画像は保存されず破棄されます</div>
+    <div id="geminiOcrDebug" class="gemini-ocr-debug">
+      <div class="gemini-ocr-debug__title">Gemini OCR 結果（デバッグ）</div>
+      <pre id="geminiOcrDebugBody" class="gemini-ocr-debug__body"></pre>
+    </div>
 
     <div class="card">
       <!-- 車両区分（工場・事業者のみ表示） -->
@@ -283,6 +319,7 @@
     </div>
   </div>
   <script src="config.js"></script>
+  <script src="gemini-ocr.js"></script>
   <script>
     const profile = (typeof getCurrentProfile === 'function')
       ? getCurrentProfile()
@@ -582,17 +619,7 @@
       });
     }
 
-    const RING_OCR_FIELDS_CAR = [
-      { key: 'vehicleName', label: '車名', getCurrent: () => document.getElementById('inVehicleName').value },
-      { key: 'vin', label: '車体番号', getCurrent: () => document.getElementById('inVin').value },
-      { key: 'shaken', label: '車検満了日', getCurrent: () => document.getElementById('inExpiry').value },
-      { key: 'firstRegistration', label: '初度登録年月', getCurrent: () => document.getElementById('inFirstReg').value },
-      { key: 'model', label: '型式', getCurrent: () => document.getElementById('inModel').value },
-      { key: 'engine', label: '原動機型式', getCurrent: () => document.getElementById('inEngine').value },
-      { key: 'class', label: '類別区分番号', getCurrent: () => document.getElementById('inCategory').value },
-      { key: 'typeDesignation', label: '型式指定番号', getCurrent: () => document.getElementById('inTypeDesig').value },
-    ];
-
+    /* マイカー登録・管理車両登録 共通：Gemini OCR（フォーム反映は未実装） */
     document.getElementById('docInput').addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
@@ -613,30 +640,36 @@
       document.getElementById('discardNotice').style.display = 'block';
 
       if (typeof showOcrAnalyzingOverlay === 'function') {
-        showOcrAnalyzingOverlay({ previewDataUrl: previewUrl, title: '車検証を解析しています' });
+        showOcrAnalyzingOverlay({ previewDataUrl: previewUrl, title: 'Gemini が車検証を解析しています' });
       } else if (typeof showLoading === 'function') {
-        showLoading('分析中', 'AIが車検証を読み取っています...');
+        showLoading('分析中', 'Gemini が車検証を読み取っています...');
       }
-      let res = null;
+
+      let result = null;
       try {
-        res = await analyzeDocument([file], { documentType: 'registration' });
+        if (typeof ringGeminiOcrShaken !== 'function') {
+          throw new Error('gemini-ocr.js が読み込まれていません');
+        }
+        result = await ringGeminiOcrShaken(file);
+        ringGeminiShowOcrDebug(result);
+        if (typeof showToast === 'function') {
+          showToast('success', 'Gemini OCR が完了しました（デバッグ表示を確認してください）');
+        }
+      } catch (err) {
+        const msg = String(err && err.message ? err.message : err);
+        ringGeminiShowOcrDebug(
+          typeof ringGeminiEmptyShakenResult === 'function' ? ringGeminiEmptyShakenResult() : null,
+          { error: 'OCR 失敗: ' + msg }
+        );
+        if (typeof showToast === 'function') {
+          showToast('error', 'Gemini OCR に失敗しました: ' + msg);
+        }
       } finally {
         if (typeof hideOcrAnalyzingOverlay === 'function') hideOcrAnalyzingOverlay();
         else if (typeof hideLoading === 'function') hideLoading();
         e.target.value = '';
       }
       if (typeof wasOcrAnalyzingCancelled === 'function' && wasOcrAnalyzingCancelled()) return;
-
-      handleOcrVinResultForForm(res, function (r) {
-        ringApplyOcrToForm('car', r, {
-          clearMemoryOpts: {
-            previewImg: document.getElementById('docPreviewImg'),
-            previewArea: document.getElementById('docPreviewArea'),
-            discardNotice: document.getElementById('discardNotice')
-          },
-          onAfter: function () { updateSchedule(); }
-        });
-      }, RING_OCR_FIELDS_CAR);
     });
 
   
