@@ -18,7 +18,7 @@
         },
         expiry: {
             hidden: 'inExpiry',
-            era: 'expiryEra',
+            fixedEra: '令和',
             year: 'expiryYear',
             month: 'expiryMonth',
             day: 'expiryDay',
@@ -132,13 +132,13 @@
     function ringCarAddSyncExpiryHidden_() {
         var ids = RING_CAR_ADD_DATE_FIELD_IDS.expiry;
         var hidden = ringCarAddGetEl_(ids.hidden);
-        var eraEl = ringCarAddGetEl_(ids.era);
+        var eraEl = ids.era ? ringCarAddGetEl_(ids.era) : null;
         var yearEl = ringCarAddGetEl_(ids.year);
         var monthEl = ringCarAddGetEl_(ids.month);
         var dayEl = ringCarAddGetEl_(ids.day);
-        if (!hidden || !eraEl || !yearEl || !monthEl || !dayEl) return;
+        if (!hidden || !yearEl || !monthEl || !dayEl) return;
 
-        var era = eraEl.value;
+        var era = ids.fixedEra || (eraEl ? eraEl.value : '');
         var year = yearEl.value;
         var month = monthEl.value;
         var day = dayEl.value;
@@ -198,14 +198,19 @@
     }
 
     function ringCarAddFillEraParts_(cfg, parts, allowedEras) {
-        var eraEl = ringCarAddGetEl_(cfg.era);
+        var eraEl = cfg.era ? ringCarAddGetEl_(cfg.era) : null;
         var yearEl = ringCarAddGetEl_(cfg.year);
         var monthEl = ringCarAddGetEl_(cfg.month);
         var dayEl = cfg.day ? ringCarAddGetEl_(cfg.day) : null;
-        if (!parts || !eraEl || !yearEl || !monthEl) return false;
+        if (!parts || !yearEl || !monthEl) return false;
+        if (!cfg.fixedEra && !eraEl) return false;
 
         var era = ringCarAddNormalizeEraName_(parts.era);
-        eraEl.value = allowedEras.indexOf(era) >= 0 ? era : '';
+        if (cfg.fixedEra) {
+            if (allowedEras.indexOf(era) < 0) return false;
+        } else {
+            eraEl.value = allowedEras.indexOf(era) >= 0 ? era : '';
+        }
         yearEl.value = parts.year || '';
         monthEl.value = parts.month || '';
         if (dayEl) dayEl.value = parts.day || '';
@@ -237,11 +242,9 @@
         if (RING_CAR_ADD_EXPIRY_ERAS.indexOf(ringCarAddNormalizeEraName_(parts.era)) >= 0) {
             ringCarAddFillEraParts_(ids, parts, RING_CAR_ADD_EXPIRY_ERAS);
         } else {
-            var eraEl = ringCarAddGetEl_(ids.era);
             var yearEl = ringCarAddGetEl_(ids.year);
             var monthEl = ringCarAddGetEl_(ids.month);
             var dayEl = ringCarAddGetEl_(ids.day);
-            if (eraEl) eraEl.value = '';
             if (yearEl) yearEl.value = '';
             if (monthEl) monthEl.value = '';
             if (dayEl) dayEl.value = '';
@@ -268,6 +271,7 @@
         var cfg = RING_CAR_ADD_DATE_FIELD_IDS[group];
         if (!cfg) return;
         [cfg.era, cfg.year, cfg.month, cfg.day].forEach(function (id) {
+            if (!id) return;
             var el = ringCarAddGetEl_(id);
             if (!el) return;
             if (on) el.classList.add('error-field');
@@ -283,10 +287,6 @@
         ringCarAddBindPartInput_(ringCarAddGetEl_(fr.year), ringCarAddSyncFirstRegHidden_);
         ringCarAddBindPartInput_(ringCarAddGetEl_(fr.month), ringCarAddSyncFirstRegHidden_);
 
-        ringCarAddBindPartInput_(ringCarAddGetEl_(ex.era), function () {
-            ringCarAddSyncExpiryHidden_();
-            if (typeof global.updateSchedule === 'function') global.updateSchedule();
-        });
         ringCarAddBindPartInput_(ringCarAddGetEl_(ex.year), function () {
             ringCarAddSyncExpiryHidden_();
             if (typeof global.updateSchedule === 'function') global.updateSchedule();

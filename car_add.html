@@ -85,6 +85,11 @@
       color: var(--text);
       flex-shrink: 0;
     }
+    .era-date-unit.era-date-fixed {
+      min-width: 48px;
+      font-size: 15px;
+      padding: 10px 0;
+    }
     .seireki-preview {
       font-size: 11px;
       font-weight: 700;
@@ -248,12 +253,7 @@
         <span class="label">車検満了日 <span class="required">※必須</span></span>
         <p class="jibaiseki-alert" id="expiryJibaisekiAlert">※車検のない車両は『自賠責保険の満了日』を入力してください</p>
         <div class="era-date-row">
-          <div class="select-wrap" style="width:auto;flex:0 0 auto;">
-            <select id="expiryEra" class="era-date-era" aria-label="車検満了日元号" onchange="clearErr('inExpiry')">
-              <option value="">元号</option>
-              <option value="令和">令和</option>
-            </select>
-          </div>
+          <span class="era-date-unit era-date-fixed" aria-label="車検満了日元号">令和</span>
           <input id="expiryYear" class="era-date-box" type="number" min="1" max="99" placeholder="年" inputmode="numeric" aria-label="車検満了和暦年" oninput="clearErr('inExpiry')">
           <span class="era-date-unit">年</span>
           <input id="expiryMonth" class="era-date-box" type="number" min="1" max="12" placeholder="月" inputmode="numeric" aria-label="車検満了月" oninput="clearErr('inExpiry')">

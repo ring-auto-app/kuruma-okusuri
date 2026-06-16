@@ -9,6 +9,9 @@
     var RING_GEMINI_OCR_GAS_ACTION = 'ocr_gemini_shaken';
     /** Gemini OCR は応答が遅いため長め */
     var RING_GEMINI_OCR_TIMEOUT_MS = 90000;
+    /** Gemini OCR 専用：長辺上限（超える場合のみ縮小、未満は拡大しない） */
+    var MAX_IMAGE_SIZE = 1600;
+    var RING_OCR_JPEG_QUALITY = 0.8;
 
     /**
      * Gemini OCRキー → car_add.html 固定要素ID（曖昧なDOM探索禁止）
@@ -79,7 +82,70 @@
         '- purpose: 用途\n' +
         '- useCategory: 自家用・事業用の別\n' +
         '- bodyShape: 車体の形状（『車体の形状』欄に注目し、『オートバイ』『二輪』などの記載があれば、その文字をそのまま抽出）\n' +
-        '純粋なJSON文字列のみを出力すること。マークダウンや説明文は一切含めないでください。';
+        '純粋なJSON文字列のみを出力すること。マークダウンや説明文は一切含めないでください。\n' +
+        '【重要】純粋なJSONのみ返却。Markdown記法（```json等）禁止。説明禁止。思考過程禁止。推測禁止。存在しない値はnull。JSON以外の文字を出力しないこと。';
+
+    /**
+     * Canvas API で JPEG 圧縮（Exif なし Base64）。Gemini OCR 送信専用。
+     * @param {File|Blob} file
+     * @returns {Promise<string>} raw base64（data: プレフィックスなし）
+     */
+    function ringOcrCompressImageToBase64_(file) {
+        return new Promise(function (resolve, reject) {
+            function encodeFromBitmap(bmp) {
+                try {
+                    var w = bmp.width;
+                    var h = bmp.height;
+                    var tw = w;
+                    var th = h;
+                    if (Math.max(w, h) > MAX_IMAGE_SIZE) {
+                        var sc = MAX_IMAGE_SIZE / Math.max(w, h);
+                        tw = Math.round(w * sc);
+                        th = Math.round(h * sc);
+                    }
+                    var c = document.createElement('canvas');
+                    c.width = tw;
+                    c.height = th;
+                    var ctx = c.getContext('2d');
+                    if (!ctx) {
+                        reject(new Error('CANVAS_CTX_FAIL'));
+                        return;
+                    }
+                    ctx.drawImage(bmp, 0, 0, tw, th);
+                    if (typeof bmp.close === 'function') bmp.close();
+                    var dataUrl = c.toDataURL('image/jpeg', RING_OCR_JPEG_QUALITY);
+                    var i = dataUrl.indexOf('base64,');
+                    resolve(i >= 0 ? dataUrl.slice(i + 7) : '');
+                } catch (e) {
+                    reject(e);
+                }
+            }
+
+            function fallbackImage() {
+                var url = URL.createObjectURL(file);
+                var img = new Image();
+                img.onload = function () {
+                    URL.revokeObjectURL(url);
+                    encodeFromBitmap(img);
+                };
+                img.onerror = function () {
+                    URL.revokeObjectURL(url);
+                    reject(new Error('IMAGE_DECODE_FAIL'));
+                };
+                img.src = url;
+            }
+
+            if (typeof createImageBitmap === 'function') {
+                createImageBitmap(file).then(encodeFromBitmap).catch(function () {
+                    fallbackImage();
+                });
+            } else if (typeof document !== 'undefined') {
+                fallbackImage();
+            } else {
+                reject(new Error('IMAGE_COMPRESS_UNAVAILABLE'));
+            }
+        });
+    }
 
     function ringGeminiGetGasUrl_() {
         if (typeof GAS_URL !== 'undefined' && GAS_URL) return String(GAS_URL).trim();
@@ -325,21 +391,7 @@
     }
 
     async function ringGeminiOcrShaken(file) {
-        var b64;
-        if (typeof fileToVisionBase64 === 'function') {
-            b64 = await fileToVisionBase64(file, 2400);
-        } else {
-            b64 = await new Promise(function (resolve, reject) {
-                var r = new FileReader();
-                r.onload = function () {
-                    var s = String(r.result || '');
-                    var i = s.indexOf('base64,');
-                    resolve(i >= 0 ? s.slice(i + 7) : '');
-                };
-                r.onerror = function () { reject(new Error('IMAGE_READ_FAIL')); };
-                r.readAsDataURL(file);
-            });
-        }
+        var b64 = await ringOcrCompressImageToBase64_(file);
         if (!b64) throw new Error('IMAGE_ENCODE_EMPTY');
 
         try {
