@@ -1,5 +1,5 @@
 /**
- * car_add.html 専用：元号分離型日付UI ↔ 西暦 hidden 同期
+ * 元号分離型日付UI ↔ 西暦 hidden 同期（car_add.html / vehicle_info.html 共通）
  * inFirstReg (YYYY-MM) / inExpiry (YYYY-MM-DD) は GAS 送信互換のため維持
  */
 (function (global) {
@@ -86,6 +86,29 @@
         return String(n).padStart(2, '0');
     }
 
+    /** @param {string} raw @returns {string} YYYY-MM または空 */
+    function ringCarAddNormalizeFirstRegIso_(raw) {
+        var s = String(raw || '').trim();
+        if (!s) return '';
+        var m = s.match(/^(\d{4})-(\d{1,2})(?:-\d{1,2})?/);
+        if (!m) return '';
+        var mo = parseInt(m[2], 10);
+        if (mo < 1 || mo > 12) return '';
+        return m[1] + '-' + ringCarAddPad2_(mo);
+    }
+
+    /** @param {string} raw @returns {string} YYYY-MM-DD または空 */
+    function ringCarAddNormalizeExpiryIso_(raw) {
+        var s = String(raw || '').trim();
+        if (!s) return '';
+        var m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+        if (!m) return '';
+        var mo = parseInt(m[2], 10);
+        var dy = parseInt(m[3], 10);
+        if (mo < 1 || mo > 12 || dy < 1 || dy > 31) return '';
+        return m[1] + '-' + ringCarAddPad2_(mo) + '-' + ringCarAddPad2_(dy);
+    }
+
     function ringCarAddFormatSeirekiPreview_(date, withDay) {
         if (!date || isNaN(date.getTime())) return '';
         var y = date.getFullYear();
@@ -167,6 +190,20 @@
         ringCarAddSyncExpiryHidden_();
     }
 
+    /**
+     * 保存直前: 分割UI → hidden 同期後、西暦文字列を返す（編集・新規共通）
+     * @returns {{ firstRegistration: string, nextShaken: string }}
+     */
+    function ringCarAddCollectDatesForSave() {
+        ringCarAddSyncAllDateHidden_();
+        var frHidden = ringCarAddGetEl_(RING_CAR_ADD_DATE_FIELD_IDS.firstReg.hidden);
+        var exHidden = ringCarAddGetEl_(RING_CAR_ADD_DATE_FIELD_IDS.expiry.hidden);
+        return {
+            firstRegistration: frHidden ? String(frHidden.value || '').trim() : '',
+            nextShaken: exHidden ? String(exHidden.value || '').trim() : ''
+        };
+    }
+
     function ringCarAddUpdateFirstRegPreview_() {
         var ids = RING_CAR_ADD_DATE_FIELD_IDS.firstReg;
         var preview = ringCarAddGetEl_(ids.preview);
@@ -219,8 +256,9 @@
 
     /** @param {string} iso YYYY-MM */
     function ringCarAddSetFirstRegFromIso(iso) {
-        if (!iso || !/^\d{4}-\d{2}$/.test(String(iso).trim())) return;
-        var m = String(iso).trim().match(/^(\d{4})-(\d{2})$/);
+        iso = ringCarAddNormalizeFirstRegIso_(iso);
+        if (!iso) return;
+        var m = iso.match(/^(\d{4})-(\d{2})$/);
         var date = new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, 1);
         var parts = ringCarAddEraPartsFromDate_(date);
         if (!parts) return;
@@ -230,14 +268,15 @@
 
     /** @param {string} iso YYYY-MM-DD */
     function ringCarAddSetExpiryFromIso(iso) {
-        if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(String(iso).trim())) return;
-        var m = String(iso).trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        iso = ringCarAddNormalizeExpiryIso_(iso);
+        if (!iso) return;
+        var m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
         var date = new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
         var parts = ringCarAddEraPartsFromDate_(date);
         if (!parts) return;
 
         var ids = RING_CAR_ADD_DATE_FIELD_IDS.expiry;
-        ringCarAddSetHiddenValue_(ringCarAddGetEl_(ids.hidden), String(iso).trim());
+        ringCarAddSetHiddenValue_(ringCarAddGetEl_(ids.hidden), iso);
 
         if (RING_CAR_ADD_EXPIRY_ERAS.indexOf(ringCarAddNormalizeEraName_(parts.era)) >= 0) {
             ringCarAddFillEraParts_(ids, parts, RING_CAR_ADD_EXPIRY_ERAS);
@@ -249,6 +288,22 @@
             if (monthEl) monthEl.value = '';
             if (dayEl) dayEl.value = '';
         }
+        ringCarAddUpdateExpiryPreview_();
+    }
+
+    /**
+     * 保存済み車両オブジェクトから分割日付UIへ反映（編集画面の初期化用）
+     * @param {{ firstRegistration?: string, nextShaken?: string, expiry?: string }} vehicle
+     */
+    function ringCarAddLoadFormDatesFromVehicle(vehicle) {
+        if (!vehicle || typeof vehicle !== 'object') return;
+        var firstReg = ringCarAddNormalizeFirstRegIso_(vehicle.firstRegistration);
+        var expiry = ringCarAddNormalizeExpiryIso_(
+            vehicle.nextShaken || vehicle.expiry || vehicle.expiryDate
+        );
+        if (firstReg) ringCarAddSetFirstRegFromIso(firstReg);
+        if (expiry) ringCarAddSetExpiryFromIso(expiry);
+        ringCarAddUpdateFirstRegPreview_();
         ringCarAddUpdateExpiryPreview_();
     }
 
@@ -314,7 +369,9 @@
     global.ringCarAddInitDateFields = ringCarAddInitDateFields;
     global.ringCarAddSetFirstRegFromIso = ringCarAddSetFirstRegFromIso;
     global.ringCarAddSetExpiryFromIso = ringCarAddSetExpiryFromIso;
+    global.ringCarAddLoadFormDatesFromVehicle = ringCarAddLoadFormDatesFromVehicle;
     global.ringCarAddSyncAllDateHidden = ringCarAddSyncAllDateHidden_;
+    global.ringCarAddCollectDatesForSave = ringCarAddCollectDatesForSave;
     global.ringCarAddUpdateJibaisekiAlert = ringCarAddUpdateJibaisekiAlert_;
     global.ringCarAddMarkDateFieldsError = ringCarAddMarkDateFieldsError_;
     global.ringCarAddUpdateSeirekiPreviews = function () {

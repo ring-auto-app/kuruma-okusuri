@@ -1022,6 +1022,7 @@ function ringDemoGasStubResponse_(actionType) {
             }
         };
     }
+    if (actionType === 'update_vehicle') return { success: true, demo: true, vin: '' };
     return { success: true, demo: true };
 }
 
@@ -1792,6 +1793,65 @@ async function addVehicle(v, options) {
 }
 
 /**
+ * 既存車両の編集更新（GAS update_vehicle — シート行上書き専用、画像なし）
+ * @param {object} v
+ */
+async function updateVehicle(v) {
+    if (!v || !v.vin) {
+        return { success: false, error: 'VIN_REQUIRED', localSaved: false, serverSaved: false };
+    }
+    const list = loadVehicles();
+    const i = list.findIndex(x => _normalize(x.vin) === _normalize(v.vin));
+    if (i < 0) {
+        return { success: false, error: 'VEHICLE_NOT_FOUND_LOCAL', localSaved: false, serverSaved: false };
+    }
+    const merged = { ...list[i], ...v };
+    merged.vin = _normalize(merged.vin) || String(merged.vin || '').trim().toUpperCase();
+    if (merged.vehicleName != null) merged.vehicleName = ringNormalizeVehicleSaveValue_(merged.vehicleName);
+    if (merged.firstRegistration != null) merged.firstRegistration = ringNormalizeVehicleSaveValue_(merged.firstRegistration);
+    if (merged.nextShaken != null) merged.nextShaken = ringNormalizeVehicleSaveValue_(merged.nextShaken);
+    merged.updatedAt = new Date().toISOString();
+    list[i] = merged;
+    localStorage.setItem(DB_VEHICLES, JSON.stringify(list));
+
+    var gasPayload = {
+        vin: merged.vin,
+        model: merged.model,
+        nickname: merged.nickname,
+        vehicleName: merged.vehicleName,
+        vehicleModel: merged.vehicleModel,
+        engine: merged.engine,
+        classification: merged.classification || merged.category,
+        category: merged.category || merged.classification,
+        typeDesignation: merged.typeDesignation,
+        nextShaken: merged.nextShaken,
+        firstRegistration: merged.firstRegistration,
+        vClass: merged.vClass,
+        usage: merged.usage,
+        ownerType: merged.ownerType,
+        vehicleCategory: merged.vehicleCategory,
+        createdAt: merged.createdAt,
+        userId: merged.userId,
+        shopId: merged.shopId
+    };
+
+    try {
+        return await sendToGAS_Safe('update_vehicle', gasPayload);
+    } catch (err) {
+        const msg = String(err.message || '');
+        if (/VIN_REQUIRED|VEHICLE_NOT_FOUND|VEHICLE_ACCESS_DENIED|VIN_REGISTERED_BY_SHOP/i.test(msg)) {
+            ringLogSystemEvent('SAVE_FAIL', {
+                error_message: msg,
+                payload: { gasAction: 'update_vehicle', queued: false }
+            });
+            return { success: false, error: msg, localSaved: true, serverSaved: false, queued: false };
+        }
+        enqueueRetry('update_vehicle', gasPayload);
+        return { success: false, error: err.message, queued: true, localSaved: true, serverSaved: false };
+    }
+}
+
+/**
  * 整備ログの保存
  */
 async function saveLog(d) {
@@ -2236,6 +2296,47 @@ function ringNormalizeVehicleSaveValue_(v) {
     var s = String(v == null ? '' : v).trim();
     if (!s || s === '-' || s === '不明' || /^N\/A$/i.test(s)) return '';
     return s;
+}
+
+/**
+ * 車検満了日等の ISO / 日付文字列を JST 表示用に整形（YYYY年MM月DD日）
+ * @param {string} iso
+ * @returns {string}
+ */
+function ringFormatVehicleDateJst_(iso) {
+    var s = String(iso || '').trim();
+    if (!s) return '---';
+    var m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) {
+        return m[1] + '年' + m[2] + '月' + m[3] + '日';
+    }
+    var d = new Date(s);
+    if (isNaN(d.getTime())) return s;
+    try {
+        var parts = new Intl.DateTimeFormat('ja-JP', {
+            timeZone: 'Asia/Tokyo',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        }).formatToParts(d);
+        var y = '', mo = '', dy = '';
+        parts.forEach(function (p) {
+            if (p.type === 'year') y = p.value;
+            if (p.type === 'month') mo = p.value;
+            if (p.type === 'day') dy = p.value;
+        });
+        if (y && mo && dy) return y + '年' + mo + '月' + dy + '日';
+    } catch (e1) { /* fall through */ }
+    return d.getFullYear() + '年' +
+        String(d.getMonth() + 1).padStart(2, '0') + '月' +
+        String(d.getDate()).padStart(2, '0') + '日';
+}
+
+/** ソート用: 日付 ISO プレフィックス（TZ ずれ回避） */
+function ringVehicleDateSortKey_(iso) {
+    var s = String(iso || '').trim();
+    var m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+    return m ? m[1] : s;
 }
 
 /** 西暦年 → 和暦表示（例: 2021 → 令和3年） */
@@ -2889,9 +2990,13 @@ function ringApplyOcrToForm(scope, payload, opts) {
     }
     if (scope === 'car') {
         if (payload.vehicleName) { var vn = document.getElementById('inVehicleName'); if (vn) vn.value = payload.vehicleName; }
-        if (payload.shaken) { var ex = document.getElementById('inExpiry'); if (ex) ex.value = payload.shaken; }
+        if (payload.shaken) {
+            if (typeof ringCarAddSetExpiryFromIso === 'function') ringCarAddSetExpiryFromIso(payload.shaken);
+            else { var ex = document.getElementById('inExpiry'); if (ex) ex.value = payload.shaken; }
+        }
         if (payload.firstRegistration) {
-            if (typeof ringSetFirstRegValue_ === 'function') ringSetFirstRegValue_(payload.firstRegistration);
+            if (typeof ringCarAddSetFirstRegFromIso === 'function') ringCarAddSetFirstRegFromIso(payload.firstRegistration);
+            else if (typeof ringSetFirstRegValue_ === 'function') ringSetFirstRegValue_(payload.firstRegistration);
             else { var fr = document.getElementById('inFirstReg'); if (fr) fr.value = payload.firstRegistration; }
         }
         if (payload.model) { var mo = document.getElementById('inModel'); if (mo) mo.value = payload.model; }

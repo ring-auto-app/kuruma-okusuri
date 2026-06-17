@@ -14,6 +14,7 @@
   <link rel="stylesheet" href="common.css">
   <script src="app.js?v=20260528-v26"></script>
   <script src="theme.js"></script>
+  <script src="car-add-date.js"></script>
   <style>
     body {
       background: linear-gradient(to bottom, var(--line) 1px, transparent 1px) 0 0 / 100% 34px, var(--page-bg);
@@ -51,6 +52,64 @@
       transition: border-color 0.15s;
     }
     input:focus, select:focus { outline: none; border-color: var(--accent); background: var(--paper, #fff); }
+
+    input[type="number"].era-date-box {
+      width: 3.2em;
+      min-width: 48px;
+      max-width: 72px;
+      padding: 10px 6px;
+      text-align: center;
+      font-size: 18px;
+      font-weight: 900;
+      border-radius: 10px;
+      flex-shrink: 0;
+      border: 2px solid var(--line);
+      background: var(--page-bg);
+      color: var(--text);
+      box-sizing: border-box;
+      font-family: inherit;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+    .era-date-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .era-date-row select.era-date-era {
+      width: auto;
+      min-width: 88px;
+      flex: 0 0 auto;
+      padding: 10px 28px 10px 12px;
+      font-size: 15px;
+      font-weight: 900;
+    }
+    .era-date-unit {
+      font-size: 14px;
+      font-weight: 900;
+      color: var(--text);
+      flex-shrink: 0;
+    }
+    .era-date-unit.era-date-fixed {
+      min-width: 48px;
+      font-size: 15px;
+      padding: 10px 0;
+    }
+    .seireki-preview {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--muted);
+      margin-top: 6px;
+      padding-left: 4px;
+      line-height: 1.4;
+      min-height: 0;
+    }
+    .seireki-preview:not(:empty) { min-height: 1.2em; }
+    input.era-date-box:focus { outline: none; border-color: var(--accent); background: var(--paper, #fff); }
+    input.era-date-box.error-field { border-color: #ef4444 !important; }
+    select.error-field { border-color: #ef4444 !important; }
 
     /* 法定点検サマリーカード */
     .inspection-card {
@@ -133,16 +192,37 @@
 
       <div class="field">
         <span class="label">初度登録年月 <span class="required">※必須</span></span>
-        <div class="first-reg-wareki-row">
-          <select id="firstRegEraYear" aria-label="初度登録年（和暦）"></select>
-          <select id="firstRegMonth" aria-label="初度登録月"></select>
+        <div class="era-date-row">
+          <div class="select-wrap" style="width:auto;flex:0 0 auto;">
+            <select id="firstRegEra" class="era-date-era" aria-label="初度登録元号">
+              <option value="">元号</option>
+              <option value="昭和">昭和</option>
+              <option value="平成">平成</option>
+              <option value="令和">令和</option>
+            </select>
+          </div>
+          <input id="firstRegYear" class="era-date-box" type="number" min="1" max="99" placeholder="年" inputmode="numeric" aria-label="初度登録和暦年">
+          <span class="era-date-unit">年</span>
+          <input id="firstRegMonth" class="era-date-box" type="number" min="1" max="12" placeholder="月" inputmode="numeric" aria-label="初度登録月">
+          <span class="era-date-unit">月</span>
         </div>
         <input type="hidden" id="inFirstReg">
+        <div class="seireki-preview" id="firstRegSeirekiPreview" aria-live="polite"></div>
       </div>
 
       <div class="field">
         <span class="label">車検満了日 <span class="required">※必須</span></span>
-        <input id="inExpiry" type="date" onchange="updateSchedule()">
+        <div class="era-date-row">
+          <span class="era-date-unit era-date-fixed" aria-label="車検満了日元号">令和</span>
+          <input id="expiryYear" class="era-date-box" type="number" min="1" max="99" placeholder="年" inputmode="numeric" aria-label="車検満了和暦年">
+          <span class="era-date-unit">年</span>
+          <input id="expiryMonth" class="era-date-box" type="number" min="1" max="12" placeholder="月" inputmode="numeric" aria-label="車検満了月">
+          <span class="era-date-unit">月</span>
+          <input id="expiryDay" class="era-date-box" type="number" min="1" max="31" placeholder="日" inputmode="numeric" aria-label="車検満了日">
+          <span class="era-date-unit">日</span>
+        </div>
+        <input type="hidden" id="inExpiry">
+        <div class="seireki-preview" id="expirySeirekiPreview" aria-live="polite"></div>
       </div>
 
       <!-- 車両詳細情報 -->
@@ -307,9 +387,16 @@
       document.getElementById('inEngine').value    = car.engine || '';
       document.getElementById('inCategory').value  = car.category || car.classification || '';
       document.getElementById('inTypeDesig').value = car.typeDesignation || '';
-      document.getElementById('inExpiry').value    = car.nextShaken || '';
-      // 初度登録年月（YYYY-MM形式）
-      document.getElementById('inFirstReg').value  = car.firstRegistration || '';
+
+      if (typeof ringCarAddInitDateFields === 'function') {
+        ringCarAddInitDateFields();
+      }
+      if (typeof ringCarAddLoadFormDatesFromVehicle === 'function') {
+        ringCarAddLoadFormDatesFromVehicle(car);
+      } else {
+        document.getElementById('inFirstReg').value = car.firstRegistration || '';
+        document.getElementById('inExpiry').value = car.nextShaken || '';
+      }
 
       // セレクトの値をセット
       setSelectValue('inClass',     car.vClass);
@@ -389,18 +476,36 @@
     }
 
     /* ── 保存処理 ── */
-    function execSave() {
-      const expiry   = document.getElementById('inExpiry').value;
+    async function execSave() {
+      // 分割UI（元号・年月日）→ hidden 西暦へ必ず同期してから読み取る
+      var dates = { firstRegistration: '', nextShaken: '' };
+      if (typeof ringCarAddCollectDatesForSave === 'function') {
+        dates = ringCarAddCollectDatesForSave();
+      } else if (typeof ringCarAddSyncAllDateHidden === 'function') {
+        ringCarAddSyncAllDateHidden();
+        dates.firstRegistration = document.getElementById('inFirstReg').value;
+        dates.nextShaken = document.getElementById('inExpiry').value;
+      } else {
+        dates.firstRegistration = document.getElementById('inFirstReg').value;
+        dates.nextShaken = document.getElementById('inExpiry').value;
+      }
+
+      const expiry = typeof ringNormalizeVehicleSaveValue_ === 'function'
+        ? ringNormalizeVehicleSaveValue_(dates.nextShaken)
+        : String(dates.nextShaken || '').trim();
       const firstReg = typeof ringNormalizeVehicleSaveValue_ === 'function'
-        ? ringNormalizeVehicleSaveValue_(document.getElementById('inFirstReg').value)
-        : document.getElementById('inFirstReg').value;
+        ? ringNormalizeVehicleSaveValue_(dates.firstRegistration)
+        : String(dates.firstRegistration || '').trim();
+
       if (!expiry) {
         alert('車検満了日を入力してください。');
+        var ey = document.getElementById('expiryYear');
+        if (ey && typeof ey.focus === 'function') ey.focus();
         return;
       }
       if (!firstReg) {
         alert('初度登録年月を入力してください。');
-        var frFocus = document.getElementById('firstRegEraYear') || document.getElementById('inFirstReg');
+        var frFocus = document.getElementById('firstRegYear') || document.getElementById('firstRegEra');
         if (frFocus && typeof frFocus.focus === 'function') frFocus.focus();
         return;
       }
@@ -409,19 +514,16 @@
       btn.disabled = true;
       if (typeof showLoading === 'function') showLoading('保存中', '車両情報を更新しています...');
 
-      setTimeout(() => {
+      try {
         const { months } = getInspectionCycle();
         const vehicles = JSON.parse(localStorage.getItem('nappy_vehicles_v1') || '[]');
         const idx = vehicles.findIndex(v => v.vin === targetVin);
 
         if (idx < 0) {
-          if (typeof hideLoading === 'function') hideLoading();
-          btn.disabled = false;
           alert('車両データが見つかりません。');
           return;
         }
 
-        // 車両区分を取得（未選択時は既存値を維持）
         const catEl = document.querySelector('input[name="vehicleCategory"]:checked');
         const newCategory = catEl ? catEl.value : (vehicles[idx].vehicleCategory || 'managed');
 
@@ -429,9 +531,9 @@
           ? ringNormalizeVehicleSaveValue_(document.getElementById('inVehicleName').value)
           : document.getElementById('inVehicleName').value.trim();
 
-        // VIN以外を更新（既存のshopId・userId等は維持）
-        vehicles[idx] = {
+        const updatePayload = {
           ...vehicles[idx],
+          vin: targetVin,
           model:            document.getElementById('inName').value.trim() || '名称未設定',
           nickname:         document.getElementById('inName').value.trim() || '名称未設定',
           vehicleName:      vehicleName,
@@ -440,31 +542,58 @@
           category:         document.getElementById('inCategory').value.trim(),
           classification:   document.getElementById('inCategory').value.trim(),
           typeDesignation:  document.getElementById('inTypeDesig').value.trim(),
-          nextShaken:        expiry,
+          nextShaken:       expiry,
           firstRegistration: firstReg,
-          vClass:            document.getElementById('inClass').value,
+          vClass:           document.getElementById('inClass').value,
           usage:            document.getElementById('inUsage').value,
           ownerType:        document.getElementById('inOwnerType').value,
           inspectMonths:    months,
-          vehicleCategory:  newCategory,  // managed / loaner
-          updatedAt:        new Date().toISOString()
+          vehicleCategory:  newCategory
         };
 
-        localStorage.setItem('nappy_vehicles_v1', JSON.stringify(vehicles));
-
-        if (typeof hideLoading === 'function') hideLoading();
-        btn.disabled = false;
-        if (typeof showToast === 'function') {
-          showToast('success', '車両情報を更新しました');
+        let res;
+        if (typeof updateVehicle === 'function') {
+          res = await updateVehicle(updatePayload);
+        } else {
+          vehicles[idx] = { ...updatePayload, updatedAt: new Date().toISOString() };
+          localStorage.setItem('nappy_vehicles_v1', JSON.stringify(vehicles));
+          res = { success: true, localSaved: true };
         }
-        // 戻り先を from パラメータで切り替え
+
+        if (res && res.success === false && !res.queued) {
+          if (typeof showToast === 'function') {
+            showToast('error', '更新に失敗しました: ' + (res.error || ''));
+          } else {
+            alert('更新に失敗しました: ' + (res.error || ''));
+          }
+          return;
+        }
+
+        if (typeof showToast === 'function') {
+          if (res && res.queued) {
+            showToast('info', '端末に保存しました。オンライン復帰時にサーバーへ反映します。');
+          } else {
+            showToast('success', '車両情報を更新しました');
+          }
+        }
+
         const dest = fromPage === 'factory_history'
           ? `factory_history.html?vin=${encodeURIComponent(targetVin)}`
           : fromPage === 'history'
           ? `history.html?vin=${encodeURIComponent(targetVin)}`
           : 'vehicles.html';
-        setTimeout(() => location.replace(dest), 1200);
-      }, 400);
+        setTimeout(() => location.replace(dest), res && res.queued ? 1600 : 1200);
+      } catch (err) {
+        console.error('[execSave]', err);
+        if (typeof showToast === 'function') {
+          showToast('error', '保存中にエラーが発生しました');
+        } else {
+          alert('保存中にエラーが発生しました');
+        }
+      } finally {
+        if (typeof hideLoading === 'function') hideLoading();
+        btn.disabled = false;
+      }
     }
 
     /* ── 削除処理 ── */

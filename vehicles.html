@@ -147,11 +147,15 @@
       // 登録ボタンの飛び先
       if (addBtn) addBtn.onclick = () => location.href = 'car_add.html';
 
+      // キャッシュファースト: localStorage を即描画 → バックグラウンドで GAS 同期
+      renderCars(false);
       (async function () {
         if (profile && typeof syncVehiclesFromServer === 'function') {
-          try { await syncVehiclesFromServer(); } catch (e) { /* オフライン等はローカルのみ */ }
+          try {
+            await syncVehiclesFromServer();
+            renderCars(false);
+          } catch (e) { /* キャッシュ表示を維持 */ }
         }
-        renderCars();
       })();
     });
 
@@ -196,9 +200,11 @@
       return Math.ceil((d - today) / 86400000);
     }
 
-    function renderCars() {
+    function renderCars(showLoadOverlay) {
       const sortType = document.getElementById('sortSelect').value;
-      if (typeof showLoading === "function") showLoading("読込中", "リストを作成中...");
+      if (showLoadOverlay !== false && typeof showLoading === "function") {
+        showLoading("読込中", "リストを作成中...");
+      }
 
       setTimeout(() => {
         let allVehicles = JSON.parse(localStorage.getItem('nappy_vehicles_v1') || '[]');
@@ -241,7 +247,7 @@
             ? '代車の登録がありません。'
             : '登録車両がありません。';
           container.innerHTML = `<div class="empty-msg">${emptyMsg}</div>`;
-          if (typeof hideLoading === "function") hideLoading();
+          if (showLoadOverlay !== false && typeof hideLoading === "function") hideLoading();
           return;
         }
 
@@ -249,7 +255,9 @@
         const FAR = new Date('9999-12-31');
         vehicles.sort((a, b) => {
           if (sortType === 'inspect_near') return (a._nextInspect || FAR) - (b._nextInspect || FAR);
-          if (sortType === 'shaken_near')  return (a.nextShaken || '9').localeCompare(b.nextShaken || '9');
+          if (sortType === 'shaken_near') {
+            return ringVehicleDateSortKey_(a.nextShaken).localeCompare(ringVehicleDateSortKey_(b.nextShaken));
+          }
           if (sortType === 'created_new')  return (new Date(b.createdAt || 0)) - (new Date(a.createdAt || 0));
           if (sortType === 'history_old')  return (new Date(a.lastMaint || 0)) - (new Date(b.lastMaint || 0));
           return 0;
@@ -288,7 +296,7 @@
                 </div>
                 <div class="info-box">
                   <span class="info-label">車検:</span>
-                  <span class="info-value">${car.nextShaken || '---'}</span>
+                  <span class="info-value">${typeof ringFormatVehicleDateJst_ === 'function' ? ringFormatVehicleDateJst_(car.nextShaken) : (car.nextShaken || '---')}</span>
                 </div>
               </div>
               <div class="btn-group">
@@ -300,7 +308,7 @@
             </div>`;
         });
         container.innerHTML = html;
-        if (typeof hideLoading === "function") hideLoading();
+        if (showLoadOverlay !== false && typeof hideLoading === "function") hideLoading();
       }, 300);
     }
 
