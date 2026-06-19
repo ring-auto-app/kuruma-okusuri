@@ -212,6 +212,7 @@
           }
         }
       }
+      if (typeof loadEditModeIfNeeded === 'function') loadEditModeIfNeeded();
     });
 
     const inspectionData = [
@@ -299,6 +300,57 @@
     });
     updateInspectionBizProgress();
 
+    function loadEditModeIfNeeded() {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('edit') !== 'true') return;
+
+      const vin = urlParams.get('vin') || document.getElementById('inVin').value.trim();
+      const dateIso = urlParams.get('date') || '';
+      const logId = urlParams.get('logId') || '';
+      const all = JSON.parse(localStorage.getItem('inspections_v1') || '[]');
+
+      let rec = logId ? all.find(l => l.log_id === logId) : null;
+      if (!rec && vin && dateIso) {
+        rec = all.find(l => l.vin === vin && String(l.date || '').substring(0, 10) === dateIso);
+      }
+      if (!rec) {
+        if (typeof showToast === 'function') showToast('error', '編集対象の記録が見つかりません。');
+        return;
+      }
+
+      const today = new Date();
+      const offset = today.getTimezoneOffset() * 60000;
+      const todayStr = new Date(today.getTime() - offset).toISOString().split('T')[0];
+      const recDate = String(rec.date || '').substring(0, 10);
+      if (recDate !== todayStr) {
+        if (typeof showToast === 'function') showToast('error', '本日の記録のみ修正できます。');
+        location.replace('daily_history.html?vin=' + encodeURIComponent(vin));
+        return;
+      }
+
+      document.getElementById('inDate').value = recDate;
+      document.getElementById('inDate').readOnly = true;
+      if (rec.mileage != null && !isNaN(rec.mileage)) {
+        document.getElementById('inMileage').value = rec.mileage;
+      }
+      document.getElementById('inMemo').value = rec.memo || '';
+      if (rec.checks && typeof rec.checks === 'object') {
+        Object.keys(rec.checks).forEach(function (id) {
+          const val = rec.checks[id];
+          const radio = document.querySelector('input[name="' + id + '"][value="' + val + '"]');
+          if (radio) radio.checked = true;
+        });
+      }
+      updateInspectionBizProgress();
+      checkMileage();
+
+      window.__ringInspectionEditMode = true;
+      window.__ringInspectionEditLogId = rec.log_id;
+      document.getElementById('saveBtn').textContent = '点検結果を更新する';
+      const titleEl = document.querySelector('.title');
+      if (titleEl) titleEl.textContent = '日常点検（修正）';
+    }
+
     document.getElementById('allGoodBtn').addEventListener('click', () => {
       document.querySelectorAll('.opt-radio').forEach(radio => {
         if (radio.value === '良') radio.checked = true;
@@ -357,24 +409,39 @@
         if (typeof window !== 'undefined') window.__ringSaving = true;
         try {
 
-        showLoading("保存中", "点検記録を保存しています...");
+        showLoading("保存中", window.__ringInspectionEditMode ? "点検記録を更新しています..." : "点検記録を保存しています...");
 
-        const generatedLogId = "LOG_" + Date.now();
+        const isEdit = !!window.__ringInspectionEditMode;
+        const generatedLogId = isEdit && window.__ringInspectionEditLogId
+          ? window.__ringInspectionEditLogId
+          : ("LOG_" + Date.now());
         const mileageRaw = document.getElementById('inMileage').value.trim();
         const mileage = mileageRaw ? parseInt(mileageRaw, 10) : null;
         const date = document.getElementById('inDate').value;
-        const createdAt = new Date().toISOString();
+        const createdAt = isEdit ? undefined : new Date().toISOString();
         const logData = {
           log_id: generatedLogId, vin: vin, date: date,
           title: "日常点検", memo: memo, type: "inspection",
-          checks: checks, mileage: mileage, createdAt: createdAt
+          checks: checks, mileage: mileage
         };
+        if (createdAt) logData.createdAt = createdAt;
 
         const inspections = JSON.parse(localStorage.getItem('inspections_v1') || '[]');
-        inspections.push(logData);
+        if (isEdit) {
+          const idx = inspections.findIndex(l => l.log_id === generatedLogId);
+          if (idx >= 0) {
+            logData.createdAt = inspections[idx].createdAt || new Date().toISOString();
+            inspections[idx] = { ...inspections[idx], ...logData };
+          } else {
+            logData.createdAt = new Date().toISOString();
+            inspections.push(logData);
+          }
+        } else {
+          inspections.push(logData);
+        }
         localStorage.setItem('inspections_v1', JSON.stringify(inspections));
 
-        if (hasIssue) {
+        if (hasIssue && !isEdit) {
           const itemMap = {};
           inspectionData.forEach(g => g.items.forEach(i => { itemMap[i.id] = i.name; }));
           const ngItems = Object.entries(checks)
@@ -388,22 +455,30 @@
         if (!staffDisp && profile && profile.representativeName) staffDisp = String(profile.representativeName).trim();
         const gasPayload = {
           log_id: generatedLogId, vin: vin, date: date, title: '日常点検',
-          memo: memo, photoUrl: '', createdAt: createdAt, mileage: mileage,
+          memo: memo, photoUrl: '', createdAt: logData.createdAt || new Date().toISOString(), mileage: mileage,
           shopName: profile ? (profile.shopName || '') : '',
           inputShopName: profile ? (profile.shopName || '') : '',
           inputStaffName: staffDisp,
           staffName: staffDisp || (profile ? (profile.displayName || profile.realName || '') : '')
         };
-        const gasResult = await saveInspectionToGasWithRetry(gasPayload);
+        const gasResult = isEdit && typeof updateDailyInspectionToGasWithRetry === 'function'
+          ? await updateDailyInspectionToGasWithRetry(gasPayload)
+          : await saveInspectionToGasWithRetry(gasPayload);
 
         hideLoading();
         if (gasResult.hardFail) {
-          showToast('error', 'この車両はサーバーに登録されていないため、点検を保存できませんでした。車両一覧を確認してください。');
+          showToast('error', isEdit
+            ? '点検記録の更新に失敗しました。'
+            : 'この車両はサーバーに登録されていないため、点検を保存できませんでした。車両一覧を確認してください。');
           return;
         }
-        const dest = 'vehicles.html';
+        const dest = isEdit
+          ? ('daily_history.html?vin=' + encodeURIComponent(vin))
+          : 'vehicles.html';
         const variant = gasResult.queued ? 'queued' : 'success';
-        const okMsg = hasIssue ? '点検を保存しました（整備履歴にも追加）' : '正常に登録されました';
+        const okMsg = isEdit
+          ? '点検記録を更新しました'
+          : (hasIssue ? '点検を保存しました（整備履歴にも追加）' : '正常に登録されました');
         if (typeof showRingSavedSplash === 'function') {
           showRingSavedSplash({
             variant,

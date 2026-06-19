@@ -1023,6 +1023,7 @@ function ringDemoGasStubResponse_(actionType) {
         };
     }
     if (actionType === 'update_vehicle') return { success: true, demo: true, vin: '' };
+    if (actionType === 'update_daily_inspection') return { success: true, demo: true, log_id: '' };
     return { success: true, demo: true };
 }
 
@@ -2062,6 +2063,31 @@ async function saveInspectionToGasWithRetry(payload) {
             return { serverSaved: false, hardFail: true, error: msg };
         }
         enqueueRetry('save_inspection', data);
+        return { serverSaved: false, queued: true, error: msg };
+    }
+}
+
+/**
+ * 当日限定：日常点検の既存行を GAS で上書き
+ * @param {object} payload
+ */
+async function updateDailyInspectionToGasWithRetry(payload) {
+    const data = payload && typeof payload === 'object'
+        ? JSON.parse(JSON.stringify(payload))
+        : {};
+    try {
+        await sendToGAS_Safe('update_daily_inspection', data);
+        return { serverSaved: true };
+    } catch (err) {
+        const msg = String(err && err.message ? err.message : err || '');
+        if (/VEHICLE_NOT_REGISTERED|VIN_REQUIRED|INSPECTION_DATE_REQUIRED|DAILY_INSPECTION_NOT_FOUND|INSPECTION_EDIT_TODAY_ONLY/i.test(msg)) {
+            ringLogSystemEvent('SAVE_FAIL', {
+                error_message: msg,
+                payload: { gasAction: 'update_daily_inspection', queued: false }
+            });
+            return { serverSaved: false, hardFail: true, error: msg };
+        }
+        enqueueRetry('update_daily_inspection', data);
         return { serverSaved: false, queued: true, error: msg };
     }
 }

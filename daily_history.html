@@ -81,13 +81,20 @@
     .list-mark.bad  { color: #dc2626; }
     .list-date { font-size: 12px; font-weight: 900; color: var(--muted); flex-shrink: 0; }
     .list-memo { font-size: 13px; font-weight: 700; color: var(--text); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .del-btn {
-      flex-shrink: 0; width: var(--tap-min); height: var(--tap-min);
-      display: inline-flex; align-items: center; justify-content: center;
-      background: #fee2e2; border: 2px solid #fca5a5; border-radius: 10px; font-size: 16px;
-      color: #dc2626; cursor: pointer; -webkit-tap-highlight-color: transparent;
+    .list-row-wrap {
+      display: flex; align-items: stretch; border-bottom: 1px dashed var(--line);
     }
-    .del-btn:active { transform: scale(0.95); }
+    .list-row-wrap:last-child { border-bottom: none; }
+    .list-row-wrap .list-row { flex: 1; border-bottom: none; }
+    .edit-btn {
+      flex-shrink: 0; align-self: center; margin: 6px 10px 6px 0;
+      min-height: var(--tap-min); padding: 0 14px;
+      display: inline-flex; align-items: center; justify-content: center;
+      background: var(--paper); border: 2px solid var(--accent); border-radius: 10px;
+      font-size: 13px; font-weight: 900; color: var(--accent); cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .edit-btn:active { transform: scale(0.95); background: var(--page-bg); }
 
     /* ─── 付箋ポップアップ ─── */
     .popup-overlay {
@@ -148,7 +155,7 @@
     .btn-print { padding: 0 18px; min-height: var(--tap-min); border-radius: 999px; background: var(--paper); border: 2px solid var(--accent); color: var(--accent); font-size: 14px; font-weight: 800; cursor: pointer; }
 
     @media print {
-      .header, .ctrl-row, .print-bar, .modal-overlay, .popup-overlay, .del-btn { display: none !important; }
+      .header, .ctrl-row, .print-bar, .modal-overlay, .popup-overlay, .edit-btn { display: none !important; }
     }
   </style>
 </head>
@@ -241,6 +248,42 @@
 
     function normVinDaily(v) {
       return typeof _normalize === 'function' ? _normalize(v) : String(v || '');
+    }
+
+    /** 記録の点検日を YYYY-MM-DD（ローカル）に正規化 */
+    function ringDailyHistoryDateIso_(item) {
+      var raw = item && (item.date || item.createdAt);
+      if (!raw) return '';
+      var s = String(raw).trim();
+      var m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+      if (m) return m[1];
+      var d = new Date(s);
+      if (isNaN(d.getTime())) return '';
+      var offset = d.getTimezoneOffset() * 60000;
+      return new Date(d.getTime() - offset).toISOString().split('T')[0];
+    }
+
+    function ringTodayIsoLocal_() {
+      var today = new Date();
+      var offset = today.getTimezoneOffset() * 60000;
+      return new Date(today.getTime() - offset).toISOString().split('T')[0];
+    }
+
+    function isInspectionEditableToday_(item) {
+      return ringDailyHistoryDateIso_(item) === ringTodayIsoLocal_();
+    }
+
+    function openEditInspection(logId, event) {
+      if (event) { event.preventDefault(); event.stopPropagation(); }
+      var item = fetchedData.find(function (x) { return x.log_id === logId; });
+      if (!item || !isInspectionEditableToday_(item)) {
+        if (typeof showToast === 'function') showToast('warning', '本日の記録のみ修正できます。');
+        return;
+      }
+      var dateIso = ringDailyHistoryDateIso_(item);
+      location.href = 'inspection_biz.html?vin=' + encodeURIComponent(currentVin) +
+        '&date=' + encodeURIComponent(dateIso) +
+        '&edit=true&logId=' + encodeURIComponent(logId);
     }
 
     // 点検項目定義
@@ -459,13 +502,18 @@
         const markCls = good === null ? '' : (good ? 'good' : 'bad');
         const markTxt = good === null ? '－' : (good ? '○' : '×');
         const memo = item.memo || '異常なし';
+        const editBtn = isInspectionEditableToday_(item)
+          ? `<button type="button" class="edit-btn" onclick="openEditInspection('${String(item.log_id || '').replace(/'/g, "\\'")}', event)">修正</button>`
+          : '';
         return `
-          <a href="daily_history_detail.html?logId=${item.log_id}&vin=${encodeURIComponent(currentVin)}" class="list-row">
-            <span class="list-mark ${markCls}">${markTxt}</span>
-            <span class="list-date">${item.date || '日付不明'}</span>
-            <span class="list-memo">${memo}</span>
-            <div class="del-btn" onclick="deleteLog('${item.log_id}',event)">🗑</div>
-          </a>`;
+          <div class="list-row-wrap">
+            <a href="daily_history_detail.html?logId=${item.log_id}&vin=${encodeURIComponent(currentVin)}" class="list-row">
+              <span class="list-mark ${markCls}">${markTxt}</span>
+              <span class="list-date">${item.date || '日付不明'}</span>
+              <span class="list-memo">${memo}</span>
+            </a>
+            ${editBtn}
+          </div>`;
       }).join('');
     }
 
@@ -498,25 +546,6 @@
       if (e.target === document.getElementById('popupOverlay')) {
         document.getElementById('popupOverlay').classList.remove('open');
       }
-    }
-
-    async function deleteLog(logId, event) {
-      event.preventDefault(); event.stopPropagation();
-      const ok = typeof showRingConfirm === 'function'
-        ? await showRingConfirm({
-            title: '履歴の削除',
-            message: 'この点検履歴を削除しますか？',
-            okLabel: '削除する',
-            cancelLabel: 'キャンセル',
-            danger: true,
-          })
-        : confirm("この点検履歴を削除しますか？");
-      if (!ok) return;
-      let all = JSON.parse(localStorage.getItem('inspections_v1') || '[]');
-      all = all.filter(log => log.log_id !== logId);
-      localStorage.setItem('inspections_v1', JSON.stringify(all));
-      fetchLocalHistory();
-      if (typeof showToast === 'function') showToast('success', '一覧から削除しました（端末ローカルのみ／サーバー未同期時は運用ポリシーに従います）。');
     }
 
     // ─── 印刷 ───
