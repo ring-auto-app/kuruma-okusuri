@@ -34,9 +34,6 @@
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
     }
 
-    .scan-btn { cursor: pointer; color: var(--accent); font-weight: 900; font-size: 16px; }
-    .scan-btn:active { background: var(--page-bg); transform: scale(0.98); }
-
     input.search-input {
       font-size: 18px; font-weight: 700; color: var(--text);
       text-align: center; outline: none; letter-spacing: 0.05em;
@@ -48,12 +45,6 @@
       display: none; color: var(--accent); font-size: 12.5px; font-weight: 900;
       margin-top: 16px; text-align: center; line-height: 1.5;
     }
-
-    .doc-preview-area {
-      display: none; margin-top: 16px; border: 2px solid var(--accent); 
-      border-radius: 12px; overflow: hidden; background: #fff;
-    }
-    .doc-preview-area img { width: 100%; display: block; filter: grayscale(30%); }
   </style>
 </head>
 <body>
@@ -65,15 +56,6 @@
       <br>
       <h1 class="title">整備履歴検索</h1>
     </header>
-
-    <div class="search-section">
-      <div class="section-label">📷 カメラでスキャン</div>
-      <div class="unified-box scan-btn" onclick="document.getElementById('docInput').click()">
-        車台番号(VIN)を自動読み取り
-      </div>
-      <input type="file" id="docInput" accept="image/*" hidden>
-      <div class="doc-preview-area" id="docPreviewArea"><img id="docPreviewImg" src=""></div>
-    </div>
 
     <div class="search-section">
       <div class="section-label">✏️ 手入力で検索</div>
@@ -103,70 +85,6 @@
         errorMsg.style.display = 'block';
       }
     }
-
-    document.getElementById('docInput').addEventListener('change', async function (e) {
-      var file = e.target.files[0];
-      if (!file) return;
-      e.target.value = '';
-
-      var previewUrl = '';
-      try {
-        previewUrl = await new Promise(function (resolve, reject) {
-          var r = new FileReader();
-          r.onload = function () { resolve(String(r.result || '')); };
-          r.onerror = reject;
-          r.readAsDataURL(file);
-        });
-      } catch (err) {
-        console.error(err);
-        ringVinSearchFocusManual_({ message: '画像の読み込みに失敗しました。手入力で検索してください。' });
-        return;
-      }
-
-      document.getElementById('docPreviewImg').src = previewUrl;
-      document.getElementById('docPreviewArea').style.display = 'block';
-
-      if (typeof showOcrAnalyzingOverlay === 'function') {
-        showOcrAnalyzingOverlay({ previewDataUrl: previewUrl, title: 'VIN を読み取っています' });
-      } else {
-        showLoading('分析中', 'VINを読み取っています...');
-      }
-
-      var ocrRes = null;
-      var candidates = null;
-      try {
-        var b64 = await ringVinSearchPreprocessImage_(file);
-        ocrRes = await ringVinSearchRequestOcr_(b64);
-        if (ocrRes && ocrRes.success && ocrRes.candidates && ocrRes.candidates.length) {
-          candidates = ocrRes.candidates;
-          var hit = searchByVinCandidates(candidates);
-          if (hit) {
-            ringVinSearchNavigateToHistory_(hit);
-            return;
-          }
-        }
-      } catch (err) {
-        console.error(err);
-      } finally {
-        if (typeof hideOcrAnalyzingOverlay === 'function') hideOcrAnalyzingOverlay();
-        else hideLoading();
-      }
-
-      if (typeof wasOcrAnalyzingCancelled === 'function' && wasOcrAnalyzingCancelled()) return;
-
-      if (candidates && candidates.length) {
-        ringVinSearchFocusManual_({
-          prefill: candidates[0],
-          message: '読み取りましたが該当車両が見つかりませんでした。<br>内容を確認して手入力で検索してください。',
-          toast: false
-        });
-      } else {
-        ringVinSearchFocusManual_({
-          message: 'VINを読み取れませんでした。<br>車台番号を手入力して検索してください。',
-          toast: true
-        });
-      }
-    });
 
     document.getElementById('searchBtn').addEventListener('click', function () {
       document.getElementById('errorMsg').style.display = 'none';

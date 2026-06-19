@@ -81,14 +81,6 @@
     }
     
     .empty-history { padding: 60px 20px; text-align: center; color: var(--muted); font-size: 14px; line-height: 1.6; }
-    
-    .footer-nav { padding: 34px 0; text-align: center; }
-    .btn-close {
-      display: inline-block; padding: 14px 40px; background: var(--paper);
-      border: 2px solid var(--line); border-radius: 999px;
-      text-decoration: none; color: var(--text); font-weight: 800; font-size: 15px;
-      box-shadow: var(--shadow);
-    }
 
     /* フィルター行 */
     .filter-row { display: flex; gap: var(--tap-gap); margin-bottom: 16px; }
@@ -155,7 +147,7 @@
 <body>
   <div class="container">
     <header class="header">
-      <a onclick="goBackSmart('index.html')" class="back-link">≪戻る</a>
+      <a onclick="goBackSmart()" class="back-link">≪戻る</a>
       <h1 class="title">整備履歴</h1>
     </header>
 
@@ -191,10 +183,6 @@
     <div class="search-active-banner" id="searchBanner"></div>
 
     <div id="historyList" class="history-list"></div>
-    
-    <footer class="footer-nav">
-      <a onclick="goBackSmart('index.html')" class="btn-close">手帳を閉じる</a>
-    </footer>
   </div>
 
   <script>
