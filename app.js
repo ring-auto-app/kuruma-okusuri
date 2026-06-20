@@ -4105,6 +4105,22 @@ function showWelcomePopup(isAlreadyRegistered) {
 }
 
 /**
+ * 設定メニュー配下のサポート・法務ページから戻る（履歴優先・セッション維持）
+ */
+function ringBackFromSupportPage() {
+    if (typeof history !== 'undefined' && history.length > 1) {
+        history.back();
+        return;
+    }
+    var profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+    if (profile && typeof ringGetHomeForProfile === 'function') {
+        location.href = ringGetHomeForProfile(profile);
+        return;
+    }
+    if (typeof ringGoToTopMenu === 'function') ringGoToTopMenu();
+}
+
+/**
  * 戻る処理。第1引数に URL を渡した場合は常にそのURLへ遷移（履歴ループ防止）。
  * 未指定のときだけ history.back() を試す。
  */
