@@ -49,32 +49,23 @@
     .shop-info { margin: 0; color: var(--muted); font-size: 14px; font-weight: 800; height: 34px; line-height: 34px; }
     .fac-code { margin: 0; color: var(--accent); font-size: 13px; font-weight: 900; height: 34px; line-height: 34px; }
 
-    .menu-grid { display: flex; flex-direction: column; gap: 24px; margin-top: 17px; }
+    .menu-grid { display: grid; grid-template-columns: 1fr; gap: 16px; margin-top: 17px; }
 
     .menu-card {
-      display: flex; align-items: center; background: var(--paper);
-      border: 2px solid var(--highlighter); border-radius: 16px;
-      padding: 20px 24px; text-decoration: none; color: var(--text);
-      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.05); transition: all 0.2s ease;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: var(--paper); border: 2px solid var(--line); border-radius: 16px;
+      padding: 24px 16px; text-align: center; text-decoration: none; color: var(--text);
+      box-shadow: var(--shadow); transition: transform 0.1s; cursor: pointer; gap: 8px;
     }
-    .menu-card:hover, .menu-card:active {
-      transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1); 
-      border-color: var(--accent); /* ホバー時にテーマカラーの枠線にする */
-    }
+    .menu-card:active { transform: scale(0.96); }
+    .menu-card:hover { border-color: var(--accent); }
 
     .menu-card.disabled { background: #f8f9fa; border-color: #cbd5e1; opacity: 0.6; cursor: not-allowed; box-shadow: none; transform: none; }
     /* ロックバッジの色は共通の赤で固定 */
     .badge-disabled { background: #ef4444; color: #ffffff; font-size: 11px; padding: 2px 8px; border-radius: 99px; margin-left: 8px; display: none; vertical-align: middle; }
 
-    .menu-icon {
-      font-size: 32px; background: var(--page-bg); width: 64px; height: 64px;
-      border-radius: 16px; display: flex; align-items: center; justify-content: center;
-      border: 1px solid var(--line); flex-shrink: 0; margin-right: 16px;
-    }
-
-    .menu-text { display: flex; flex-direction: column; }
-    .menu-name { font-size: 18px; font-weight: 900; color: var(--accent); margin: 0 0 4px; }
-    .menu-desc { font-size: 12px; font-weight: 700; color: var(--muted); line-height: 1.5; }
+    .menu-icon { font-size: 32px; line-height: 1; }
+    .menu-label { font-size: 15px; font-weight: 900; line-height: 1.2; color: var(--accent); margin: 0; }
     .ring-pending-sync {
       background: #fef3c7; border: 2px solid #f59e0b; border-radius: 12px;
       padding: 12px 14px; margin-bottom: 20px; font-size: 13px; font-weight: 800; color: #92400e; line-height: 1.5;
@@ -94,27 +85,18 @@
 
     <div class="menu-grid">
       <a href="dealer_input.html" class="menu-card" id="btnInput">
-        <div class="menu-icon">🏢</div>
-        <div class="menu-text">
-          <h2 class="menu-name">販売・点検記録入力 <span id="badgeViewer" class="badge-disabled">ロック中</span></h2>
-          <div class="menu-desc">納車前点検や販売時の<br>記録を登録します</div>
-        </div>
+        <span class="menu-icon">🏢</span>
+        <span class="menu-label">販売・点検記録入力 <span id="badgeViewer" class="badge-disabled">ロック中</span></span>
       </a>
 
       <a href="factory_search.html" class="menu-card">
-        <div class="menu-icon">🔍</div>
-        <div class="menu-text">
-          <h2 class="menu-name">履歴検索</h2>
-          <div class="menu-desc">車台番号やQRから<br>過去の履歴を確認します</div>
-        </div>
+        <span class="menu-icon">🔍</span>
+        <span class="menu-label">履歴検索</span>
       </a>
 
       <a href="vehicles.html" class="menu-card">
-        <div class="menu-icon">🚙</div>
-        <div class="menu-text">
-          <h2 class="menu-name">管理車両</h2>
-          <div class="menu-desc">在庫車や販売車両の<br>データを確認します</div>
-        </div>
+        <span class="menu-icon">🚙</span>
+        <span class="menu-label">管理車両</span>
       </a>
     </div>
 
