@@ -3034,7 +3034,13 @@ function ringApplyOcrToForm(scope, payload, opts) {
         if (typeof opts.onAfter === 'function') opts.onAfter(payload);
     } else {
         if (payload.mileage != null) { var mi = document.getElementById('inMileage'); if (mi) mi.value = payload.mileage; }
-        if (payload.shaken) { var sh = document.getElementById('inShaken'); if (sh) sh.value = payload.shaken; }
+        if (payload.shaken) {
+            if (typeof ringCarAddSetExpiryFromIso === 'function' && document.getElementById('inExpiry')) {
+                ringCarAddSetExpiryFromIso(payload.shaken);
+            } else {
+                var sh = document.getElementById('inShaken'); if (sh) sh.value = payload.shaken;
+            }
+        }
         if (payload.model) { var mo2 = document.getElementById('inModel'); if (mo2) mo2.value = payload.model; }
         if (payload.engine) { var en2 = document.getElementById('inEngine'); if (en2) en2.value = payload.engine; }
         if (payload.class) { var cl = document.getElementById('inClass'); if (cl) cl.value = payload.class; }

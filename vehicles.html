@@ -49,7 +49,7 @@
       padding: 1px 6px; margin-left: 4px;
     }
     .cat-tab.active .cat-tab-count { background: rgba(255,255,255,0.3); }
-    .car-card { padding: 12px 16px; margin-bottom: 16px; border-radius: 2px 2px 12px 2px; box-shadow: 1px 3px 6px rgba(0,0,0,0.08); line-height: 1.5; }
+    .car-card { padding: 10px 14px; margin-bottom: 12px; border-radius: 2px 2px 12px 2px; box-shadow: 1px 3px 6px rgba(0,0,0,0.08); line-height: 1.5; }
     .car-card:nth-child(odd) { background: var(--sticky-odd); }
     .car-card:nth-child(even) { background: var(--sticky-even); }
     .car-header { margin-bottom: 8px; border-bottom: 1px dashed rgba(0,0,0,0.15); padding-bottom: 6px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
@@ -62,21 +62,27 @@
       -webkit-tap-highlight-color: transparent;
     }
     .car-model { font-size: 16px; font-weight: 900; color: var(--text); margin: 0; line-height: 1.2; }
-    .car-info-grid { display: flex; gap: 16px; margin-bottom: 10px; }
+    .car-info-grid { display: flex; gap: 16px; margin-bottom: 8px; }
     .info-box { background: transparent; padding: 0; border: none; display: flex; align-items: baseline; gap: 6px; }
     .info-label { display: block; font-size: 11px; color: var(--muted); font-weight: 800; margin: 0; }
     .info-value { display: block; font-size: 13px; font-weight: 900; color: var(--text); margin: 0; }
 
-    /* 車両カード内ボタン群（共通.btn と衝突しないよう .vc-btn にリネーム） */
-    .btn-group { display: flex; gap: var(--tap-gap); flex-wrap: wrap; }
+    /* 車両カード内ボタン群 — 横1列・コンパクト */
+    .btn-group {
+      display: flex; flex-wrap: nowrap; gap: 4px;
+      overflow-x: auto; -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+    .btn-group::-webkit-scrollbar { display: none; }
     .vc-btn {
-      flex: 1; min-height: var(--tap-min); min-width: 96px;
-      display: inline-flex; align-items: center; justify-content: center; gap: 4px;
-      padding: 8px 6px; text-align: center; border-radius: 10px;
-      font-size: 13px; font-weight: 900; text-decoration: none; cursor: pointer;
-      transition: transform 0.1s; box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+      flex: 1 1 0; min-width: 0; min-height: 36px;
+      display: inline-flex; align-items: center; justify-content: center; gap: 2px;
+      padding: 4px 3px; text-align: center; border-radius: 8px;
+      font-size: 10px; font-weight: 900; text-decoration: none; cursor: pointer;
+      transition: transform 0.1s; box-shadow: 0 1px 3px rgba(0,0,0,0.06);
       background: rgba(255, 255, 255, 0.95); color: var(--text);
-      border: 2px solid rgba(0,0,0,0.18); line-height: 1.2;
+      border: 1.5px solid rgba(0,0,0,0.16); line-height: 1.15;
+      white-space: nowrap;
       -webkit-tap-highlight-color: transparent;
     }
     .vc-btn:active { transform: scale(0.98); }
@@ -318,5 +324,4 @@
     }
   </script>
 </body>
-</html>
 </html>
