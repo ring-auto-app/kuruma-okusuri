@@ -124,6 +124,39 @@
         hiddenEl.dispatchEvent(new Event('change', { bubbles: true }));
     }
 
+    function ringCarAddPopulateSelectRange_(selectEl, min, max, placeholder) {
+        if (!selectEl || selectEl.tagName !== 'SELECT') return;
+        if (selectEl.dataset.expirySelectPopulated === '1') return;
+        selectEl.innerHTML = '';
+        var ph = document.createElement('option');
+        ph.value = '';
+        ph.textContent = placeholder || '-';
+        ph.disabled = true;
+        ph.selected = true;
+        selectEl.appendChild(ph);
+        var n;
+        for (n = min; n <= max; n++) {
+            var opt = document.createElement('option');
+            opt.value = String(n);
+            opt.textContent = String(n);
+            selectEl.appendChild(opt);
+        }
+        selectEl.dataset.expirySelectPopulated = '1';
+    }
+
+    /** 車検満了日：年1–40・月1–12・日1–31 の select を生成 */
+    function ringCarAddPopulateExpirySelects_() {
+        var ex = RING_CAR_ADD_DATE_FIELD_IDS.expiry;
+        ringCarAddPopulateSelectRange_(ringCarAddGetEl_(ex.year), 1, 40, '-');
+        ringCarAddPopulateSelectRange_(ringCarAddGetEl_(ex.month), 1, 12, '-');
+        ringCarAddPopulateSelectRange_(ringCarAddGetEl_(ex.day), 1, 31, '-');
+    }
+
+    function ringCarAddNormalizePartNum_(raw) {
+        var n = parseInt(String(raw || '').trim(), 10);
+        return isNaN(n) ? '' : String(n);
+    }
+
     function ringCarAddSyncFirstRegHidden_() {
         var ids = RING_CAR_ADD_DATE_FIELD_IDS.firstReg;
         var hidden = ringCarAddGetEl_(ids.hidden);
@@ -248,9 +281,9 @@
         } else {
             eraEl.value = allowedEras.indexOf(era) >= 0 ? era : '';
         }
-        yearEl.value = parts.year || '';
-        monthEl.value = parts.month || '';
-        if (dayEl) dayEl.value = parts.day || '';
+        yearEl.value = ringCarAddNormalizePartNum_(parts.year);
+        monthEl.value = ringCarAddNormalizePartNum_(parts.month);
+        if (dayEl) dayEl.value = ringCarAddNormalizePartNum_(parts.day);
         return true;
     }
 
@@ -268,6 +301,7 @@
 
     /** @param {string} iso YYYY-MM-DD */
     function ringCarAddSetExpiryFromIso(iso) {
+        ringCarAddPopulateExpirySelects_();
         iso = ringCarAddNormalizeExpiryIso_(iso);
         if (!iso) return;
         var m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -337,6 +371,8 @@
     function ringCarAddInitDateFields() {
         var fr = RING_CAR_ADD_DATE_FIELD_IDS.firstReg;
         var ex = RING_CAR_ADD_DATE_FIELD_IDS.expiry;
+
+        ringCarAddPopulateExpirySelects_();
 
         ringCarAddBindPartInput_(ringCarAddGetEl_(fr.era), ringCarAddSyncFirstRegHidden_);
         ringCarAddBindPartInput_(ringCarAddGetEl_(fr.year), ringCarAddSyncFirstRegHidden_);

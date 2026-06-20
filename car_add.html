@@ -46,7 +46,8 @@
       appearance: none;
       transition: border-color 0.15s;
     }
-    input[type="number"].era-date-box {
+    input[type="number"].era-date-box,
+    select.era-date-box {
       width: 3.2em;
       min-width: 48px;
       max-width: 72px;
@@ -63,6 +64,10 @@
       font-family: inherit;
       -webkit-appearance: none;
       appearance: none;
+    }
+    select.era-date-box {
+      padding: 10px 4px;
+      cursor: pointer;
     }
     .era-date-row {
       display: flex;
@@ -109,10 +114,10 @@
       line-height: 1.45;
     }
     input:focus, select:focus { outline: none; border-color: var(--accent); background: var(--paper, #fff); }
-    input.era-date-box:focus { outline: none; border-color: var(--accent); background: var(--paper, #fff); }
+    input.era-date-box:focus, select.era-date-box:focus { outline: none; border-color: var(--accent); background: var(--paper, #fff); }
     input.error-field { border-color: #ef4444 !important; }
     select.error-field { border-color: #ef4444 !important; }
-    input.era-date-box.error-field { border-color: #ef4444 !important; }
+    input.era-date-box.error-field, select.era-date-box.error-field { border-color: #ef4444 !important; }
 
     .err-msg {
       display: none; color: #ef4444; font-size: 12px; font-weight: 800;
@@ -254,11 +259,11 @@
         <p class="jibaiseki-alert" id="expiryJibaisekiAlert">※車検のない車両は『自賠責保険の満了日』を入力してください</p>
         <div class="era-date-row">
           <span class="era-date-unit era-date-fixed" aria-label="車検満了日元号">令和</span>
-          <input id="expiryYear" class="era-date-box" type="number" min="1" max="99" placeholder="年" inputmode="numeric" aria-label="車検満了和暦年" oninput="clearErr('inExpiry')">
+          <select id="expiryYear" class="era-date-box" aria-label="車検満了和暦年" onchange="clearErr('inExpiry')"></select>
           <span class="era-date-unit">年</span>
-          <input id="expiryMonth" class="era-date-box" type="number" min="1" max="12" placeholder="月" inputmode="numeric" aria-label="車検満了月" oninput="clearErr('inExpiry')">
+          <select id="expiryMonth" class="era-date-box" aria-label="車検満了月" onchange="clearErr('inExpiry')"></select>
           <span class="era-date-unit">月</span>
-          <input id="expiryDay" class="era-date-box" type="number" min="1" max="31" placeholder="日" inputmode="numeric" aria-label="車検満了日" oninput="clearErr('inExpiry')">
+          <select id="expiryDay" class="era-date-box" aria-label="車検満了日" onchange="clearErr('inExpiry')"></select>
           <span class="era-date-unit">日</span>
         </div>
         <input type="hidden" id="inExpiry">
