@@ -18,29 +18,12 @@
   <script src="car-add-date.js"></script>
   
   <style>
-    /* ページ固有のデザイン設定：スキャン、アコーディオン、写真の数値を維持 */
+    /* ページ固有のデザイン設定：アコーディオン、写真の数値を維持 */
     .edit-link {
       display: block; color: var(--muted); font-size: 13.5px; font-weight: 800;
       text-decoration: underline; text-underline-offset: 4px; height: 34px; line-height: 34px;
     }
     
-    .scan-btn { 
-      background: var(--paper); border: 2px dashed var(--accent); border-radius: 12px; 
-      padding: 16px; text-align: center; cursor: pointer; font-weight: 900; font-size: 15px;
-      color: var(--accent); margin-bottom: 20px; transition: background 0.2s; box-shadow: var(--shadow);
-    }
-    .scan-btn:active { transform: scale(0.98); }
-    .doc-preview-area {
-      display: none; margin-bottom: 20px; border: 2px solid var(--line); border-radius: 12px;
-      overflow: hidden; background: #fff; position: relative; opacity: 0.8;
-    }
-    .doc-preview-area img { width: 100%; display: block; filter: grayscale(50%); }
-    .doc-preview-label {
-      position: absolute; top: 0; left: 0; background: var(--muted);
-      color: #fff; font-size: 11px; font-weight: 800; padding: 6px 12px; border-bottom-right-radius: 8px;
-    }
-    .discard-notice { font-size: 12px; color: var(--accent); font-weight: 800; text-align: center; margin-bottom: 20px; }
-
     .parent-btn {
       width: 100%; background: var(--paper); border: 2px solid var(--line); border-radius: 12px;
       padding: 16px; text-align: left; font-size: 16px; font-weight: 900; color: var(--text);
@@ -111,6 +94,17 @@
     .seireki-preview:not(:empty) { min-height: 1.2em; }
     input.era-date-box:focus { outline: none; border-color: var(--accent); background: #fff; }
     input.era-date-box.error-field { border-color: #ef4444 !important; }
+
+    .dealer-vin-confirm-box {
+      font-size: 22px; font-weight: 900; letter-spacing: 0.06em; text-align: center;
+      padding: 16px 12px; margin: 8px 0 0;
+      background: rgba(37, 99, 235, 0.08); border: 2px solid var(--accent);
+      border-radius: 12px; color: var(--text); word-break: break-all; line-height: 1.35;
+      font-family: "Helvetica Neue", Arial, sans-serif;
+    }
+    .dealer-vin-confirm-note {
+      font-size: 14px; font-weight: 800; text-align: center; margin: 16px 0 0; color: var(--text);
+    }
   </style>
 </head>
 <body>
@@ -122,11 +116,6 @@
       <a href="factory_edit_list.html" class="edit-link">✏️ 過去7日間の入力履歴を編集する</a>
     </div>
 
-    <div class="scan-btn" onclick="document.getElementById('vinOcrInput').click()">
-      📷 車体番号を読み取る
-    </div>
-    <input type="file" id="vinOcrInput" accept="image/*" capture="environment" hidden>
-    
     <div class="basic-info-card">
       <div class="field">
         <span class="label">車台番号 (VIN) ※必須</span>
@@ -333,129 +322,51 @@
       lookupVehicle(targetVin);
     }
 
-    const RING_OCR_FIELDS_DEALER = [
-      { key: 'vin', label: '車体番号', getCurrent: () => document.getElementById('inVin').value },
-      { key: 'mileage', label: '走行距離(km)', getCurrent: () => document.getElementById('inMileage').value },
-      { key: 'shaken', label: '車検満了日', getCurrent: () => ringDealerGetShakenValue_() },
-    ];
+    function ringDealerBuildVinConfirmBody_(vin) {
+      var safeVin = typeof escapeHtml === 'function' ? escapeHtml(vin) : vin;
+      return '<p style="font-size:13px;font-weight:800;color:var(--muted);margin:0;">入力された車台番号</p>' +
+        '<div class="dealer-vin-confirm-box">' + safeVin + '</div>' +
+        '<p class="dealer-vin-confirm-note">間違いはありませんか？</p>';
+    }
 
-    // OCR: 1枚撮影 → VIN（＋走行距離・車検満了日があれば反映）
-    document.getElementById('vinOcrInput').addEventListener('change', async function (e) {
-      var file = e.target.files[0];
-      if (!file) return;
-      var previewUrl = '';
-      try {
-        previewUrl = await new Promise(function (resolve, reject) {
-          var r = new FileReader();
-          r.onload = function () { resolve(String(r.result || '')); };
-          r.onerror = reject;
-          r.readAsDataURL(file);
+    async function ringDealerConfirmVinAndSave_(vin, saveBtn) {
+      var vinNorm = ringDealerNormVin_(vin);
+      if (typeof showRingSaveConfirm === 'function') {
+        showRingSaveConfirm({
+          title: '車台番号の最終確認',
+          lead: '',
+          bodyHtml: ringDealerBuildVinConfirmBody_(vinNorm),
+          confirmLabel: 'この車台番号で保存する',
+          onConfirm: function () { runOnce(saveBtn, function () { performDealerLogSave(vinNorm); }); }
         });
-      } catch (err) {
-        console.error(err);
         return;
       }
-      if (typeof showOcrAnalyzingOverlay === 'function') {
-        showOcrAnalyzingOverlay({ previewDataUrl: previewUrl, title: '車体番号を読み取っています' });
-      } else if (typeof showLoading === 'function') {
-        showLoading('分析中', 'AIが車体番号を読み取っています…');
+      var ok = typeof showRingConfirm === 'function'
+        ? await showRingConfirm({
+            title: '車台番号の最終確認',
+            message: '入力された車台番号：\n' + vinNorm + '\n\n間違いはありませんか？',
+            okLabel: 'はい、保存する',
+            cancelLabel: 'いいえ'
+          })
+        : confirm('【車台番号の最終確認】\n入力された車台番号： ' + vinNorm + '\n\n間違いはありませんか？');
+      if (ok) runOnce(saveBtn, function () { performDealerLogSave(vinNorm); });
+    }
+
+    async function performDealerLogSave(vin) {
+      if (typeof window !== 'undefined' && window.__ringSaving) {
+        if (typeof showToast === 'function') showToast('info', '保存処理中です。完了までお待ちください。');
+        return;
       }
-      var res = null;
+      if (typeof window !== 'undefined') window.__ringSaving = true;
       try {
-        res = await analyzeDocument([file], { documentType: 'registration' });
-      } catch (err) {
-        console.error(err);
-      } finally {
-        if (typeof hideOcrAnalyzingOverlay === 'function') hideOcrAnalyzingOverlay();
-        else if (typeof hideLoading === 'function') hideLoading();
-        e.target.value = '';
-      }
-      if (typeof wasOcrAnalyzingCancelled === 'function' && wasOcrAnalyzingCancelled()) return;
-
-      handleOcrVinResultForForm(res, function (r) {
-        ringApplyOcrToForm('dealer', r);
-        if (r && r.vin && typeof lookupVehicle === 'function') lookupVehicle(r.vin);
-      }, RING_OCR_FIELDS_DEALER);
-    });
-
-    // アコーディオンの開閉制御
-    document.querySelectorAll('.parent-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const targetId = btn.getAttribute('data-target');
-        const subMenu = document.getElementById(targetId);
-        subMenu.classList.toggle('show');
-        btn.classList.toggle('active');
-      });
-    });
-
-    // 整備項目のトグル制御
-    document.querySelectorAll('.toggle-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        btn.classList.toggle('active');
-        const dId = btn.getAttribute('data-detail');
-        if (dId) {
-          const input = document.getElementById(dId);
-          if (btn.classList.contains('active')) { input.classList.add('show'); input.focus(); }
-          else { input.classList.remove('show'); input.value = ""; }
-        }
-      });
-    });
-
-    // 写真プレビュー処理
-    document.getElementById('partsPhotoInput').addEventListener('change', (e) => {
-      const file = e.target.files[0]; if(!file) return;
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        document.getElementById('partsPhotoPreview').src = ev.target.result;
-        document.getElementById('partsPhotoPreview').style.display = 'block';
-        document.getElementById('inPartsPhotoBase64').value = ev.target.result;
-      };
-      reader.readAsDataURL(file);
-    });
-
-    // 保存実行処理
-    document.getElementById("saveBtn").addEventListener("click", function () {
-      const saveBtn = document.getElementById("saveBtn");
-      runOnce(saveBtn, async () => {
-        const vinEl   = document.getElementById('inVin');
-        const dateEl  = document.getElementById('inDate');
-        const errVin  = document.getElementById('errVin');
-        const errDate = document.getElementById('errDate');
-
-        const vin  = vinEl.value.trim();
-        const date = dateEl.value;
+        const date = document.getElementById('inDate').value;
         const shaken = ringDealerGetShakenValue_();
-
-        errVin.style.display  = 'none';
-        errDate.style.display = 'none';
-        document.getElementById('errShaken').style.display = 'none';
-        if (typeof ringCarAddMarkDateFieldsError === 'function') ringCarAddMarkDateFieldsError('expiry', false);
-
-        let hasErr = false;
-        if (!vin)    { errVin.style.display   = 'block'; hasErr = true; }
-        if (!date)   { errDate.style.display  = 'block'; hasErr = true; }
-        if (!shaken) {
-          document.getElementById('errShaken').style.display = 'block';
-          if (typeof ringCarAddMarkDateFieldsError === 'function') ringCarAddMarkDateFieldsError('expiry', true);
-          hasErr = true;
-        }
-        if (typeof ringValidateWorkTitleSelect === 'function' && !ringValidateWorkTitleSelect()) {
-          hasErr = true;
-        }
-        if (hasErr) return;
-
-        if (typeof window !== 'undefined' && window.__ringSaving) {
-          if (typeof showToast === 'function') showToast('info', '保存処理中です。完了までお待ちください。');
-          return;
-        }
-        if (typeof window !== 'undefined') window.__ringSaving = true;
-        try {
 
         let parts = [];
         document.querySelectorAll('.toggle-btn.active').forEach(b => {
           let name = b.innerText;
           const dId = b.getAttribute('data-detail');
-          if(dId && document.getElementById(dId).value) name += `(${document.getElementById(dId).value})`;
+          if (dId && document.getElementById(dId).value) name += `(${document.getElementById(dId).value})`;
           parts.push(`・${name}`);
         });
 
@@ -497,10 +408,77 @@
           }
           setTimeout(() => location.replace(dest), 1200);
         }
-        } finally {
-          if (typeof window !== 'undefined') window.__ringSaving = false;
+      } finally {
+        if (typeof window !== 'undefined') window.__ringSaving = false;
+      }
+    }
+
+    // アコーディオンの開閉制御
+    document.querySelectorAll('.parent-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const targetId = btn.getAttribute('data-target');
+        const subMenu = document.getElementById(targetId);
+        subMenu.classList.toggle('show');
+        btn.classList.toggle('active');
+      });
+    });
+
+    // 整備項目のトグル制御
+    document.querySelectorAll('.toggle-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        btn.classList.toggle('active');
+        const dId = btn.getAttribute('data-detail');
+        if (dId) {
+          const input = document.getElementById(dId);
+          if (btn.classList.contains('active')) { input.classList.add('show'); input.focus(); }
+          else { input.classList.remove('show'); input.value = ""; }
         }
       });
+    });
+
+    // 写真プレビュー処理
+    document.getElementById('partsPhotoInput').addEventListener('change', (e) => {
+      const file = e.target.files[0]; if(!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        document.getElementById('partsPhotoPreview').src = ev.target.result;
+        document.getElementById('partsPhotoPreview').style.display = 'block';
+        document.getElementById('inPartsPhotoBase64').value = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // 保存（バリデーション → 車台番号確認 → 保存実行）
+    document.getElementById("saveBtn").addEventListener("click", function () {
+      const saveBtn = document.getElementById("saveBtn");
+      const vinEl   = document.getElementById('inVin');
+      const dateEl  = document.getElementById('inDate');
+      const errVin  = document.getElementById('errVin');
+      const errDate = document.getElementById('errDate');
+
+      const vin  = vinEl.value.trim();
+      const date = dateEl.value;
+      const shaken = ringDealerGetShakenValue_();
+
+      errVin.style.display  = 'none';
+      errDate.style.display = 'none';
+      document.getElementById('errShaken').style.display = 'none';
+      if (typeof ringCarAddMarkDateFieldsError === 'function') ringCarAddMarkDateFieldsError('expiry', false);
+
+      let hasErr = false;
+      if (!vin)    { errVin.style.display   = 'block'; hasErr = true; }
+      if (!date)   { errDate.style.display  = 'block'; hasErr = true; }
+      if (!shaken) {
+        document.getElementById('errShaken').style.display = 'block';
+        if (typeof ringCarAddMarkDateFieldsError === 'function') ringCarAddMarkDateFieldsError('expiry', true);
+        hasErr = true;
+      }
+      if (typeof ringValidateWorkTitleSelect === 'function' && !ringValidateWorkTitleSelect()) {
+        hasErr = true;
+      }
+      if (hasErr) return;
+
+      ringDealerConfirmVinAndSave_(vin, saveBtn);
     });
   </script>
 </body>
