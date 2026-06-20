@@ -15,6 +15,7 @@
   <link rel="stylesheet" href="common.css">
   <script src="app.js?v=20260528-v26"></script>
   <script src="theme.js"></script>
+  <script src="car-add-date.js"></script>
   
   <style>
     /* ページ固有のデザイン設定：スキャン、アコーディオン、写真の数値を維持 */
@@ -86,6 +87,30 @@
       padding: 16px; border-radius: 12px; font-weight: 900; color: var(--muted); cursor: pointer; width: 100%; box-sizing: border-box;
     }
     .photo-preview { width: 100%; max-height: 200px; border-radius: 8px; object-fit: contain; display: none; border: 1px solid var(--line); margin-top: 12px; }
+
+    input[type="number"].era-date-box {
+      width: 3.2em; min-width: 48px; max-width: 72px;
+      padding: 8px 6px; text-align: center; font-size: 16px; font-weight: 900;
+      border-radius: 10px; flex-shrink: 0; border: 2px solid var(--line);
+      background: var(--page-bg); color: var(--text); box-sizing: border-box;
+      font-family: inherit; -webkit-appearance: none; appearance: none;
+    }
+    .era-date-row {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px;
+    }
+    .era-date-unit {
+      font-size: 13px; font-weight: 900; color: var(--text); flex-shrink: 0;
+    }
+    .era-date-unit.era-date-fixed {
+      min-width: 44px; font-size: 14px; padding: 8px 0;
+    }
+    .seireki-preview {
+      font-size: 11px; font-weight: 700; color: var(--muted);
+      margin-top: 4px; padding-left: 2px; line-height: 1.4; min-height: 0;
+    }
+    .seireki-preview:not(:empty) { min-height: 1.2em; }
+    input.era-date-box:focus { outline: none; border-color: var(--accent); background: #fff; }
+    input.era-date-box.error-field { border-color: #ef4444 !important; }
   </style>
 </head>
 <body>
@@ -105,7 +130,7 @@
     <div class="basic-info-card">
       <div class="field">
         <span class="label">車台番号 (VIN) ※必須</span>
-        <input id="inVin" type="text" placeholder="車台番号を入力">
+        <input id="inVin" type="text" placeholder="車台番号を入力" onblur="lookupVehicle(this.value)">
         <div id="errVin" style="display:none; color:#dc2626; font-size:12px; font-weight:800; margin-top:4px;">⚠ 車体番号を入力してください</div>
       </div>
       <div class="row">
@@ -114,19 +139,27 @@
           <input id="inDate" type="date">
           <div id="errDate" style="display:none; color:#dc2626; font-size:12px; font-weight:800; margin-top:4px;">⚠ 作業日を選択してください</div>
         </div>
-        <div class="field">
-          <span class="label">車検満了日 ※必須</span>
-          <input id="inShaken" type="date">
-          <div id="errShaken" style="display:none; color:#dc2626; font-size:12px; font-weight:800; margin-top:4px;">⚠ 車検満了日を入力してください</div>
-        </div>
-      </div>
-      <div class="row">
-        <div class="field">
-          <span class="label">整備区分 ※必須</span>
-          <select id="inTitle" required></select>
-          <div id="errTitle" style="display:none; color:#dc2626; font-size:12px; font-weight:800; margin-top:4px;">⚠ 整備区分を選択してください</div>
-        </div>
         <div class="field"><span class="label">走行距離 (km)</span><input id="inMileage" type="number" min="0"></div>
+      </div>
+      <div class="field">
+        <span class="label">車検満了日 ※必須</span>
+        <div class="era-date-row">
+          <span class="era-date-unit era-date-fixed" aria-label="車検満了日元号">令和</span>
+          <input id="expiryYear" class="era-date-box" type="number" min="1" max="99" placeholder="年" inputmode="numeric" aria-label="車検満了和暦年">
+          <span class="era-date-unit">年</span>
+          <input id="expiryMonth" class="era-date-box" type="number" min="1" max="12" placeholder="月" inputmode="numeric" aria-label="車検満了月">
+          <span class="era-date-unit">月</span>
+          <input id="expiryDay" class="era-date-box" type="number" min="1" max="31" placeholder="日" inputmode="numeric" aria-label="車検満了日">
+          <span class="era-date-unit">日</span>
+        </div>
+        <input type="hidden" id="inExpiry">
+        <div class="seireki-preview" id="expirySeirekiPreview" aria-live="polite"></div>
+        <div id="errShaken" style="display:none; color:#dc2626; font-size:12px; font-weight:800; margin-top:4px;">⚠ 車検満了日を入力してください</div>
+      </div>
+      <div class="field">
+        <span class="label">整備区分 ※必須</span>
+        <select id="inTitle" required></select>
+        <div id="errTitle" style="display:none; color:#dc2626; font-size:12px; font-weight:800; margin-top:4px;">⚠ 整備区分を選択してください</div>
       </div>
     </div>
 
@@ -189,6 +222,74 @@
   </div> 
 
   <script>
+    function ringDealerNormVin_(rawVin) {
+      return String(rawVin || '').trim().toUpperCase();
+    }
+
+    /** 分割UI同期後に西暦 YYYY-MM-DD を返す */
+    function ringDealerGetShakenValue_() {
+      if (typeof ringCarAddSyncAllDateHidden === 'function') ringCarAddSyncAllDateHidden();
+      var el = document.getElementById('inExpiry');
+      return el ? String(el.value || '').trim() : '';
+    }
+
+    /** 整備履歴・日常点検から最新走行距離を取得 */
+    function ringDealerLatestMileage_(vin) {
+      vin = ringDealerNormVin_(vin);
+      if (!vin) return null;
+      var best = null;
+      var bestTime = -1;
+      function consider(mileage, dateStr) {
+        var m = parseInt(mileage, 10);
+        if (isNaN(m)) return;
+        var t = dateStr ? new Date(dateStr).getTime() : 0;
+        if (isNaN(t)) t = 0;
+        if (best === null || t >= bestTime) {
+          best = m;
+          bestTime = t;
+        }
+      }
+      try {
+        JSON.parse(localStorage.getItem('nappy_logs_v1') || '[]')
+          .filter(function (l) { return ringDealerNormVin_(l.vin) === vin; })
+          .forEach(function (l) { consider(l.mileage, l.date); });
+        JSON.parse(localStorage.getItem('inspections_v1') || '[]')
+          .filter(function (l) { return ringDealerNormVin_(l.vin) === vin; })
+          .forEach(function (l) { consider(l.mileage, l.date || l.createdAt); });
+      } catch (e) { /* ignore */ }
+      return best;
+    }
+
+    function ringDealerApplyVehiclePrefill_(rec, vin) {
+      if (!rec) return;
+      var expiryEl = document.getElementById('inExpiry');
+      if (rec.nextShaken && expiryEl && !expiryEl.value) {
+        if (typeof ringCarAddSetExpiryFromIso === 'function') {
+          ringCarAddSetExpiryFromIso(rec.nextShaken);
+        }
+      }
+      var mileageEl = document.getElementById('inMileage');
+      if (mileageEl && !mileageEl.value) {
+        var latest = ringDealerLatestMileage_(vin);
+        if (latest != null && !isNaN(latest)) mileageEl.value = latest;
+      }
+    }
+
+    function lookupVehicle(rawVin) {
+      var vin = ringDealerNormVin_(rawVin);
+      if (!vin) return;
+      var vehicles = JSON.parse(localStorage.getItem('nappy_vehicles_v1') || '[]');
+      var rec = vehicles.find(function (v) { return ringDealerNormVin_(v.vin) === vin; });
+      if (rec) {
+        ringDealerApplyVehiclePrefill_(rec, vin);
+      } else if (!document.getElementById('inMileage').value) {
+        var latestOnly = ringDealerLatestMileage_(vin);
+        if (latestOnly != null && !isNaN(latestOnly)) {
+          document.getElementById('inMileage').value = latestOnly;
+        }
+      }
+    }
+
     if (typeof ringBootAuthForOcrPage === 'function') ringBootAuthForOcrPage('business');
     // currentProfile をグローバルで取得（保存時にも参照できるよう宣言）
     const currentProfile = (typeof getCurrentProfile === 'function')
@@ -218,6 +319,8 @@
       dateEl.value = todayStr;
       dateEl.min = limitStr;
       dateEl.max = todayStr;
+
+      if (typeof ringCarAddInitDateFields === 'function') ringCarAddInitDateFields();
     })();
 
     // VINのURLパラメータ処理
@@ -225,14 +328,15 @@
     const targetVin = urlParams.get('vin');
     if (targetVin) {
       const vinInput = document.getElementById('inVin');
-      vinInput.value = targetVin;
-      vinInput.readOnly = true; 
+      vinInput.value = targetVin.trim().toUpperCase();
+      vinInput.readOnly = true;
+      lookupVehicle(targetVin);
     }
 
     const RING_OCR_FIELDS_DEALER = [
       { key: 'vin', label: '車体番号', getCurrent: () => document.getElementById('inVin').value },
       { key: 'mileage', label: '走行距離(km)', getCurrent: () => document.getElementById('inMileage').value },
-      { key: 'shaken', label: '車検満了日', getCurrent: () => document.getElementById('inShaken').value },
+      { key: 'shaken', label: '車検満了日', getCurrent: () => ringDealerGetShakenValue_() },
     ];
 
     // OCR: 1枚撮影 → VIN（＋走行距離・車検満了日があれば反映）
@@ -270,6 +374,7 @@
 
       handleOcrVinResultForForm(res, function (r) {
         ringApplyOcrToForm('dealer', r);
+        if (r && r.vin && typeof lookupVehicle === 'function') lookupVehicle(r.vin);
       }, RING_OCR_FIELDS_DEALER);
     });
 
@@ -319,16 +424,21 @@
 
         const vin  = vinEl.value.trim();
         const date = dateEl.value;
-        const shaken = document.getElementById('inShaken').value;
+        const shaken = ringDealerGetShakenValue_();
 
         errVin.style.display  = 'none';
         errDate.style.display = 'none';
         document.getElementById('errShaken').style.display = 'none';
+        if (typeof ringCarAddMarkDateFieldsError === 'function') ringCarAddMarkDateFieldsError('expiry', false);
 
         let hasErr = false;
         if (!vin)    { errVin.style.display   = 'block'; hasErr = true; }
         if (!date)   { errDate.style.display  = 'block'; hasErr = true; }
-        if (!shaken) { document.getElementById('errShaken').style.display = 'block'; hasErr = true; }
+        if (!shaken) {
+          document.getElementById('errShaken').style.display = 'block';
+          if (typeof ringCarAddMarkDateFieldsError === 'function') ringCarAddMarkDateFieldsError('expiry', true);
+          hasErr = true;
+        }
         if (typeof ringValidateWorkTitleSelect === 'function' && !ringValidateWorkTitleSelect()) {
           hasErr = true;
         }
