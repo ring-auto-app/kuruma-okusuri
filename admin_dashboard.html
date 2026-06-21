@@ -433,6 +433,17 @@
       background: #f8fafc;
     }
     .admin-accordion summary::-webkit-details-marker { display: none; }
+    .admin-accordion summary::after {
+      content: '▸';
+      font-size: 12px;
+      color: #64748b;
+      flex-shrink: 0;
+    }
+    .admin-accordion[open] summary {
+      background: #eff6ff;
+      border-bottom: 1px solid #dbeafe;
+    }
+    .admin-accordion[open] summary::after { content: '▾'; color: #2563eb; }
     .admin-accordion summary .acc-val {
       font-size: 1.25rem;
       color: #2563eb;
@@ -611,7 +622,7 @@
       </div>
     </div>
 
-    <div class="admin-accordion-wrap" id="statAccordion"></div>
+    <div id="statGrid" class="admin-accordion-wrap" role="region" aria-label="統計アコーディオン"></div>
 
     <div class="section">
       <h2>整備履歴ビッグデータ検索</h2>
@@ -680,6 +691,132 @@
     }
 
     var __adminDashState = { dash: null };
+    var __statsFilterTimer = null;
+
+    /** 統計絞込 UI から現在の条件オブジェクトを収集 */
+    function collectStatsFilterCriteria_() {
+      var wrap = document.getElementById('statGrid');
+      if (!wrap) return {};
+      var vName = wrap.querySelector('#filterVehicleName');
+      var vYear = wrap.querySelector('#filterVehicleYear');
+      return {
+        vehicleName: vName ? vName.value : 'all',
+        vehicleYear: vYear ? vYear.value : 'all',
+        factoryRegions: getCheckedValues_(wrap, 'factoryRegion'),
+        factoryBureaus: getCheckedValues_(wrap, 'factoryBureau'),
+        factoryTypes: getCheckedValues_(wrap, 'factoryType'),
+        dealerRegions: getCheckedValues_(wrap, 'dealerRegion'),
+        dealerIndustries: getCheckedValues_(wrap, 'dealerIndustry')
+      };
+    }
+
+    /** 絞込結果の件数表示を DOM に反映 */
+    function updateStatsFilterCounts_(counts, sum) {
+      var wrap = document.getElementById('statGrid');
+      if (!wrap) return;
+      sum = sum || (__adminDashState.dash && __adminDashState.dash.summary) || {};
+      counts = counts || {};
+      var elUser = wrap.querySelector('#accUserCount');
+      var elVehicle = wrap.querySelector('#accVehicleCount');
+      var elFactory = wrap.querySelector('#accFactoryCount');
+      var elDealer = wrap.querySelector('#accDealerCount');
+      if (elUser) elUser.textContent = String(sum.userCount != null ? sum.userCount : 0);
+      var vinFiltered = counts.uniqueVinCountFiltered;
+      var vinTotal = sum.uniqueVinCount != null ? sum.uniqueVinCount : sum.vehicleCount;
+      if (elVehicle) {
+        elVehicle.textContent = String(vinFiltered != null ? vinFiltered : (vinTotal != null ? vinTotal : 0));
+      }
+      if (elFactory) {
+        elFactory.textContent = String(counts.factoryCountFiltered != null ?
+          counts.factoryCountFiltered : (sum.shopFactoryCount != null ? sum.shopFactoryCount : 0));
+      }
+      if (elDealer) {
+        elDealer.textContent = String(counts.dealerCountFiltered != null ?
+          counts.dealerCountFiltered : (sum.shopDealerCount != null ? sum.shopDealerCount : 0));
+      }
+      var resUser = wrap.querySelector('#filterResultUser');
+      var resFactory = wrap.querySelector('#filterResultFactory');
+      var resDealer = wrap.querySelector('#filterResultDealer');
+      if (resUser) {
+        resUser.textContent = '該当車両（VINユニーク）: ' +
+          String(vinFiltered != null ? vinFiltered : 0) + ' 台';
+      }
+      if (resFactory) {
+        resFactory.textContent = '該当工場: ' +
+          String(counts.factoryCountFiltered != null ? counts.factoryCountFiltered : 0) + ' 件';
+      }
+      if (resDealer) {
+        resDealer.textContent = '該当事業者: ' +
+          String(counts.dealerCountFiltered != null ? counts.dealerCountFiltered : 0) + ' 件';
+      }
+    }
+
+    /** 統計絞込: クライアント側で即時反映 */
+    function applyStatsFiltersClient_() {
+      var dash = __adminDashState.dash;
+      if (!dash) return;
+      var sum = dash.summary || {};
+      var filters = dash.filters || {};
+      var wrap = document.getElementById('statGrid');
+      if (!wrap) return;
+
+      var criteria = collectStatsFilterCriteria_();
+      var vehicles = (filters.vehicles || []).filter(function (v) {
+        if (criteria.vehicleName !== 'all' && v.vehicleName !== criteria.vehicleName) return false;
+        return vehicleMatchesYearFilter_(v.firstRegistration, criteria.vehicleYear);
+      });
+
+      var factories = (filters.factories || []).filter(function (f) {
+        if (criteria.factoryRegions.length && criteria.factoryRegions.indexOf(f.region) < 0) return false;
+        if (criteria.factoryBureaus.length && criteria.factoryBureaus.indexOf(f.transportBureau) < 0) return false;
+        if (criteria.factoryTypes.length && criteria.factoryTypes.indexOf(f.factoryType) < 0) return false;
+        return true;
+      });
+
+      var dealers = (filters.dealers || []).filter(function (d) {
+        if (criteria.dealerRegions.length && criteria.dealerRegions.indexOf(d.region) < 0) return false;
+        if (criteria.dealerIndustries.length && criteria.dealerIndustries.indexOf(d.industry) < 0) return false;
+        return true;
+      });
+
+      var vinSet = {};
+      vehicles.forEach(function (v) {
+        var vin = String(v.vin || '').trim().toUpperCase();
+        if (vin) vinSet[vin] = true;
+      });
+
+      updateStatsFilterCounts_({
+        uniqueVinCountFiltered: Object.keys(vinSet).length,
+        factoryCountFiltered: factories.length,
+        dealerCountFiltered: dealers.length
+      }, sum);
+    }
+
+    /** 統計絞込: GAS で件数を再検証（デバウンス） */
+    function scheduleStatsFilterGasVerify_() {
+      if (__statsFilterTimer) clearTimeout(__statsFilterTimer);
+      __statsFilterTimer = setTimeout(async function () {
+        try {
+          var criteria = collectStatsFilterCriteria_();
+          var res = await sendToGAS_Safe('get_admin_stats_filtered', { statsFilter: criteria });
+          if (res && res.success && res.counts) {
+            updateStatsFilterCounts_(res.counts);
+          }
+        } catch (eGas) {
+          console.error('[admin] scheduleStatsFilterGasVerify_', eGas);
+        }
+      }, 350);
+    }
+
+    /** 統計絞込実行（try-catch で画面全体を保護） */
+    function applyStatsFilters_() {
+      try {
+        applyStatsFiltersClient_();
+        scheduleStatsFilterGasVerify_();
+      } catch (e) {
+        console.error('[admin] applyStatsFilters_', e);
+      }
+    }
 
     function safeParseJsonArray_(str) {
       try {
@@ -949,128 +1086,88 @@
       return y >= cutoff;
     }
 
-    function applyStatsFilters_() {
-      var dash = __adminDashState.dash;
-      if (!dash) return;
-      var sum = dash.summary || {};
-      var filters = dash.filters || {};
-      var opts = dash.filterOptions || {};
-      var wrap = document.getElementById('statAccordion');
-      if (!wrap) return;
+    /** 統計エリア（#statGrid）: details/summary アコーディオン＋絞込 UI を描画 */
+    function renderStats(dash) {
+      var el = document.getElementById('statGrid');
+      if (!el) return;
+      try {
+        if (!dash) {
+          el.innerHTML = '<p class="muted">統計データがありません</p>';
+          return;
+        }
+        __adminDashState.dash = dash;
+        var sum = dash.summary || {};
+        var opts = dash.filterOptions || {};
+        var uniqueVin = sum.uniqueVinCount != null ? sum.uniqueVinCount : sum.vehicleCount;
+        var sysStatus = '🟢 正常';
 
-      var vName = wrap.querySelector('#filterVehicleName');
-      var vYear = wrap.querySelector('#filterVehicleYear');
-      var vNameVal = vName ? vName.value : 'all';
-      var vYearVal = vYear ? vYear.value : 'all';
-      var vehicles = (filters.vehicles || []).filter(function (v) {
-        if (vNameVal !== 'all' && v.vehicleName !== vNameVal) return false;
-        return vehicleMatchesYearFilter_(v.firstRegistration, vYearVal);
-      });
+        var vehicleNameOpts = '<option value="all">すべて</option>' +
+          (opts.vehicleNames || []).map(function (n) {
+            return '<option value="' + escHtml(n) + '">' + escHtml(n) + '</option>';
+          }).join('');
+        var yearOpts = '<option value="all">すべて</option>';
+        for (var y = 1; y <= 30; y++) {
+          yearOpts += '<option value="' + y + '">' + y + '年前まで（初度登録）</option>';
+        }
 
-      var fRegions = getCheckedValues_(wrap, 'factoryRegion');
-      var fBureaus = getCheckedValues_(wrap, 'factoryBureau');
-      var fTypes = getCheckedValues_(wrap, 'factoryType');
-      var factories = (filters.factories || []).filter(function (f) {
-        if (fRegions.length && fRegions.indexOf(f.region) < 0) return false;
-        if (fBureaus.length && fBureaus.indexOf(f.transportBureau) < 0) return false;
-        if (fTypes.length && fTypes.indexOf(f.factoryType) < 0) return false;
-        return true;
-      });
+        el.innerHTML =
+          '<details class="admin-accordion" open>' +
+          '<summary><span>【ユーザー・車両】総ユーザー数</span><span class="acc-val" id="accUserCount">' +
+          escHtml(String(sum.userCount != null ? sum.userCount : 0)) + '</span></summary>' +
+          '<div class="admin-accordion__body">' +
+          '<p class="filter-result">総車両数（VINユニーク）: <strong id="accVehicleCount">' +
+          escHtml(String(uniqueVin != null ? uniqueVin : 0)) + '</strong> 台</p>' +
+          '<div class="filter-row filter-group"><label for="filterVehicleName">車名</label>' +
+          '<select id="filterVehicleName">' + vehicleNameOpts + '</select></div>' +
+          '<div class="filter-row filter-group"><label for="filterVehicleYear">年式（〇年前まで）</label>' +
+          '<select id="filterVehicleYear">' + yearOpts + '</select></div>' +
+          '<p class="filter-result" id="filterResultUser"></p></div></details>' +
 
-      var dRegions = getCheckedValues_(wrap, 'dealerRegion');
-      var dInd = getCheckedValues_(wrap, 'dealerIndustry');
-      var dealers = (filters.dealers || []).filter(function (d) {
-        if (dRegions.length && dRegions.indexOf(d.region) < 0) return false;
-        if (dInd.length && dInd.indexOf(d.industry) < 0) return false;
-        return true;
-      });
+          '<details class="admin-accordion">' +
+          '<summary><span>【工場】工場総数</span><span class="acc-val" id="accFactoryCount">' +
+          escHtml(String(sum.shopFactoryCount != null ? sum.shopFactoryCount : 0)) + '</span></summary>' +
+          '<div class="admin-accordion__body">' +
+          '<div class="filter-group"><label>地域（都道府県・複数選択）</label><div class="filter-chips" id="factoryRegionChips">' +
+          buildFilterChips_('factoryRegion', opts.regions || []) + '</div></div>' +
+          '<div class="filter-group"><label>陸運事務局（複数選択）</label><div class="filter-chips">' +
+          buildFilterChips_('factoryBureau', opts.transportBureaus || []) + '</div></div>' +
+          '<div class="filter-group"><label>指定工場 / 認証工場（複数選択）</label><div class="filter-chips">' +
+          buildFilterChips_('factoryType', opts.factoryTypes || ['指定', '認証']) + '</div></div>' +
+          '<p class="filter-result" id="filterResultFactory"></p></div></details>' +
 
-      var elUser = wrap.querySelector('#accUserCount');
-      var elVehicle = wrap.querySelector('#accVehicleCount');
-      var elFactory = wrap.querySelector('#accFactoryCount');
-      var elDealer = wrap.querySelector('#accDealerCount');
-      if (elUser) elUser.textContent = String(sum.userCount != null ? sum.userCount : 0);
-      if (elVehicle) elVehicle.textContent = String(vehicles.length);
-      if (elFactory) elFactory.textContent = String(factories.length);
-      if (elDealer) elDealer.textContent = String(dealers.length);
+          '<details class="admin-accordion">' +
+          '<summary><span>【事業者・販売店】事業者・販売店総数</span><span class="acc-val" id="accDealerCount">' +
+          escHtml(String(sum.shopDealerCount != null ? sum.shopDealerCount : 0)) + '</span></summary>' +
+          '<div class="admin-accordion__body">' +
+          '<div class="filter-group"><label>住所（地域）登録別</label><div class="filter-chips">' +
+          buildFilterChips_('dealerRegion', opts.dealerRegions || opts.regions || []) + '</div></div>' +
+          '<div class="filter-group"><label>業種別</label><div class="filter-chips">' +
+          buildFilterChips_('dealerIndustry', opts.industries || ['（未分類）']) + '</div></div>' +
+          '<p class="filter-result" id="filterResultDealer"></p></div></details>' +
 
-      var resUser = wrap.querySelector('#filterResultUser');
-      var resFactory = wrap.querySelector('#filterResultFactory');
-      var resDealer = wrap.querySelector('#filterResultDealer');
-      if (resUser) resUser.textContent = '該当車両: ' + vehicles.length + ' 台';
-      if (resFactory) resFactory.textContent = '該当工場: ' + factories.length + ' 件';
-      if (resDealer) resDealer.textContent = '該当事業者: ' + dealers.length + ' 件';
-    }
+          '<details class="admin-accordion">' +
+          '<summary><span>【システム】システム稼働状況</span><span class="acc-val" id="accSystemStatus">' +
+          escHtml(sysStatus) + '</span></summary>' +
+          '<div class="admin-accordion__body">' +
+          '<div class="admin-grid">' +
+          '<div class="stat-card"><div class="stat-val">' + escHtml(String(sum.adImpressions != null ? sum.adImpressions : '—')) +
+          '</div><div class="stat-lbl">広告表示数（累計）</div></div>' +
+          '<div class="stat-card"><div class="stat-val">' + escHtml(String(sum.mailRemainingQuota != null ? sum.mailRemainingQuota : '—')) +
+          '</div><div class="stat-lbl">本日のメール送信枠（残）</div></div>' +
+          '<div class="stat-card"><div class="stat-val">' + escHtml(String(sum.lineMessagesSent != null ? sum.lineMessagesSent : 0)) +
+          '</div><div class="stat-lbl">LINE送信記録</div></div>' +
+          '<div class="stat-card"><div class="stat-val">' + escHtml(String(sum.configKeys != null ? sum.configKeys : 0)) +
+          '</div><div class="stat-lbl">システム設定項目数</div></div>' +
+          '</div></div></details>';
 
-    function renderStatsAccordion(dash) {
-      var el = document.getElementById('statAccordion');
-      if (!el || !dash) return;
-      __adminDashState.dash = dash;
-      var sum = dash.summary || {};
-      var opts = dash.filterOptions || {};
-
-      var vehicleNameOpts = '<option value="all">すべて</option>' +
-        (opts.vehicleNames || []).map(function (n) {
-          return '<option value="' + escHtml(n) + '">' + escHtml(n) + '</option>';
-        }).join('');
-      var yearOpts = '<option value="all">すべて</option>';
-      for (var y = 1; y <= 30; y++) {
-        yearOpts += '<option value="' + y + '">' + y + '年以内登録</option>';
+        el.querySelectorAll('select, input[type="checkbox"]').forEach(function (node) {
+          node.addEventListener('change', applyStatsFilters_);
+        });
+        applyStatsFilters_();
+      } catch (eRender) {
+        console.error('[admin] renderStats', eRender);
+        el.innerHTML = '<p class="muted" style="color:#dc2626;">統計エリアの描画に失敗しました</p>';
       }
-
-      el.innerHTML =
-        '<details class="admin-accordion" open>' +
-        '<summary><span>【ユーザー・車両】総ユーザー数</span><span class="acc-val" id="accUserCount">' +
-        escHtml(String(sum.userCount != null ? sum.userCount : 0)) + '</span></summary>' +
-        '<div class="admin-accordion__body">' +
-        '<p class="filter-result">総車両数（詳細）: <strong id="accVehicleCount">' +
-        escHtml(String(sum.vehicleCount != null ? sum.vehicleCount : 0)) + '</strong> 台</p>' +
-        '<div class="filter-row filter-group"><label for="filterVehicleName">車名</label>' +
-        '<select id="filterVehicleName">' + vehicleNameOpts + '</select></div>' +
-        '<div class="filter-row filter-group"><label for="filterVehicleYear">年式（登録から）</label>' +
-        '<select id="filterVehicleYear">' + yearOpts + '</select></div>' +
-        '<p class="filter-result" id="filterResultUser"></p></div></details>' +
-
-        '<details class="admin-accordion">' +
-        '<summary><span>【工場】工場総数</span><span class="acc-val" id="accFactoryCount">' +
-        escHtml(String(sum.shopFactoryCount != null ? sum.shopFactoryCount : 0)) + '</span></summary>' +
-        '<div class="admin-accordion__body">' +
-        '<div class="filter-group"><label>地域（複数選択）</label><div class="filter-chips" id="factoryRegionChips">' +
-        buildFilterChips_('factoryRegion', opts.regions || []) + '</div></div>' +
-        '<div class="filter-group"><label>陸運事務局（複数選択）</label><div class="filter-chips">' +
-        buildFilterChips_('factoryBureau', opts.transportBureaus || []) + '</div></div>' +
-        '<div class="filter-group"><label>指定 / 認証（複数選択）</label><div class="filter-chips">' +
-        buildFilterChips_('factoryType', opts.factoryTypes || ['指定', '認証']) + '</div></div>' +
-        '<p class="filter-result" id="filterResultFactory"></p></div></details>' +
-
-        '<details class="admin-accordion">' +
-        '<summary><span>【事業者・販売店】店舗総数</span><span class="acc-val" id="accDealerCount">' +
-        escHtml(String(sum.shopDealerCount != null ? sum.shopDealerCount : 0)) + '</span></summary>' +
-        '<div class="admin-accordion__body">' +
-        '<div class="filter-group"><label>住所（地域）登録別</label><div class="filter-chips">' +
-        buildFilterChips_('dealerRegion', opts.dealerRegions || opts.regions || []) + '</div></div>' +
-        '<div class="filter-group"><label>業種別</label><div class="filter-chips">' +
-        buildFilterChips_('dealerIndustry', opts.industries || ['（未分類）']) + '</div></div>' +
-        '<p class="filter-result" id="filterResultDealer"></p></div></details>' +
-
-        '<details class="admin-accordion">' +
-        '<summary><span>【システム】システム稼働状況</span><span class="acc-val">OK</span></summary>' +
-        '<div class="admin-accordion__body">' +
-        '<div class="admin-grid">' +
-        '<div class="stat-card"><div class="stat-val">' + escHtml(String(sum.adImpressions != null ? sum.adImpressions : '—')) +
-        '</div><div class="stat-lbl">広告表示（累計）</div></div>' +
-        '<div class="stat-card"><div class="stat-val">' + escHtml(String(sum.mailRemainingQuota != null ? sum.mailRemainingQuota : '—')) +
-        '</div><div class="stat-lbl">メール残枠</div></div>' +
-        '<div class="stat-card"><div class="stat-val">' + escHtml(String(sum.lineMessagesSent != null ? sum.lineMessagesSent : 0)) +
-        '</div><div class="stat-lbl">LINE送信</div></div>' +
-        '<div class="stat-card"><div class="stat-val">' + escHtml(String(sum.configKeys != null ? sum.configKeys : 0)) +
-        '</div><div class="stat-lbl">設定項目数</div></div>' +
-        '</div></div></details>';
-
-      el.querySelectorAll('select, input[type="checkbox"]').forEach(function (node) {
-        node.addEventListener('change', applyStatsFilters_);
-      });
-      applyStatsFilters_();
     }
 
     function renderHistorySearchResults(results) {
@@ -1156,31 +1253,6 @@
         if (typeof hideLoading === 'function') hideLoading();
         if (typeof showToast === 'function') showToast('error', e.message || '保存に失敗しました');
       }
-    }
-
-    function renderStats(sum) {
-      /* 後方互換: アコーディオン未使用時 */
-      if (__adminDashState.dash) {
-        renderStatsAccordion(__adminDashState.dash);
-        return;
-      }
-      var g = document.getElementById('statAccordion');
-      if (!g || !sum) return;
-      var items = [
-        ['ユーザー数', sum.userCount],
-        ['登録店舗（工場）', sum.shopFactoryCount != null ? sum.shopFactoryCount : '—'],
-        ['登録店舗（事業者・販売店）', sum.shopDealerCount != null ? sum.shopDealerCount : '—'],
-        ['店舗合計', sum.shopTotal],
-        ['審査完了・稼働中の店舗', sum.shopApproved],
-        ['審査待ちの店舗', sum.shopPending],
-        ['広告表示回数（累計）', sum.adImpressions],
-        ['本日のメール送信・残り枠', sum.mailRemainingQuota],
-        ['LINE送信（記録）', sum.lineMessagesSent],
-        ['システム設定項目数', sum.configKeys]
-      ];
-      g.innerHTML = items.map(function (x) {
-        return '<div class="stat-card"><div class="stat-val">' + String(x[1] != null ? x[1] : '—') + '</div><div class="stat-lbl">' + x[0] + '</div></div>';
-      }).join('');
     }
 
     function renderConfig(list) {
@@ -1326,10 +1398,9 @@
         }
 
         try {
-          if (dash) renderStatsAccordion(dash);
-          else renderStats(null);
+          renderStats(dash || null);
         } catch (eStats) {
-          console.error('[admin] renderStatsAccordion', eStats);
+          console.error('[admin] renderStats', eStats);
         }
 
         try {

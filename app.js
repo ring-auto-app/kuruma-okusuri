@@ -1044,10 +1044,18 @@ function ringDemoGasStubResponse_(actionType) {
         return {
             success: true,
             demo: true,
-            summary: { userCount: 0, vehicleCount: 0, shopFactoryCount: 0, shopDealerCount: 0, adImpressions: 0, mailRemainingQuota: 0, lineMessagesSent: 0, configKeys: 0 },
+            summary: { userCount: 0, vehicleCount: 0, uniqueVinCount: 0, shopFactoryCount: 0, shopDealerCount: 0, adImpressions: 0, mailRemainingQuota: 0, lineMessagesSent: 0, configKeys: 0 },
             filters: { vehicles: [], factories: [], dealers: [] },
             filterOptions: { vehicleNames: [], regions: [], transportBureaus: [], factoryTypes: ['指定', '認証'], dealerRegions: [], industries: [] },
             monitoring: { ocrFailToday: 0, saveFailToday: 0, retryPendingToday: 0, gasErrorToday: 0, topDevices: [], topBrowsers: [], recentErrors: [], errorActionRanking: [], errorDetails: [] }
+        };
+    }
+    if (actionType === 'get_admin_stats_filtered') {
+        return {
+            success: true,
+            demo: true,
+            counts: { uniqueVinCountFiltered: 0, vehicleRowsFiltered: 0, factoryCountFiltered: 0, dealerCountFiltered: 0 },
+            filterOptions: { vehicleNames: [], regions: [], transportBureaus: [], factoryTypes: ['指定', '認証'], dealerRegions: [], industries: [] }
         };
     }
     if (actionType === 'get_action_dashboard_data') {
