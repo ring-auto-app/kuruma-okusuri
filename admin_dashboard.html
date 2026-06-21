@@ -613,12 +613,20 @@
       <div id="monitorBreakdown"></div>
       <div class="monitor-recent" id="monitorRecent"></div>
       <div class="error-report-block">
-        <h3>① エラー集計（サマリー）</h3>
-        <div id="errorActionRanking"></div>
+        <details class="admin-accordion">
+          <summary>エラー集計を表示</summary>
+          <div class="admin-accordion__body">
+            <div id="errorActionRanking"></div>
+          </div>
+        </details>
       </div>
       <div class="error-report-block">
-        <h3>② エラー詳細リスト</h3>
-        <div id="errorDetailTable"></div>
+        <details class="admin-accordion">
+          <summary>エラー詳細リストを表示</summary>
+          <div class="admin-accordion__body">
+            <div id="errorDetailTable"></div>
+          </div>
+        </details>
       </div>
     </div>
 
@@ -635,8 +643,10 @@
     </div>
 
     <div class="section">
-      <h2>連絡・コミュニケーション</h2>
-      <h3 style="font-size:14px;margin:16px 0 8px;">お知らせ一斉メール配信</h3>
+      <details class="admin-accordion">
+        <summary>連絡・コミュニケーションを表示</summary>
+        <div class="admin-accordion__body">
+      <h3 style="font-size:14px;margin:0 0 8px;">お知らせ一斉メール配信</h3>
       <p class="muted" style="margin-top:0;">登録メールアドレス（一般ユーザー: users_v1 N列 / 工場・事業者: shops L列）へ一斉送信します。誤送信防止のため、実行前に対象件数の確認を行います。</p>
       <div class="broadcast-field">
         <label for="broadcastTarget">配信対象</label>
@@ -666,6 +676,8 @@
         <p class="admin-memo-meta" id="adminMemoUpdated"></p>
         <button type="button" class="btn-sm secondary" id="adminMemoSaveBtn" style="margin-top:10px;">メモを保存</button>
       </div>
+        </div>
+      </details>
     </div>
 
     <div class="section">
@@ -824,6 +836,7 @@
     }
 
     function renderErrorReport(mon) {
+      try {
       mon = mon || {};
       var rankEl = document.getElementById('errorActionRanking');
       var detailEl = document.getElementById('errorDetailTable');
@@ -852,6 +865,9 @@
                 '</td><td>' + escHtml(d.action || '') + '</td><td>' + escHtml(d.error_message || '') + '</td></tr>';
             }).join('') + '</tbody></table>';
         }
+      }
+      } catch (eErr) {
+        console.error('[admin] renderErrorReport', eErr);
       }
     }
 
@@ -1061,6 +1077,16 @@
       }).join('');
     }
 
+    /** 陸運事務局チップ用: 工場名・指定番号を除外し局名のみ */
+    function filterTransportBureauOptions_(list) {
+      return (list || []).filter(function (opt) {
+        var s = String(opt || '').trim();
+        if (!s) return false;
+        if (s.indexOf('@') >= 0) return false;
+        return /運輸局|総合事務局|運輸監理|陸運/.test(s);
+      });
+    }
+
     function getCheckedValues_(container, name) {
       if (!container) return [];
       var out = [];
@@ -1125,8 +1151,8 @@
           '<div class="admin-accordion__body">' +
           '<div class="filter-group"><label>地域（都道府県・複数選択）</label><div class="filter-chips" id="factoryRegionChips">' +
           buildFilterChips_('factoryRegion', opts.regions || []) + '</div></div>' +
-          '<div class="filter-group"><label>陸運事務局（複数選択）</label><div class="filter-chips">' +
-          buildFilterChips_('factoryBureau', opts.transportBureaus || []) + '</div></div>' +
+          '<div class="filter-group"><label>陸運事務局（複数選択）</label><div class="filter-chips" id="factoryBureauChips">' +
+          buildFilterChips_('factoryBureau', filterTransportBureauOptions_(opts.transportBureaus || [])) + '</div></div>' +
           '<div class="filter-group"><label>指定工場 / 認証工場（複数選択）</label><div class="filter-chips">' +
           buildFilterChips_('factoryType', opts.factoryTypes || ['指定', '認証']) + '</div></div>' +
           '<p class="filter-result" id="filterResultFactory"></p></div></details>' +

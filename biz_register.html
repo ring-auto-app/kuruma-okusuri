@@ -52,22 +52,19 @@
       <div class="field">
         <span class="label">業態 <span class="required">必須</span></span>
         <select id="inShopType" onchange="document.getElementById('factoryArea').style.display = this.value === 'factory' ? 'block' : 'none'">
-          <optgroup label="整備・修理">
-            <option value="factory">整備工場（分解整備を行う）</option>
+          <option value="" disabled selected>選択してください</option>
+          <option value="整備工場（分解整備を行う）">整備工場（分解整備を行う）</option>
+          <optgroup label="販売・サービス">
+            <option value="整備工場（分解整備を行わない）">整備工場（分解整備を行わない）</option>
+            <option value="販売業">販売業</option>
+            <option value="レンタカー業">レンタカー業</option>
           </optgroup>
-          <optgroup label="販売・流通">
-            <option value="dealer" selected>自動車販売店・買取業</option>
-            <option value="dealer">ガソリンスタンド（GS）</option>
-            <option value="dealer">レンタカー・カーリース</option>
-          </optgroup>
-          <optgroup label="運輸・物流">
-            <option value="dealer">運送業（トラック・宅配）</option>
-            <option value="dealer">バス・タクシー会社</option>
-            <option value="dealer">自動車学校</option>
+          <optgroup label="運輸・交通">
+            <option value="道路貨物運送業">道路貨物運送業</option>
+            <option value="交通・運輸業">交通・運輸業</option>
           </optgroup>
           <optgroup label="その他">
-            <option value="dealer">農業・建設業（特殊車両）</option>
-            <option value="dealer">その他事業者</option>
+            <option value="その他">その他</option>
           </optgroup>
         </select>
       </div>
