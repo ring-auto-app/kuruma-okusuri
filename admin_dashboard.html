@@ -311,6 +311,7 @@
     </div>
 
     <div id="dashMain" style="display:none;">
+    <p id="dashLoadError" class="muted" style="display:none; color:#dc2626; font-weight:700;"></p>
     <div class="section monitor-section">
       <h2>即時監視（本日・JST）</h2>
       <p class="monitor-sub">System_Logs から当日分を集計。事故検知を最優先に表示します。</p>
@@ -573,7 +574,46 @@
       }
     };
 
-    window.addEventListener('DOMContentLoaded', function () {
+    async function loadAdminDashboardData() {
+      var errEl = document.getElementById('dashLoadError');
+      try {
+        if (typeof showLoading === 'function') showLoading('読込中', '');
+        var dash = await sendToGAS_Safe('get_admin_dashboard', {});
+        var cfg = await sendToGAS_Safe('get_admin_config', {});
+        if (typeof hideLoading === 'function') hideLoading();
+
+        try {
+          renderMonitoring(dash && dash.monitoring);
+        } catch (eMon) {
+          console.error('[admin] renderMonitoring', eMon);
+        }
+
+        try {
+          renderStats(dash && dash.summary);
+        } catch (eStats) {
+          console.error('[admin] renderStats', eStats);
+        }
+
+        try {
+          renderConfig(cfg && cfg.config);
+        } catch (eCfg) {
+          console.error('[admin] renderConfig', eCfg);
+        }
+      } catch (e) {
+        if (typeof hideLoading === 'function') hideLoading();
+        console.error('[admin] loadAdminDashboardData', e);
+        if (errEl) {
+          errEl.style.display = 'block';
+          errEl.textContent = 'データの読み込みに失敗しました。' +
+            (e && e.message ? ' (' + e.message + ')' : '');
+        }
+        if (typeof showToast === 'function') {
+          showToast('error', e.message || '読込に失敗しました');
+        }
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', async function () {
       if (typeof ringBootAuthForMode === 'function') {
         var boot = ringBootAuthForMode('user');
         if (!boot.ok) {
@@ -604,18 +644,7 @@
       if (broadcastBtn) broadcastBtn.addEventListener('click', runBroadcast);
       if (typeof ringLogClientAccess === 'function') ringLogClientAccess('admin_dashboard');
 
-      try {
-        if (typeof showLoading === 'function') showLoading('読込中', '');
-        var dash = await sendToGAS_Safe('get_admin_dashboard', {});
-        var cfg = await sendToGAS_Safe('get_admin_config', {});
-        if (typeof hideLoading === 'function') hideLoading();
-        renderMonitoring(dash.monitoring);
-        renderStats(dash.summary);
-        renderConfig(cfg.config);
-      } catch (e) {
-        if (typeof hideLoading === 'function') hideLoading();
-        if (typeof showToast === 'function') showToast('error', e.message || '読込に失敗しました');
-      }
+      await loadAdminDashboardData();
     });
   </script>
 </body>
