@@ -46,8 +46,8 @@
    * ストレージから新旧のログを取得して統合
    */
   function getLogs() {
-    const a = JSON.parse(localStorage.getItem("logs_v1") || "[]");
-    const b = JSON.parse(localStorage.getItem("nappy_logs_v1") || "[]");
+    const a = safeJsonParse(localStorage.getItem("logs_v1"), []);
+    const b = safeJsonParse(localStorage.getItem("nappy_logs_v1"), []);
     return [...a, ...b];
   }
 

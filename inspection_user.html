@@ -133,7 +133,7 @@
 
     // 前回走行距離を取得
     function getPrevMileage(vin) {
-      const all = JSON.parse(localStorage.getItem('inspections_v1') || '[]');
+      const all = safeJsonParse(localStorage.getItem('inspections_v1'), []);
       const withMileage = all
         .filter(l => l.vin === vin && l.mileage != null && !isNaN(l.mileage))
         .sort((a, b) => new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date));
@@ -310,13 +310,13 @@
           photoUrl: "", createdAt: createdAt
         };
 
-        const inspections = JSON.parse(localStorage.getItem('inspections_v1') || '[]');
+        const inspections = safeJsonParse(localStorage.getItem('inspections_v1'), []);
         inspections.push(inspRecord);
         localStorage.setItem('inspections_v1', JSON.stringify(inspections));
 
         if (hasIssue) {
           const ngNames = issues.map(s => s.replace(/^・/, '').trim());
-          const logs = JSON.parse(localStorage.getItem('nappy_logs_v1') || '[]');
+          const logs = safeJsonParse(localStorage.getItem('nappy_logs_v1'), []);
           logs.push({
             log_id: `LOG-${Date.now()}`, vin: vin, date: date,
             title: "【日常点検】気になる項目あり", parts: ngNames.join(' / '),

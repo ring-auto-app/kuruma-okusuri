@@ -123,7 +123,7 @@
       document.getElementById('displayDate').innerText = `${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()}`;
 
       // プロフィール読み込み
-      const profile = (typeof getCurrentProfile === "function") ? getCurrentProfile() : JSON.parse(localStorage.getItem('nappy_profile_v1') || 'null');
+      const profile = (typeof getCurrentProfile === "function") ? getCurrentProfile() : safeJsonParse(localStorage.getItem('nappy_profile_v1'), null);
       
       if (profile && profile.shopType === 'factory') {
         document.getElementById('shopName').innerText = profile.shopName || "登録工場";

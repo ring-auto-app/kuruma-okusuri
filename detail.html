@@ -187,7 +187,7 @@
         document.getElementById("logMileage").textContent = log.mileage ? log.mileage + ' km' : '未記入';
 
         // 車両情報（nappy_vehicles_v1 から VIN で引き当て）
-        const vehicles = JSON.parse(localStorage.getItem('nappy_vehicles_v1') || '[]');
+        const vehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
         const vRec = vehicles.find(v => v.vin === vin || v.vin === log.vin);
         if (vRec && (vRec.vehicleModel || vRec.engine || vRec.category || vRec.classification || vRec.typeDesignation)) {
           const lines = [];
@@ -250,7 +250,7 @@
         // 担当工場情報（ユーザー日常点検は非表示）
         const isUserInspect = log.type === 'inspection_user' || log.shopType === 'user';
         if (!isUserInspect && (log.shopName || log.shopId)) {
-          const shops       = JSON.parse(localStorage.getItem('nappy_shops_v1') || '[]');
+          const shops       = safeJsonParse(localStorage.getItem('nappy_shops_v1'), []);
           const shop        = shops.find(s => s.shopId === log.shopId) || {};
           const shopName    = log.shopName  || shop.shopName  || '-';
           const bureau      = log.transportBureau || shop.transportBureau || shop.riku_un || '-';

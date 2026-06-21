@@ -222,7 +222,7 @@
 
       try {
         const rawData = localStorage.getItem('inspections_v1') || '[]';
-        const allLogs = JSON.parse(rawData);
+        const allLogs = safeJsonParse(rawData, []);
 
         let targetLog = allLogs.find(log => String(log.log_id) === String(logId) || String(log.logId) === String(logId));
 

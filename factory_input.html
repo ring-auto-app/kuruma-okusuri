@@ -316,10 +316,10 @@
         }
       }
       try {
-        JSON.parse(localStorage.getItem('nappy_logs_v1') || '[]')
+        safeJsonParse(localStorage.getItem('nappy_logs_v1'), [])
           .filter(function (l) { return ringFactoryNormVin_(l.vin) === vin; })
           .forEach(function (l) { consider(l.mileage, l.date); });
-        JSON.parse(localStorage.getItem('inspections_v1') || '[]')
+        safeJsonParse(localStorage.getItem('inspections_v1'), [])
           .filter(function (l) { return ringFactoryNormVin_(l.vin) === vin; })
           .forEach(function (l) { consider(l.mileage, l.date || l.createdAt); });
       } catch (e) { /* ignore */ }
@@ -345,7 +345,7 @@
     function lookupVehicle(rawVin) {
       const vin = ringFactoryNormVin_(rawVin);
       if (!vin) return;
-      const vehicles = JSON.parse(localStorage.getItem('nappy_vehicles_v1') || '[]');
+      const vehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
       const rec = vehicles.find(v => ringFactoryNormVin_(v.vin) === vin);
       const infoEl = document.getElementById('vinVehicleInfo');
       if (rec) {
@@ -468,7 +468,7 @@
       if (typeof saveLog === "function") {
         logResult = await saveLog(logData);
       } else {
-        let logs = typeof readLogsArray === 'function' ? readLogsArray() : JSON.parse(localStorage.getItem('nappy_logs_v1') || '[]');
+        let logs = typeof readLogsArray === 'function' ? readLogsArray() : safeJsonParse(localStorage.getItem('nappy_logs_v1'), []);
         logData.log_id = 'log_' + Date.now();
         logs.push(logData);
         localStorage.setItem('nappy_logs_v1', JSON.stringify(logs));
@@ -547,7 +547,7 @@
       const currentMileage = parseInt(mileageInput, 10);
       if (!isNaN(currentMileage)) {
         try {
-          const logs = JSON.parse(localStorage.getItem('nappy_logs_v1') || '[]');
+          const logs = safeJsonParse(localStorage.getItem('nappy_logs_v1'), []);
           const vLogs = logs.filter(l => l.vin === vin).sort((a, b) => new Date(b.date) - new Date(a.date));
           if (vLogs.length > 0) {
             const lastM = parseInt(vLogs[0].mileage, 10);

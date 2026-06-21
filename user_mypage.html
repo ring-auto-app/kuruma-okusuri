@@ -102,7 +102,7 @@
     }
 
     function getUserVehicles(profile) {
-      var all = JSON.parse(localStorage.getItem('nappy_vehicles_v1') || '[]');
+      var all = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
       var uid = profile.userId || '';
       return all.filter(function (car) {
         return car.userId === uid || car.ownerId === uid || car.shopId === uid;
@@ -110,7 +110,7 @@
     }
 
     function getFavShops() {
-      return JSON.parse(localStorage.getItem('nappy_fav_shops_v1') || '[]');
+      return safeJsonParse(localStorage.getItem('nappy_fav_shops_v1'), []);
     }
 
     window.addEventListener('DOMContentLoaded', function () {

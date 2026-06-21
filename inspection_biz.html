@@ -144,7 +144,7 @@
 
     // 前回走行距離を取得（同VINの inspections_v1 から mileage が入っている最新レコード）
     function getPrevMileage(vin) {
-      const all = JSON.parse(localStorage.getItem('inspections_v1') || '[]');
+      const all = safeJsonParse(localStorage.getItem('inspections_v1'), []);
       const withMileage = all
         .filter(l => l.vin === vin && l.mileage != null && !isNaN(l.mileage))
         .sort((a, b) => new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date));
@@ -307,7 +307,7 @@
       const vin = urlParams.get('vin') || document.getElementById('inVin').value.trim();
       const dateIso = urlParams.get('date') || '';
       const logId = urlParams.get('logId') || '';
-      const all = JSON.parse(localStorage.getItem('inspections_v1') || '[]');
+      const all = safeJsonParse(localStorage.getItem('inspections_v1'), []);
 
       let rec = logId ? all.find(l => l.log_id === logId) : null;
       if (!rec && vin && dateIso) {
@@ -426,7 +426,7 @@
         };
         if (createdAt) logData.createdAt = createdAt;
 
-        const inspections = JSON.parse(localStorage.getItem('inspections_v1') || '[]');
+        const inspections = safeJsonParse(localStorage.getItem('inspections_v1'), []);
         if (isEdit) {
           const idx = inspections.findIndex(l => l.log_id === generatedLogId);
           if (idx >= 0) {

@@ -165,7 +165,7 @@ function searchByVinCandidates(candidates) {
 
     var vehicles = typeof loadVehicles === 'function'
         ? loadVehicles()
-        : JSON.parse(localStorage.getItem(typeof DB_VEHICLES !== 'undefined' ? DB_VEHICLES : 'nappy_vehicles_v1') || '[]');
+        : safeJsonParse(localStorage.getItem(typeof DB_VEHICLES !== 'undefined' ? DB_VEHICLES : 'nappy_vehicles_v1'), []);
 
     var vehicleNormMap = {};
     vehicles.forEach(function (v) {
@@ -176,7 +176,7 @@ function searchByVinCandidates(candidates) {
 
     var logNormMap = {};
     try {
-        var logs = JSON.parse(localStorage.getItem(RING_VIN_SEARCH_DB_LOGS) || '[]');
+        var logs = safeJsonParse(localStorage.getItem(RING_VIN_SEARCH_DB_LOGS), []);
         logs.forEach(function (log) {
             if (!log || !log.vin) return;
             var n = normalizeVin(log.vin);

@@ -103,7 +103,7 @@
     }
 
     function searchLocalShops(query, searchType) {
-      var shops = JSON.parse(localStorage.getItem('nappy_shops_v1') || '[]');
+      var shops = safeJsonParse(localStorage.getItem('nappy_shops_v1'), []);
       var q = String(query || '').trim().toLowerCase();
       if (!q) return [];
       var out = [];
@@ -173,7 +173,7 @@
       };
       if (row.lineUrl === '') row.lineUrl = '#';
 
-      var fav = JSON.parse(localStorage.getItem('nappy_fav_shops_v1') || '[]');
+      var fav = safeJsonParse(localStorage.getItem('nappy_fav_shops_v1'), []);
       fav = fav.filter(function (s) { return s.shopId !== row.shopId; });
       fav.push(row);
       localStorage.setItem('nappy_fav_shops_v1', JSON.stringify(fav));
@@ -240,7 +240,7 @@
     }
 
     function openEdit(shopId) {
-      var fav = JSON.parse(localStorage.getItem('nappy_fav_shops_v1') || '[]');
+      var fav = safeJsonParse(localStorage.getItem('nappy_fav_shops_v1'), []);
       var s = fav.find(function (x) { return String(x.shopId) === String(shopId); });
       if (!s) {
         alert('見つかりませんでした');
@@ -263,7 +263,7 @@
 
     function saveEdit() {
       var shopId = document.getElementById('editShopId').value;
-      var fav = JSON.parse(localStorage.getItem('nappy_fav_shops_v1') || '[]');
+      var fav = safeJsonParse(localStorage.getItem('nappy_fav_shops_v1'), []);
       var idx = fav.findIndex(function (x) { return String(x.shopId) === String(shopId); });
       if (idx < 0) return;
       fav[idx] = {
@@ -297,7 +297,7 @@
       document.getElementById('btnSaveEdit').addEventListener('click', saveEdit);
       document.getElementById('btnManualNew').addEventListener('click', function () {
         var id = 'FAV-LOCAL-' + Date.now().toString(36).toUpperCase();
-        var fav = JSON.parse(localStorage.getItem('nappy_fav_shops_v1') || '[]');
+        var fav = safeJsonParse(localStorage.getItem('nappy_fav_shops_v1'), []);
         fav.push({
           shopId: id,
           shopName: '',

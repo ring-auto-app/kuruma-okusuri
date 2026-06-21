@@ -174,9 +174,9 @@
       showLoading("読込中", "車両カルテを開いています...");
 
       setTimeout(() => {
-        const vehicles = JSON.parse(localStorage.getItem("nappy_vehicles_v1") || "[]");
+        const vehicles = safeJsonParse(localStorage.getItem("nappy_vehicles_v1"), []);
         const vehicle = vehicles.find(v => v.vin === targetVin);
-        const allLogs = JSON.parse(localStorage.getItem("nappy_logs_v1") || "[]");
+        const allLogs = safeJsonParse(localStorage.getItem("nappy_logs_v1"), []);
         const logs = allLogs.filter(l => l.vin === targetVin).sort((a, b) => new Date(b.date) - new Date(a.date));
         
         const latestLog = logs[0] || null;

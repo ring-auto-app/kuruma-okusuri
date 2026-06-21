@@ -29,7 +29,7 @@ function ringReadUserRegConsent() {
     try {
         const raw = sessionStorage.getItem(RING_USER_REG_CONSENT_KEY);
         if (!raw) return null;
-        const o = JSON.parse(raw);
+        const o = safeJsonParse(raw, null);
         if (!o || typeof o !== 'object') return null;
         if (o.termsVersion !== RING_LEGAL_TERMS_VERSION || o.privacyVersion !== RING_LEGAL_PRIVACY_VERSION) return null;
         if (!o.consentAt || typeof o.consentAt !== 'string') return null;
@@ -161,12 +161,32 @@ function ringInitLinePromoSlots() {
 }
 
 /**
+ * Gemini 等の ```json フェンス・前後テキストを除去
+ */
+function sanitizeJsonResponse(text) {
+    var s = String(text || '').trim().replace(/^\uFEFF/, '');
+    if (!s) return '';
+    var fence = s.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    if (fence) s = fence[1].trim();
+    var startObj = s.indexOf('{');
+    var startArr = s.indexOf('[');
+    var start = -1;
+    if (startObj >= 0 && startArr >= 0) start = Math.min(startObj, startArr);
+    else if (startObj >= 0) start = startObj;
+    else if (startArr >= 0) start = startArr;
+    if (start > 0) s = s.slice(start);
+    var end = Math.max(s.lastIndexOf('}'), s.lastIndexOf(']'));
+    if (end >= 0 && end < s.length - 1) s = s.slice(0, end + 1);
+    return s.trim();
+}
+
+/**
  * localStorage JSON 破損対策（H-03）。失敗時は退避キーに生文字列を残す。
  */
 function safeJsonParse(str, fallback) {
     try {
         if (str == null || str === '') return fallback;
-        return JSON.parse(str);
+        return JSON.parse(sanitizeJsonResponse(str) || str);
     } catch (e) {
         try {
             localStorage.setItem('ring_corrupt_backup_' + Date.now(), String(str).slice(0, 50000));
@@ -1154,7 +1174,7 @@ function seedDemoEnvironment(role) {
   var nowIso = new Date().toISOString();
 
   // 1) 店舗マスタ（詳細画面の陸運局・指定番号表示用）
-  var shops = stripDemoTagged(JSON.parse(localStorage.getItem('nappy_shops_v1') || '[]'));
+  var shops = stripDemoTagged(safeJsonParse(localStorage.getItem('nappy_shops_v1'), []));
   shops.push({
     shopId: shopIdF,
     shopName: shopNameF,
@@ -1184,7 +1204,7 @@ function seedDemoEnvironment(role) {
   localStorage.setItem('nappy_shops_v1', JSON.stringify(shops));
 
   // 2) 車両
-  var vehicles = stripDemoTagged(JSON.parse(localStorage.getItem(DB_VEHICLES) || '[]'));
+  var vehicles = stripDemoTagged(safeJsonParse(localStorage.getItem(DB_VEHICLES), []));
 
   function baseV(extra) {
     var o = {
@@ -1369,7 +1389,7 @@ function seedDemoEnvironment(role) {
   localStorage.setItem(DB_VEHICLES, JSON.stringify(vehicles));
 
   // 3) 整備履歴
-  var logs = stripDemoTagged(JSON.parse(localStorage.getItem(DB_LOGS) || '[]'));
+  var logs = stripDemoTagged(safeJsonParse(localStorage.getItem(DB_LOGS), []));
   function pushLog(obj) {
     logs.push(Object.assign({ __demoTag: DEMO_DATA_TAG, createdAt: nowIso }, obj));
   }
@@ -1393,7 +1413,7 @@ function seedDemoEnvironment(role) {
   localStorage.setItem(DB_LOGS, JSON.stringify(logs));
 
   // 4) 日常点検 inspections_v1
-  var insp = stripDemoTagged(JSON.parse(localStorage.getItem('inspections_v1') || '[]'));
+  var insp = stripDemoTagged(safeJsonParse(localStorage.getItem('inspections_v1'), []));
   function pushInsp(o) {
     insp.push(Object.assign({ __demoTag: DEMO_DATA_TAG, createdAt: nowIso }, o));
   }
@@ -1419,7 +1439,7 @@ function seedDemoEnvironment(role) {
 
   // 5) ユーザーかかりつけ（お気に入り）
   if (role === 'user') {
-    var fav = stripDemoTagged(JSON.parse(localStorage.getItem('nappy_fav_shops_v1') || '[]'));
+    var fav = stripDemoTagged(safeJsonParse(localStorage.getItem('nappy_fav_shops_v1'), []));
     fav.push({
       shopId: shopIdF,
       shopName: shopNameF,
@@ -1985,7 +2005,7 @@ async function fetchJsonWithTimeout(url, options, timeoutMs) {
         if (!res.ok) throw new Error('HTTP_' + res.status);
         const text = await res.text();
         try {
-            return JSON.parse(text);
+            return safeJsonParse(text, {});
         } catch (e) {
             throw new Error('INVALID_JSON');
         }
@@ -1997,7 +2017,7 @@ async function fetchJsonWithTimeout(url, options, timeoutMs) {
         if (!res.ok) throw new Error('HTTP_' + res.status);
         const text = await res.text();
         try {
-            return JSON.parse(text);
+            return safeJsonParse(text, {});
         } catch (e) {
             throw new Error('INVALID_JSON');
         }
@@ -2336,8 +2356,8 @@ async function runOnce(button, task) {
  * かかりつけ店舗の読み込み（旧キーからマイグレーション付き）
  */
 function loadFavShops() {
-    const current = JSON.parse(localStorage.getItem('nappy_fav_shops_v1') || '[]');
-    const legacy  = JSON.parse(localStorage.getItem('nappy_fav_shops')    || '[]');
+    const current = safeJsonParse(localStorage.getItem('nappy_fav_shops_v1'), []);
+    const legacy  = safeJsonParse(localStorage.getItem('nappy_fav_shops'), []);
     if (!legacy.length) return current;
     const byId = {};
     current.concat(legacy).forEach(function (shop) {
@@ -2353,8 +2373,8 @@ function loadFavShops() {
  * 日常点検の読み込み（旧キーからマイグレーション付き）
  */
 function loadInspections() {
-    const primary = JSON.parse(localStorage.getItem(DB_INSPECTIONS) || '[]');
-    const legacy  = JSON.parse(localStorage.getItem('nappy_inspections_v1') || '[]');
+    const primary = safeJsonParse(localStorage.getItem(DB_INSPECTIONS), []);
+    const legacy  = safeJsonParse(localStorage.getItem('nappy_inspections_v1'), []);
     if (legacy.length) {
         const seen = new Set(primary.map(function (x) { return x.log_id || x.logId; }));
         legacy.forEach(function (x) {

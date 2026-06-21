@@ -324,12 +324,19 @@
     }
 
     function ringGeminiParseJsonText_(text) {
-        var s = String(text || '').trim();
+        var s = (typeof sanitizeJsonResponse === 'function')
+            ? sanitizeJsonResponse(text)
+            : String(text || '').trim();
         if (!s) throw new Error('OCR_EMPTY_RESPONSE');
+
+        if (typeof safeJsonParse === 'function') {
+            var parsed = safeJsonParse(s, null);
+            if (parsed === null) throw new Error('OCR_INVALID_JSON');
+            return parsed;
+        }
 
         var fence = s.match(/```(?:json)?\s*([\s\S]*?)```/i);
         if (fence) s = fence[1].trim();
-
         try {
             return JSON.parse(s);
         } catch (e1) {

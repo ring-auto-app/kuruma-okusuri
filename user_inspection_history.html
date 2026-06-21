@@ -254,7 +254,7 @@
 
     // ローカル + GAS（C-04 マージ）
     async function fetchLocalHistory() {
-      const allInspections = JSON.parse(localStorage.getItem('inspections_v1') || '[]');
+      const allInspections = safeJsonParse(localStorage.getItem('inspections_v1'), []);
       const vNorm = normVin(vin);
       const local = allInspections.filter(log => normVin(log.vin) === vNorm);
 

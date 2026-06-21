@@ -59,10 +59,10 @@ function applyRinGTheme() {
 
     if (!sessionRaw) return;
 
-    let session;
-    try {
-        session = JSON.parse(sessionRaw);
-    } catch (e) {
+    let session = (typeof safeJsonParse === 'function')
+        ? safeJsonParse(sessionRaw, null)
+        : null;
+    if (!session) {
         console.error("セッション解析エラー");
         return;
     }

@@ -188,8 +188,8 @@
           return; 
         }
 
-        const vehicles = JSON.parse(localStorage.getItem('nappy_vehicles_v1') || '[]');
-        const logs = JSON.parse(localStorage.getItem('nappy_logs_v1') || '[]');
+        const vehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
+        const logs = safeJsonParse(localStorage.getItem('nappy_logs_v1'), []);
 
         const vehicle = vehicles.find(v => v.vin.toUpperCase() === vinParam.toUpperCase());
         const log = logs.find(l => l.log_id === logIdParam);

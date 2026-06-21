@@ -177,7 +177,7 @@
 
         if (data.success) {
           const key = `nappy_staff_${currentProfile.shopId}`;
-          const local = JSON.parse(localStorage.getItem(key) || '[]');
+          const local = safeJsonParse(localStorage.getItem(key), []);
           const gasIds = new Set(data.staffList.map(s => s.loginId));
           const merged = [...data.staffList, ...local.filter(s => !gasIds.has(s.loginId))];
           renderTable(merged);
@@ -193,7 +193,7 @@
 
     function renderLocalStaff() {
       const key = `nappy_staff_${currentProfile.shopId}`;
-      const local = JSON.parse(localStorage.getItem(key) || '[]');
+      const local = safeJsonParse(localStorage.getItem(key), []);
       if (local.length === 0) {
         document.getElementById("staffList").innerHTML =
           `<tr><td colspan="5" class="empty-note">📡 サーバー未接続<br><span style="font-size:12px;">まだスタッフが追加されていません</span></td></tr>`;
@@ -264,7 +264,7 @@
         if (!data.success) throw new Error(data.error || '権限変更に失敗しました');
 
         const key = `nappy_staff_${currentProfile.shopId}`;
-        const staff = JSON.parse(localStorage.getItem(key) || '[]');
+        const staff = safeJsonParse(localStorage.getItem(key), []);
         const idx = staff.findIndex(s => s.loginId === loginId);
         if (idx >= 0) { staff[idx].role = newRole; localStorage.setItem(key, JSON.stringify(staff)); }
         showToast('success', '権限を変更しました');
@@ -300,7 +300,7 @@
         if (!data.success) throw new Error(data.error || '削除失敗');
 
         const key = `nappy_staff_${currentProfile.shopId}`;
-        const staff = JSON.parse(localStorage.getItem(key) || '[]');
+        const staff = safeJsonParse(localStorage.getItem(key), []);
         localStorage.setItem(key, JSON.stringify(staff.filter(s => s.loginId !== loginId)));
         showToast('success', 'スタッフを削除しました');
         await loadStaffList();
@@ -357,7 +357,7 @@
       // LocalStorageに保存して即一覧に反映
       function completeAdd(newLoginId) {
         const key = `nappy_staff_${currentProfile.shopId}`;
-        const staff = JSON.parse(localStorage.getItem(key) || '[]');
+        const staff = safeJsonParse(localStorage.getItem(key), []);
         if (!staff.some(s => s.loginId === newLoginId)) {
           staff.push({ loginId: newLoginId, displayName, realName, role: 'staff', shopId: currentProfile.shopId });
           localStorage.setItem(key, JSON.stringify(staff));

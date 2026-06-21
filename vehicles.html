@@ -121,7 +121,7 @@
   </div>
 
   <script>
-    const profile = typeof getCurrentProfile === "function" ? getCurrentProfile() : JSON.parse(localStorage.getItem('nappy_profile_v1') || 'null');
+    const profile = typeof getCurrentProfile === "function" ? getCurrentProfile() : safeJsonParse(localStorage.getItem('nappy_profile_v1'), null);
     const userRole = profile ? (profile.shopType || profile.role) : 'user';
     const isBizMode = (userRole === 'factory' || userRole === 'dealer');
 
@@ -213,7 +213,7 @@
       }
 
       setTimeout(() => {
-        let allVehicles = JSON.parse(localStorage.getItem('nappy_vehicles_v1') || '[]');
+        let allVehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
         let vehicles = [];
 
         if (profile) {

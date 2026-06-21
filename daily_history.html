@@ -319,7 +319,7 @@
       showLoading("データ読込中", "点検履歴を取得しています...");
       (async () => {
         document.getElementById('dispVin').textContent = `VIN: ${currentVin || '未指定'}`;
-        const vehicles = JSON.parse(localStorage.getItem('nappy_vehicles_v1') || '[]');
+        const vehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
         const car = vehicles.find(v => normVinDaily(v.vin) === normVinDaily(currentVin));
         document.getElementById('dispName').textContent = car ? (car.model || "名称未設定") : "車両名未設定";
         await fetchLocalHistory();
@@ -328,7 +328,7 @@
     });
 
     async function fetchLocalHistory() {
-      const allLogs = JSON.parse(localStorage.getItem('inspections_v1') || '[]');
+      const allLogs = safeJsonParse(localStorage.getItem('inspections_v1'), []);
       const vNorm = normVinDaily(currentVin);
       const local = allLogs.filter(log =>
         normVinDaily(log.vin) === vNorm && log.type && String(log.type).startsWith('inspection'));
@@ -570,7 +570,7 @@
       const period = document.querySelector('input[name="pPeriod"]:checked').value;
       closePrintModal();
 
-      const vehicles = JSON.parse(localStorage.getItem('nappy_vehicles_v1') || '[]');
+      const vehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
       const car = vehicles.find(v => v.vin === currentVin);
       const carLabel = car ? `${car.model || 'VIN'} (${currentVin})` : currentVin;
       const periodLabel = { '1week': '一週間分', '1month': '一か月分', '6month': '半年分' }[period]

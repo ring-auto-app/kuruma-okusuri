@@ -106,7 +106,7 @@
       showLoading("照会中", "お店の情報を読み込んでいます...");
 
       setTimeout(() => {
-        let favShops = JSON.parse(localStorage.getItem('nappy_fav_shops_v1') || '[]');
+        let favShops = safeJsonParse(localStorage.getItem('nappy_fav_shops_v1'), []);
 
         const container = document.getElementById('shopListArea');
         let html = "";
@@ -173,7 +173,7 @@
         card.style.opacity = '0.5';
         card.style.pointerEvents = 'none';
 
-        let favShops = JSON.parse(localStorage.getItem('nappy_fav_shops_v1') || '[]');
+        let favShops = safeJsonParse(localStorage.getItem('nappy_fav_shops_v1'), []);
         favShops = favShops.filter(s => s.shopId !== shopId);
         localStorage.setItem('nappy_fav_shops_v1', JSON.stringify(favShops));
 

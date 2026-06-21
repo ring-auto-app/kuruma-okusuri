@@ -819,12 +819,8 @@
     }
 
     function safeParseJsonArray_(str) {
-      try {
-        var v = JSON.parse(str || '[]');
-        return Array.isArray(v) ? v : [];
-      } catch (e) {
-        return [];
-      }
+      var v = safeJsonParse(str, []);
+      return Array.isArray(v) ? v : [];
     }
 
     function renderErrorReport(mon) {

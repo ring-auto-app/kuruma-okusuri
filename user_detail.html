@@ -99,7 +99,7 @@
     function render() {
       showLoading("読込中", "履歴詳細を取得しています...");
       setTimeout(() => {
-        const logs = JSON.parse(localStorage.getItem("nappy_logs_v1") || "[]");
+        const logs = safeJsonParse(localStorage.getItem("nappy_logs_v1"), []);
         const log = logs.find(l => String(l.log_id) === String(logId));
         const content = document.getElementById("content");
 
@@ -139,7 +139,7 @@
         // 担当工場情報（inspection_user は非表示）
         let shopSectionHtml = '';
         if (log.type !== 'inspection_user' && log.shopType !== 'user') {
-          const shops = JSON.parse(localStorage.getItem('nappy_shops_v1') || '[]');
+          const shops = safeJsonParse(localStorage.getItem('nappy_shops_v1'), []);
           const shop  = shops.find(s => s.shopId === log.shopId) || {};
           const shopName   = log.shopName  || shop.shopName  || '-';
           const bureau     = log.transportBureau || shop.transportBureau || shop.riku_un || '-';

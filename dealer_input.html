@@ -244,10 +244,10 @@
         }
       }
       try {
-        JSON.parse(localStorage.getItem('nappy_logs_v1') || '[]')
+        safeJsonParse(localStorage.getItem('nappy_logs_v1'), [])
           .filter(function (l) { return ringDealerNormVin_(l.vin) === vin; })
           .forEach(function (l) { consider(l.mileage, l.date); });
-        JSON.parse(localStorage.getItem('inspections_v1') || '[]')
+        safeJsonParse(localStorage.getItem('inspections_v1'), [])
           .filter(function (l) { return ringDealerNormVin_(l.vin) === vin; })
           .forEach(function (l) { consider(l.mileage, l.date || l.createdAt); });
       } catch (e) { /* ignore */ }
@@ -272,7 +272,7 @@
     function lookupVehicle(rawVin) {
       var vin = ringDealerNormVin_(rawVin);
       if (!vin) return;
-      var vehicles = JSON.parse(localStorage.getItem('nappy_vehicles_v1') || '[]');
+      var vehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
       var rec = vehicles.find(function (v) { return ringDealerNormVin_(v.vin) === vin; });
       if (rec) {
         ringDealerApplyVehiclePrefill_(rec, vin);
@@ -288,7 +288,7 @@
     // currentProfile をグローバルで取得（保存時にも参照できるよう宣言）
     const currentProfile = (typeof getCurrentProfile === 'function')
       ? getCurrentProfile()
-      : JSON.parse(localStorage.getItem('nappy_current_user') || localStorage.getItem('nappy_profile_v1') || 'null');
+      : safeJsonParse(localStorage.getItem('nappy_current_user') || localStorage.getItem('nappy_profile_v1'), null);
 
     // inspector（日常点検のみ）・viewer（閲覧のみ）は整備入力不可
     (function() {

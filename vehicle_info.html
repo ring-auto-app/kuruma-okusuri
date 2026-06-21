@@ -335,7 +335,7 @@
   <script>
     const profile = (typeof getCurrentProfile === 'function')
       ? getCurrentProfile()
-      : JSON.parse(localStorage.getItem('nappy_current_user') || localStorage.getItem('nappy_profile_v1') || 'null');
+      : safeJsonParse(localStorage.getItem('nappy_current_user') || localStorage.getItem('nappy_profile_v1'), null);
 
     const urlParams = new URLSearchParams(window.location.search);
     const targetVin = urlParams.get('vin') || '';
@@ -364,7 +364,7 @@
       // 工場・事業者の場合のみ車両区分フィールドを表示
       const prof = (typeof getCurrentProfile === 'function')
         ? getCurrentProfile()
-        : JSON.parse(localStorage.getItem('nappy_current_user') || localStorage.getItem('nappy_profile_v1') || 'null');
+        : safeJsonParse(localStorage.getItem('nappy_current_user') || localStorage.getItem('nappy_profile_v1'), null);
       const role = prof ? (prof.shopType || prof.role) : 'user';
       const isBizInfo = (role === 'factory' || role === 'dealer');
       if (isBizInfo) {
@@ -372,7 +372,7 @@
       }
 
       // 既存データを読み込んでフォームに反映
-      const vehicles = JSON.parse(localStorage.getItem('nappy_vehicles_v1') || '[]');
+      const vehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
       const car = vehicles.find(v => v.vin === targetVin);
 
       if (!car) {
@@ -520,7 +520,7 @@
 
       try {
         const { months } = getInspectionCycle();
-        const vehicles = JSON.parse(localStorage.getItem('nappy_vehicles_v1') || '[]');
+        const vehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
         const idx = vehicles.findIndex(v => v.vin === targetVin);
 
         if (idx < 0) {
@@ -613,7 +613,7 @@
         : confirm(`「${document.getElementById('inName').value || targetVin}」を一覧から削除しますか？\n※整備履歴は残ります`);
       if (!ok) return;
 
-      const vehicles = JSON.parse(localStorage.getItem('nappy_vehicles_v1') || '[]');
+      const vehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
       const updated = vehicles.filter(v => v.vin !== targetVin);
       localStorage.setItem('nappy_vehicles_v1', JSON.stringify(updated));
 

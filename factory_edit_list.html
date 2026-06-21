@@ -88,7 +88,7 @@
     });
 
     function renderEditList() {
-      let logs = JSON.parse(localStorage.getItem('nappy_logs_v1') || '[]');
+      let logs = safeJsonParse(localStorage.getItem('nappy_logs_v1'), []);
       const container = document.getElementById('editListArea');
 
       const now = new Date();
@@ -163,7 +163,7 @@
       if (typeof markLogVoided === 'function') {
         markLogVoided(targetId, '入力元による取消');
       } else {
-        const logs = JSON.parse(localStorage.getItem('nappy_logs_v1') || '[]');
+        const logs = safeJsonParse(localStorage.getItem('nappy_logs_v1'), []);
         const next = logs.map(log => {
           if (log.log_id !== targetId) return log;
           if (currentProfile && log.shopId && log.shopId !== currentProfile.shopId) return log;

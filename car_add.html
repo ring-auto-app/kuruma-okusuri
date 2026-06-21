@@ -388,7 +388,7 @@
   <script>
     const profile = (typeof getCurrentProfile === 'function')
       ? getCurrentProfile()
-      : JSON.parse(localStorage.getItem('nappy_current_user') || localStorage.getItem('nappy_profile_v1') || 'null');
+      : safeJsonParse(localStorage.getItem('nappy_current_user') || localStorage.getItem('nappy_profile_v1'), null);
 
     const role = profile && (profile.shopType || profile.role);
     const isBiz = role === 'factory' || role === 'dealer' ||
@@ -586,7 +586,7 @@
         if (typeof addVehicle === 'function') {
           vehRes = await addVehicle(newVehicle);
         } else {
-          const list = JSON.parse(localStorage.getItem('nappy_vehicles_v1') || '[]');
+          const list = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
           const idx = list.findIndex(v => v.vin === vin);
           if (idx >= 0) list[idx] = { ...list[idx], ...newVehicle };
           else list.push(newVehicle);

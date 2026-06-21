@@ -200,6 +200,8 @@
         if (typeof raw === 'string') {
             if (typeof ringGeminiParseJsonText_ === 'function') {
                 raw = ringGeminiParseJsonText_(raw);
+            } else if (typeof safeJsonParse === 'function') {
+                raw = safeJsonParse(raw, {});
             } else {
                 raw = JSON.parse(raw);
             }
