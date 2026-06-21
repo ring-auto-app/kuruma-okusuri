@@ -1040,6 +1040,48 @@ function ringDemoGasStubResponse_(actionType) {
     }
     if (actionType === 'update_vehicle') return { success: true, demo: true, vin: '' };
     if (actionType === 'update_daily_inspection') return { success: true, demo: true, log_id: '' };
+    if (actionType === 'get_admin_dashboard') {
+        return {
+            success: true,
+            demo: true,
+            summary: { userCount: 0, vehicleCount: 0, shopFactoryCount: 0, shopDealerCount: 0, adImpressions: 0, mailRemainingQuota: 0, lineMessagesSent: 0, configKeys: 0 },
+            filters: { vehicles: [], factories: [], dealers: [] },
+            filterOptions: { vehicleNames: [], regions: [], transportBureaus: [], factoryTypes: ['指定', '認証'], dealerRegions: [], industries: [] },
+            monitoring: { ocrFailToday: 0, saveFailToday: 0, retryPendingToday: 0, gasErrorToday: 0, topDevices: [], topBrowsers: [], recentErrors: [], errorActionRanking: [], errorDetails: [] }
+        };
+    }
+    if (actionType === 'get_action_dashboard_data') {
+        return {
+            success: true,
+            demo: true,
+            serverNow: new Date().toISOString(),
+            todayJst: new Date().toISOString().slice(0, 10),
+            actionRequired: { tasks: [], allClear: true },
+            todayStatus: {
+                registrationsToday: 0,
+                ocrRunsToday: 0,
+                newUsersToday: 0,
+                factoryLoginsToday: 0,
+                geminiRunsToday: 0
+            },
+            systemHealth: {
+                status: 'normal',
+                statusLabel: '正常',
+                historyEventsRows: 0,
+                usersRows: 0,
+                ocrSuccessRanking: [
+                    { type: 'shaken', label: '車検証', success: 0, total: 0, pct: null },
+                    { type: 'invoice', label: '請求書', success: 0, total: 0, pct: null },
+                    { type: 'estimate', label: '見積書', success: 0, total: 0, pct: null }
+                ]
+            },
+            activityStream: []
+        };
+    }
+    if (actionType === 'get_admin_config') return { success: true, demo: true, config: [] };
+    if (actionType === 'search_history_events') return { success: true, demo: true, results: [], count: 0 };
+    if (actionType === 'get_admin_memo') return { success: true, demo: true, memo: '', updatedAt: '' };
+    if (actionType === 'set_admin_memo') return { success: true, demo: true, updatedAt: new Date().toISOString() };
     return { success: true, demo: true };
 }
 

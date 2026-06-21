@@ -98,6 +98,127 @@
       margin-bottom: 24px;
       border: 2px solid #334155;
     }
+    /* 行動喚起型ダッシュボード（Phase 1）— dashboard-action-area 専用 */
+    #dashboard-action-area {
+      margin-bottom: 24px;
+      border: 2px solid #2563eb;
+      border-radius: 8px;
+      background: linear-gradient(180deg, #eff6ff 0%, #fff 48%);
+      padding: 20px;
+      box-shadow: 0 2px 8px rgba(37, 99, 235, 0.08);
+    }
+    #dashboard-action-area .dashboard-action-title {
+      margin: 0 0 16px;
+      font-size: 1.05rem;
+      font-weight: 800;
+      color: #1e3a8a;
+    }
+    #dashboard-action-area .action-area-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px;
+    }
+    #dashboard-action-area .action-block {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 14px 12px;
+      min-height: 120px;
+    }
+    #dashboard-action-area .action-block h3 {
+      margin: 0 0 10px;
+      font-size: 13px;
+      font-weight: 800;
+      color: #0f172a;
+      line-height: 1.35;
+    }
+    #dashboard-action-area .action-block--tasks { border-left: 4px solid #dc2626; }
+    #dashboard-action-area .action-block--today { border-left: 4px solid #2563eb; }
+    #dashboard-action-area .action-block--health { border-left: 4px solid #16a34a; }
+    #dashboard-action-area .action-block--activity { border-left: 4px solid #9333ea; }
+    #dashboard-action-area .action-task-list,
+    #dashboard-action-area .action-activity-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 1.45;
+    }
+    #dashboard-action-area .action-task {
+      padding: 6px 0;
+      border-bottom: 1px dashed #e2e8f0;
+    }
+    #dashboard-action-area .action-task:last-child { border-bottom: none; }
+    #dashboard-action-area .action-task--ok {
+      color: #15803d;
+      font-weight: 700;
+    }
+    #dashboard-action-area .action-task--high { color: #b91c1c; }
+    #dashboard-action-area .action-task--warn { color: #b45309; }
+    #dashboard-action-area .action-task--muted { color: #64748b; }
+    #dashboard-action-area .action-mini-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    #dashboard-action-area .action-mini-stat {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 8px 8px;
+      text-align: center;
+    }
+    #dashboard-action-area .action-mini-val {
+      font-size: 1.15rem;
+      font-weight: 800;
+      color: #2563eb;
+      line-height: 1.2;
+    }
+    #dashboard-action-area .action-mini-lbl {
+      font-size: 10px;
+      font-weight: 700;
+      color: #64748b;
+      margin-top: 4px;
+    }
+    #dashboard-action-area .health-row {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 5px 0;
+      border-bottom: 1px dashed #f1f5f9;
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    #dashboard-action-area .health-row:last-child { border-bottom: none; }
+    #dashboard-action-area .health-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 800;
+    }
+    #dashboard-action-area .health-badge--ok { background: #dcfce7; color: #15803d; }
+    #dashboard-action-area .health-badge--warn { background: #fef9c3; color: #a16207; }
+    #dashboard-action-area .health-badge--bad { background: #fee2e2; color: #b91c1c; }
+    #dashboard-action-area .ocr-rank-item {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 0;
+      color: #334155;
+    }
+    #dashboard-action-area .action-activity-item {
+      padding: 6px 0;
+      border-bottom: 1px dashed #e2e8f0;
+      color: #334155;
+    }
+    #dashboard-action-area .action-activity-item:last-child { border-bottom: none; }
+    #dashboard-action-area .action-activity-item--error { color: #b91c1c; }
+    #dashboard-action-area .action-activity-time {
+      color: #64748b;
+      font-size: 11px;
+      margin-right: 6px;
+    }
     .monitor-section h2 {
       color: #0f172a;
     }
@@ -290,6 +411,140 @@
       width: 100%;
       max-width: 320px;
     }
+    .admin-accordion-wrap { margin-bottom: 20px; }
+    .admin-accordion {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      margin-bottom: 10px;
+      overflow: hidden;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    .admin-accordion summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 14px 16px;
+      font-weight: 700;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: #f8fafc;
+    }
+    .admin-accordion summary::-webkit-details-marker { display: none; }
+    .admin-accordion summary .acc-val {
+      font-size: 1.25rem;
+      color: #2563eb;
+      font-weight: 800;
+    }
+    .admin-accordion__body {
+      padding: 14px 16px 16px;
+      border-top: 1px solid #e2e8f0;
+    }
+    .filter-group { margin-bottom: 12px; }
+    .filter-group label {
+      display: block;
+      font-size: 12px;
+      font-weight: 700;
+      color: #64748b;
+      margin-bottom: 6px;
+    }
+    .filter-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .filter-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 8px;
+      border: 1px solid #cbd5e1;
+      border-radius: 999px;
+      background: #fff;
+      cursor: pointer;
+    }
+    .filter-chip input { accent-color: #2563eb; }
+    .filter-row select {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    .filter-result {
+      margin-top: 10px;
+      font-size: 13px;
+      font-weight: 700;
+      color: #334155;
+    }
+    .error-report-block { margin-top: 20px; }
+    .error-report-block h3 {
+      margin: 0 0 10px;
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .badge-tag {
+      display: inline-block;
+      background: #dbeafe;
+      color: #1d4ed8;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 999px;
+      margin: 2px 4px 2px 0;
+    }
+    .search-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    .search-row input {
+      flex: 1;
+      min-width: 180px;
+      padding: 10px 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+    .search-result-card {
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 10px;
+      background: #fafafa;
+    }
+    .search-result-card__meta {
+      font-size: 12px;
+      color: #64748b;
+      margin-bottom: 8px;
+      font-weight: 600;
+    }
+    .search-result-card ul {
+      margin: 6px 0 0;
+      padding-left: 18px;
+      font-size: 13px;
+    }
+    .admin-memo-area textarea {
+      width: 100%;
+      min-height: 120px;
+      box-sizing: border-box;
+      padding: 10px 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      font-size: 14px;
+      font-family: inherit;
+      resize: vertical;
+    }
+    .admin-memo-meta {
+      font-size: 11px;
+      color: #94a3b8;
+      margin-top: 6px;
+    }
   </style>
 </head>
 <body class="ring-admin-app">
@@ -312,17 +567,65 @@
 
     <div id="dashMain" style="display:none;">
     <p id="dashLoadError" class="muted" style="display:none; color:#dc2626; font-weight:700;"></p>
+
+    <!-- 行動喚起型ダッシュボード Phase 1: 既存セクションの上に新規追加 -->
+    <section id="dashboard-action-area" class="section" aria-label="行動喚起ダッシュボード">
+      <h2 class="dashboard-action-title">📋 今日の概要（Action Dashboard）</h2>
+      <div class="action-area-grid">
+        <div class="action-block action-block--tasks" id="actionRequiredBlock">
+          <h3>🎯 今日やること（Action Required）</h3>
+          <ul id="actionRequiredList" class="action-task-list">
+            <li class="action-task action-task--muted">読込中…</li>
+          </ul>
+        </div>
+        <div class="action-block action-block--today" id="todayStatusBlock">
+          <h3>📅 今日の状況（Today's Status）</h3>
+          <div id="todayStatusGrid" class="action-mini-grid"></div>
+        </div>
+        <div class="action-block action-block--health" id="systemHealthBlock">
+          <h3>📊 システム健康診断（System Health）</h3>
+          <div id="systemHealthContent"></div>
+        </div>
+        <div class="action-block action-block--activity" id="activityStreamBlock">
+          <h3>👀 最近の動き（Activity Stream）</h3>
+          <ul id="activityStreamList" class="action-activity-list">
+            <li class="action-task action-task--muted">読込中…</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
     <div class="section monitor-section">
       <h2>即時監視（本日・JST）</h2>
       <p class="monitor-sub">System_Logs から当日分を集計。事故検知を最優先に表示します。</p>
       <div class="admin-grid" id="monitorGrid"></div>
       <div id="monitorBreakdown"></div>
       <div class="monitor-recent" id="monitorRecent"></div>
+      <div class="error-report-block">
+        <h3>① エラー集計（サマリー）</h3>
+        <div id="errorActionRanking"></div>
+      </div>
+      <div class="error-report-block">
+        <h3>② エラー詳細リスト</h3>
+        <div id="errorDetailTable"></div>
+      </div>
     </div>
-    <div class="admin-grid" id="statGrid"></div>
+
+    <div class="admin-accordion-wrap" id="statAccordion"></div>
 
     <div class="section">
-      <h2>お知らせ一斉メール配信</h2>
+      <h2>整備履歴ビッグデータ検索</h2>
+      <p class="muted" style="margin-top:0;">VIN・作業内容JSON・部品JSON を横断検索（最大50件）</p>
+      <div class="search-row">
+        <input type="text" id="historySearchInput" placeholder="VIN、部品名、作業名など" autocomplete="off">
+        <button type="button" class="btn-sm" id="historySearchBtn">検索</button>
+      </div>
+      <div id="historySearchResults"></div>
+    </div>
+
+    <div class="section">
+      <h2>連絡・コミュニケーション</h2>
+      <h3 style="font-size:14px;margin:16px 0 8px;">お知らせ一斉メール配信</h3>
       <p class="muted" style="margin-top:0;">登録メールアドレス（一般ユーザー: users_v1 N列 / 工場・事業者: shops L列）へ一斉送信します。誤送信防止のため、実行前に対象件数の確認を行います。</p>
       <div class="broadcast-field">
         <label for="broadcastTarget">配信対象</label>
@@ -343,6 +646,14 @@
       </div>
       <div class="broadcast-actions">
         <button type="button" class="btn-sm" id="broadcastSubmit">一斉配信を実行する</button>
+      </div>
+
+      <h3 style="font-size:14px;margin:24px 0 8px;">管理者間 共有メモ</h3>
+      <p class="muted" style="margin-top:0;">Script Properties に保存され、管理者全員で共有されます。</p>
+      <div class="admin-memo-area">
+        <textarea id="adminSharedMemo" placeholder="運用メモ、連絡事項など"></textarea>
+        <p class="admin-memo-meta" id="adminMemoUpdated"></p>
+        <button type="button" class="btn-sm secondary" id="adminMemoSaveBtn" style="margin-top:10px;">メモを保存</button>
       </div>
     </div>
 
@@ -368,11 +679,55 @@
       return RING_ADMIN_CONFIG_LABELS[k] || k;
     }
 
+    var __adminDashState = { dash: null };
+
+    function safeParseJsonArray_(str) {
+      try {
+        var v = JSON.parse(str || '[]');
+        return Array.isArray(v) ? v : [];
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function renderErrorReport(mon) {
+      mon = mon || {};
+      var rankEl = document.getElementById('errorActionRanking');
+      var detailEl = document.getElementById('errorDetailTable');
+      if (rankEl) {
+        var ranking = mon.errorActionRanking || [];
+        if (!ranking.length) {
+          rankEl.innerHTML = '<p class="muted">エラーログはありません</p>';
+        } else {
+          rankEl.innerHTML = '<table class="monitor-table"><tbody>' +
+            ranking.map(function (r, idx) {
+              return '<tr><th>' + (idx + 1) + '. ' + escHtml(r.action || '') + '</th><td>' +
+                escHtml(String(r.count != null ? r.count : 0)) + ' 件</td></tr>';
+            }).join('') + '</tbody></table>';
+        }
+      }
+      if (detailEl) {
+        var details = mon.errorDetails || [];
+        if (!details.length) {
+          detailEl.innerHTML = '<p class="muted">直近のエラー詳細はありません</p>';
+        } else {
+          detailEl.innerHTML = '<table class="monitor-table"><thead><tr>' +
+            '<th>日時</th><th>ユーザーID</th><th>アクション</th><th>内容</th></tr></thead><tbody>' +
+            details.map(function (d) {
+              var ts = d.timestamp ? String(d.timestamp).replace('T', ' ').slice(0, 19) : '—';
+              return '<tr><td>' + escHtml(ts) + '</td><td>' + escHtml(d.user_id || '—') +
+                '</td><td>' + escHtml(d.action || '') + '</td><td>' + escHtml(d.error_message || '') + '</td></tr>';
+            }).join('') + '</tbody></table>';
+        }
+      }
+    }
+
     function renderMonitoring(mon) {
       var g = document.getElementById('monitorGrid');
       if (!g) return;
       if (!mon) {
         g.innerHTML = '<div class="stat-card"><div class="stat-val">—</div><div class="stat-lbl">データなし</div></div>';
+        try { renderErrorReport(null); } catch (eErr0) { console.error('[admin] renderErrorReport', eErr0); }
         return;
       }
       var items = [
@@ -418,6 +773,11 @@
           }).join('');
         }
       }
+      try {
+        renderErrorReport(mon);
+      } catch (eErr) {
+        console.error('[admin] renderErrorReport', eErr);
+      }
     }
 
     function escHtml(s) {
@@ -427,8 +787,384 @@
       });
     }
 
+    /** 行動喚起型 UI: GAS応答速度バッジの色分け（ms） */
+    function actionHealthBadgeClassForMs_(ms) {
+      if (ms == null || isNaN(ms)) return 'health-badge--warn';
+      if (ms <= 2000) return 'health-badge--ok';
+      if (ms <= 5000) return 'health-badge--warn';
+      return 'health-badge--bad';
+    }
+
+    /** 行動喚起型 UI: ① 今日やること（Action Required）を描画 */
+    function renderActionRequired_(data) {
+      var listEl = document.getElementById('actionRequiredList');
+      if (!listEl) return;
+      var ar = (data && data.actionRequired) || {};
+      var tasks = ar.tasks || [];
+      if (ar.allClear || !tasks.length) {
+        listEl.innerHTML = '<li class="action-task action-task--ok">🟢 現在対応すべき問題はありません</li>';
+        return;
+      }
+      listEl.innerHTML = tasks.map(function (t) {
+        var sev = t.severity === 'high' ? 'high' : 'warn';
+        var icon = sev === 'high' ? '🔴' : '🟡';
+        var cls = sev === 'high' ? 'action-task--high' : 'action-task--warn';
+        return '<li class="action-task ' + cls + '">' + icon + ' □ ' + escHtml(t.label || '') +
+          '（' + escHtml(String(t.count != null ? t.count : 0)) + '件）</li>';
+      }).join('');
+    }
+
+    /** 行動喚起型 UI: ② 今日の状況（Today's Status）を描画 */
+    function renderTodayStatus_(data) {
+      var grid = document.getElementById('todayStatusGrid');
+      if (!grid) return;
+      var ts = (data && data.todayStatus) || {};
+      var items = [
+        ['本日の登録台数', ts.registrationsToday],
+        ['本日OCR回数', ts.ocrRunsToday],
+        ['本日の新規ユーザー', ts.newUsersToday],
+        ['本日工場ログイン', ts.factoryLoginsToday],
+        ['🤖 Gemini実行回数', ts.geminiRunsToday]
+      ];
+      grid.innerHTML = items.map(function (x) {
+        return '<div class="action-mini-stat"><div class="action-mini-val">' +
+          escHtml(String(x[1] != null ? x[1] : 0)) +
+          '</div><div class="action-mini-lbl">' + escHtml(x[0]) + '</div></div>';
+      }).join('');
+    }
+
+    /** 行動喚起型 UI: ③ システム健康診断（System Health）を描画 */
+    function renderSystemHealth_(data, clientMs) {
+      var el = document.getElementById('systemHealthContent');
+      if (!el) return;
+      var h = (data && data.systemHealth) || {};
+      var statusOk = String(h.status || 'normal') === 'normal';
+      var statusBadge = statusOk
+        ? '<span class="health-badge health-badge--ok">🟢 正常</span>'
+        : '<span class="health-badge health-badge--bad">🔴 停止</span>';
+      var msBadgeCls = actionHealthBadgeClassForMs_(clientMs);
+      var msLabel = clientMs != null && !isNaN(clientMs) ? clientMs + ' ms' : '—';
+      var ranking = h.ocrSuccessRanking || [];
+      var rankHtml = ranking.length
+        ? ranking.map(function (r, idx) {
+          var pctStr = r.pct != null ? r.pct + '%' : '—';
+          var icon = idx === 0 && r.pct != null && r.pct >= 80 ? '🟢' :
+            (r.pct != null && r.pct < 60 ? '🔴' : '🟡');
+          return '<div class="ocr-rank-item">' + icon + ' ' + escHtml(r.label || '') +
+            '：' + escHtml(pctStr) + '（' + escHtml(String(r.success || 0)) + '/' +
+            escHtml(String(r.total || 0)) + '）</div>';
+        }).join('')
+        : '<div class="ocr-rank-item muted">OCRデータなし</div>';
+
+      el.innerHTML =
+        '<div class="health-row"><span>GAS応答速度（目安）</span><span class="health-badge ' +
+        msBadgeCls + '">' + escHtml(msLabel) + '</span></div>' +
+        '<div class="health-row"><span>システム稼働</span>' + statusBadge + '</div>' +
+        '<div class="health-row"><span>📦 History_Events 行数</span><span>' +
+        escHtml(String(h.historyEventsRows != null ? h.historyEventsRows : 0)) + '</span></div>' +
+        '<div class="health-row"><span>📦 Users 行数</span><span>' +
+        escHtml(String(h.usersRows != null ? h.usersRows : 0)) + '</span></div>' +
+        '<div style="margin-top:8px;font-size:11px;font-weight:800;color:#475569;">📝 OCR成功率ランキング</div>' +
+        rankHtml;
+    }
+
+    /** 行動喚起型 UI: ④ 最近の動き（Activity Stream）を描画 */
+    function renderActivityStream_(data) {
+      var listEl = document.getElementById('activityStreamList');
+      if (!listEl) return;
+      var items = (data && data.activityStream) || [];
+      if (!items.length) {
+        listEl.innerHTML = '<li class="action-task action-task--muted">直近の履歴はありません</li>';
+        return;
+      }
+      listEl.innerHTML = items.map(function (it) {
+        var errCls = it.kind === 'error' ? ' action-activity-item--error' : '';
+        return '<li class="action-activity-item' + errCls + '"><span class="action-activity-time">' +
+          escHtml(it.timeLabel || '--:--') + '</span>' + escHtml(it.label || '') + '</li>';
+      }).join('');
+    }
+
+    /** 行動喚起型ダッシュボード: API レスポンスを4ブロックに描画 */
+    function renderActionDashboard(data, clientMs) {
+      try { renderActionRequired_(data); } catch (e1) { console.error('[admin] renderActionRequired_', e1); }
+      try { renderTodayStatus_(data); } catch (e2) { console.error('[admin] renderTodayStatus_', e2); }
+      try { renderSystemHealth_(data, clientMs); } catch (e3) { console.error('[admin] renderSystemHealth_', e3); }
+      try { renderActivityStream_(data); } catch (e4) { console.error('[admin] renderActivityStream_', e4); }
+    }
+
+    /** 行動喚起型ダッシュボード: get_action_dashboard_data を取得して描画 */
+    async function loadActionDashboardData() {
+      var area = document.getElementById('dashboard-action-area');
+      if (!area) return;
+      try {
+        var t0 = Date.now();
+        var data = await sendToGAS_Safe('get_action_dashboard_data', {});
+        var clientMs = Date.now() - t0;
+        if (!data || data.success === false) {
+          throw new Error((data && data.error) || 'action dashboard failed');
+        }
+        renderActionDashboard(data, clientMs);
+      } catch (e) {
+        console.error('[admin] loadActionDashboardData', e);
+        try {
+          var list = document.getElementById('actionRequiredList');
+          if (list) {
+            list.innerHTML = '<li class="action-task action-task--muted">🟡 行動喚起データの取得に失敗しました</li>';
+          }
+          var actList = document.getElementById('activityStreamList');
+          if (actList) {
+            actList.innerHTML = '<li class="action-task action-task--muted">—</li>';
+          }
+        } catch (eUi) { console.error('[admin] action dashboard fallback UI', eUi); }
+      }
+    }
+
+    function buildFilterChips_(name, options, selected) {
+      selected = selected || [];
+      return (options || []).map(function (opt) {
+        var checked = selected.indexOf(opt) >= 0 ? ' checked' : '';
+        return '<label class="filter-chip"><input type="checkbox" name="' + escHtml(name) +
+          '" value="' + escHtml(opt) + '"' + checked + '> ' + escHtml(opt) + '</label>';
+      }).join('');
+    }
+
+    function getCheckedValues_(container, name) {
+      if (!container) return [];
+      var out = [];
+      container.querySelectorAll('input[name="' + name + '"]:checked').forEach(function (cb) {
+        out.push(cb.value);
+      });
+      return out;
+    }
+
+    function vehicleMatchesYearFilter_(firstReg, maxAgeYears) {
+      if (!maxAgeYears || maxAgeYears === 'all') return true;
+      var yrs = parseInt(maxAgeYears, 10);
+      if (isNaN(yrs)) return true;
+      var fr = String(firstReg || '').trim();
+      if (!fr) return false;
+      var y = parseInt(fr.slice(0, 4), 10);
+      if (isNaN(y)) return false;
+      var cutoff = new Date().getFullYear() - yrs;
+      return y >= cutoff;
+    }
+
+    function applyStatsFilters_() {
+      var dash = __adminDashState.dash;
+      if (!dash) return;
+      var sum = dash.summary || {};
+      var filters = dash.filters || {};
+      var opts = dash.filterOptions || {};
+      var wrap = document.getElementById('statAccordion');
+      if (!wrap) return;
+
+      var vName = wrap.querySelector('#filterVehicleName');
+      var vYear = wrap.querySelector('#filterVehicleYear');
+      var vNameVal = vName ? vName.value : 'all';
+      var vYearVal = vYear ? vYear.value : 'all';
+      var vehicles = (filters.vehicles || []).filter(function (v) {
+        if (vNameVal !== 'all' && v.vehicleName !== vNameVal) return false;
+        return vehicleMatchesYearFilter_(v.firstRegistration, vYearVal);
+      });
+
+      var fRegions = getCheckedValues_(wrap, 'factoryRegion');
+      var fBureaus = getCheckedValues_(wrap, 'factoryBureau');
+      var fTypes = getCheckedValues_(wrap, 'factoryType');
+      var factories = (filters.factories || []).filter(function (f) {
+        if (fRegions.length && fRegions.indexOf(f.region) < 0) return false;
+        if (fBureaus.length && fBureaus.indexOf(f.transportBureau) < 0) return false;
+        if (fTypes.length && fTypes.indexOf(f.factoryType) < 0) return false;
+        return true;
+      });
+
+      var dRegions = getCheckedValues_(wrap, 'dealerRegion');
+      var dInd = getCheckedValues_(wrap, 'dealerIndustry');
+      var dealers = (filters.dealers || []).filter(function (d) {
+        if (dRegions.length && dRegions.indexOf(d.region) < 0) return false;
+        if (dInd.length && dInd.indexOf(d.industry) < 0) return false;
+        return true;
+      });
+
+      var elUser = wrap.querySelector('#accUserCount');
+      var elVehicle = wrap.querySelector('#accVehicleCount');
+      var elFactory = wrap.querySelector('#accFactoryCount');
+      var elDealer = wrap.querySelector('#accDealerCount');
+      if (elUser) elUser.textContent = String(sum.userCount != null ? sum.userCount : 0);
+      if (elVehicle) elVehicle.textContent = String(vehicles.length);
+      if (elFactory) elFactory.textContent = String(factories.length);
+      if (elDealer) elDealer.textContent = String(dealers.length);
+
+      var resUser = wrap.querySelector('#filterResultUser');
+      var resFactory = wrap.querySelector('#filterResultFactory');
+      var resDealer = wrap.querySelector('#filterResultDealer');
+      if (resUser) resUser.textContent = '該当車両: ' + vehicles.length + ' 台';
+      if (resFactory) resFactory.textContent = '該当工場: ' + factories.length + ' 件';
+      if (resDealer) resDealer.textContent = '該当事業者: ' + dealers.length + ' 件';
+    }
+
+    function renderStatsAccordion(dash) {
+      var el = document.getElementById('statAccordion');
+      if (!el || !dash) return;
+      __adminDashState.dash = dash;
+      var sum = dash.summary || {};
+      var opts = dash.filterOptions || {};
+
+      var vehicleNameOpts = '<option value="all">すべて</option>' +
+        (opts.vehicleNames || []).map(function (n) {
+          return '<option value="' + escHtml(n) + '">' + escHtml(n) + '</option>';
+        }).join('');
+      var yearOpts = '<option value="all">すべて</option>';
+      for (var y = 1; y <= 30; y++) {
+        yearOpts += '<option value="' + y + '">' + y + '年以内登録</option>';
+      }
+
+      el.innerHTML =
+        '<details class="admin-accordion" open>' +
+        '<summary><span>【ユーザー・車両】総ユーザー数</span><span class="acc-val" id="accUserCount">' +
+        escHtml(String(sum.userCount != null ? sum.userCount : 0)) + '</span></summary>' +
+        '<div class="admin-accordion__body">' +
+        '<p class="filter-result">総車両数（詳細）: <strong id="accVehicleCount">' +
+        escHtml(String(sum.vehicleCount != null ? sum.vehicleCount : 0)) + '</strong> 台</p>' +
+        '<div class="filter-row filter-group"><label for="filterVehicleName">車名</label>' +
+        '<select id="filterVehicleName">' + vehicleNameOpts + '</select></div>' +
+        '<div class="filter-row filter-group"><label for="filterVehicleYear">年式（登録から）</label>' +
+        '<select id="filterVehicleYear">' + yearOpts + '</select></div>' +
+        '<p class="filter-result" id="filterResultUser"></p></div></details>' +
+
+        '<details class="admin-accordion">' +
+        '<summary><span>【工場】工場総数</span><span class="acc-val" id="accFactoryCount">' +
+        escHtml(String(sum.shopFactoryCount != null ? sum.shopFactoryCount : 0)) + '</span></summary>' +
+        '<div class="admin-accordion__body">' +
+        '<div class="filter-group"><label>地域（複数選択）</label><div class="filter-chips" id="factoryRegionChips">' +
+        buildFilterChips_('factoryRegion', opts.regions || []) + '</div></div>' +
+        '<div class="filter-group"><label>陸運事務局（複数選択）</label><div class="filter-chips">' +
+        buildFilterChips_('factoryBureau', opts.transportBureaus || []) + '</div></div>' +
+        '<div class="filter-group"><label>指定 / 認証（複数選択）</label><div class="filter-chips">' +
+        buildFilterChips_('factoryType', opts.factoryTypes || ['指定', '認証']) + '</div></div>' +
+        '<p class="filter-result" id="filterResultFactory"></p></div></details>' +
+
+        '<details class="admin-accordion">' +
+        '<summary><span>【事業者・販売店】店舗総数</span><span class="acc-val" id="accDealerCount">' +
+        escHtml(String(sum.shopDealerCount != null ? sum.shopDealerCount : 0)) + '</span></summary>' +
+        '<div class="admin-accordion__body">' +
+        '<div class="filter-group"><label>住所（地域）登録別</label><div class="filter-chips">' +
+        buildFilterChips_('dealerRegion', opts.dealerRegions || opts.regions || []) + '</div></div>' +
+        '<div class="filter-group"><label>業種別</label><div class="filter-chips">' +
+        buildFilterChips_('dealerIndustry', opts.industries || ['（未分類）']) + '</div></div>' +
+        '<p class="filter-result" id="filterResultDealer"></p></div></details>' +
+
+        '<details class="admin-accordion">' +
+        '<summary><span>【システム】システム稼働状況</span><span class="acc-val">OK</span></summary>' +
+        '<div class="admin-accordion__body">' +
+        '<div class="admin-grid">' +
+        '<div class="stat-card"><div class="stat-val">' + escHtml(String(sum.adImpressions != null ? sum.adImpressions : '—')) +
+        '</div><div class="stat-lbl">広告表示（累計）</div></div>' +
+        '<div class="stat-card"><div class="stat-val">' + escHtml(String(sum.mailRemainingQuota != null ? sum.mailRemainingQuota : '—')) +
+        '</div><div class="stat-lbl">メール残枠</div></div>' +
+        '<div class="stat-card"><div class="stat-val">' + escHtml(String(sum.lineMessagesSent != null ? sum.lineMessagesSent : 0)) +
+        '</div><div class="stat-lbl">LINE送信</div></div>' +
+        '<div class="stat-card"><div class="stat-val">' + escHtml(String(sum.configKeys != null ? sum.configKeys : 0)) +
+        '</div><div class="stat-lbl">設定項目数</div></div>' +
+        '</div></div></details>';
+
+      el.querySelectorAll('select, input[type="checkbox"]').forEach(function (node) {
+        node.addEventListener('change', applyStatsFilters_);
+      });
+      applyStatsFilters_();
+    }
+
+    function renderHistorySearchResults(results) {
+      var el = document.getElementById('historySearchResults');
+      if (!el) return;
+      results = results || [];
+      if (!results.length) {
+        el.innerHTML = '<p class="muted">該当する整備履歴はありません</p>';
+        return;
+      }
+      el.innerHTML = results.map(function (r) {
+        var works = safeParseJsonArray_(r.works_json);
+        var parts = safeParseJsonArray_(r.parts_json);
+        var worksHtml = works.length
+          ? works.map(function (w) { return '<span class="badge-tag">' + escHtml(String(w)) + '</span>'; }).join('')
+          : '<span class="muted">（作業JSONなし）</span>';
+        var partsHtml = '';
+        if (parts.length) {
+          partsHtml = '<ul>' + parts.map(function (p) {
+            var label = p.n || p.name || JSON.stringify(p);
+            if (p.s) label += '（' + p.s + '）';
+            if (p.q) label += ' ' + p.q;
+            return '<li><span class="badge-tag">' + escHtml(label) + '</span></li>';
+          }).join('') + '</ul>';
+        } else {
+          partsHtml = '<span class="muted">（部品JSONなし）</span>';
+        }
+        return '<div class="search-result-card">' +
+          '<div class="search-result-card__meta">' + escHtml(r.date || '') + ' · VIN: ' + escHtml(r.vin || '') +
+          ' · ' + escHtml(r.shopName || '') + (r.document_type ? ' · ' + escHtml(r.document_type) : '') + '</div>' +
+          '<div><strong>作業:</strong> ' + worksHtml + '</div>' +
+          '<div style="margin-top:8px;"><strong>部品:</strong> ' + partsHtml + '</div></div>';
+      }).join('');
+    }
+
+    async function runHistorySearch() {
+      var input = document.getElementById('historySearchInput');
+      var q = input ? String(input.value || '').trim() : '';
+      if (!q) {
+        if (typeof showToast === 'function') showToast('info', '検索キーワードを入力してください');
+        return;
+      }
+      try {
+        if (typeof showLoading === 'function') showLoading('検索中', '');
+        var res = await sendToGAS_Safe('search_history_events', { query: q });
+        if (typeof hideLoading === 'function') hideLoading();
+        renderHistorySearchResults(res && res.results ? res.results : []);
+      } catch (e) {
+        if (typeof hideLoading === 'function') hideLoading();
+        console.error('[admin] runHistorySearch', e);
+        if (typeof showToast === 'function') showToast('error', e.message || '検索に失敗しました');
+        renderHistorySearchResults([]);
+      }
+    }
+
+    async function loadAdminMemo() {
+      try {
+        var res = await sendToGAS_Safe('get_admin_memo', {});
+        var ta = document.getElementById('adminSharedMemo');
+        var meta = document.getElementById('adminMemoUpdated');
+        if (ta) ta.value = res && res.memo != null ? String(res.memo) : '';
+        if (meta && res && res.updatedAt) {
+          meta.textContent = '最終更新: ' + String(res.updatedAt).replace('T', ' ').slice(0, 19);
+        }
+      } catch (e) {
+        console.error('[admin] loadAdminMemo', e);
+      }
+    }
+
+    async function saveAdminMemo() {
+      var ta = document.getElementById('adminSharedMemo');
+      if (!ta) return;
+      try {
+        if (typeof showLoading === 'function') showLoading('保存中', '');
+        var res = await sendToGAS_Safe('set_admin_memo', { memo: ta.value });
+        if (typeof hideLoading === 'function') hideLoading();
+        var meta = document.getElementById('adminMemoUpdated');
+        if (meta && res && res.updatedAt) {
+          meta.textContent = '最終更新: ' + String(res.updatedAt).replace('T', ' ').slice(0, 19);
+        }
+        if (typeof showToast === 'function') showToast('success', 'メモを保存しました');
+      } catch (e) {
+        if (typeof hideLoading === 'function') hideLoading();
+        if (typeof showToast === 'function') showToast('error', e.message || '保存に失敗しました');
+      }
+    }
+
     function renderStats(sum) {
-      var g = document.getElementById('statGrid');
+      /* 後方互換: アコーディオン未使用時 */
+      if (__adminDashState.dash) {
+        renderStatsAccordion(__adminDashState.dash);
+        return;
+      }
+      var g = document.getElementById('statAccordion');
       if (!g || !sum) return;
       var items = [
         ['ユーザー数', sum.userCount],
@@ -583,21 +1319,29 @@
         if (typeof hideLoading === 'function') hideLoading();
 
         try {
+          __adminDashState.dash = dash || null;
           renderMonitoring(dash && dash.monitoring);
         } catch (eMon) {
           console.error('[admin] renderMonitoring', eMon);
         }
 
         try {
-          renderStats(dash && dash.summary);
+          if (dash) renderStatsAccordion(dash);
+          else renderStats(null);
         } catch (eStats) {
-          console.error('[admin] renderStats', eStats);
+          console.error('[admin] renderStatsAccordion', eStats);
         }
 
         try {
           renderConfig(cfg && cfg.config);
         } catch (eCfg) {
           console.error('[admin] renderConfig', eCfg);
+        }
+
+        try {
+          await loadAdminMemo();
+        } catch (eMemo) {
+          console.error('[admin] loadAdminMemo', eMemo);
         }
       } catch (e) {
         if (typeof hideLoading === 'function') hideLoading();
@@ -642,9 +1386,24 @@
       if (mainEl) mainEl.style.display = 'block';
       var broadcastBtn = document.getElementById('broadcastSubmit');
       if (broadcastBtn) broadcastBtn.addEventListener('click', runBroadcast);
+      var searchBtn = document.getElementById('historySearchBtn');
+      if (searchBtn) searchBtn.addEventListener('click', runHistorySearch);
+      var memoBtn = document.getElementById('adminMemoSaveBtn');
+      if (memoBtn) memoBtn.addEventListener('click', saveAdminMemo);
+      var searchInput = document.getElementById('historySearchInput');
+      if (searchInput) {
+        searchInput.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter') runHistorySearch();
+        });
+      }
       if (typeof ringLogClientAccess === 'function') ringLogClientAccess('admin_dashboard');
 
       await loadAdminDashboardData();
+      try {
+        await loadActionDashboardData();
+      } catch (eAct) {
+        console.error('[admin] loadActionDashboardData outer', eAct);
+      }
     });
   </script>
 </body>
