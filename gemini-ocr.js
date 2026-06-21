@@ -407,4 +407,5 @@
     global.ringGeminiOcrShaken = ringGeminiOcrShaken;
     global.ringGeminiEmptyShakenResult = ringGeminiEmptyShakenResult_;
     global.ringGeminiApplyToCarAddForm = ringGeminiApplyToCarAddForm;
+    global.ringOcrCompressImageToBase64_ = ringOcrCompressImageToBase64_;
 }(typeof window !== 'undefined' ? window : globalThis));

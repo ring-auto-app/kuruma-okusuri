@@ -1022,6 +1022,22 @@ function ringDemoGasStubResponse_(actionType) {
             }
         };
     }
+    if (actionType === 'ocr_invoice') {
+        return {
+            success: true,
+            demo: true,
+            ocrResult: {
+                vin: 'ZVW50-5012847',
+                documentType: 'invoice',
+                mileage: '124000',
+                works: ['エンジンオイル交換', 'オイルフィルター交換'],
+                parts: [
+                    { n: 'エンジンオイル', s: '5W-30', q: '4.5L' },
+                    { n: 'オイルフィルター', s: '', q: '1個' }
+                ]
+            }
+        };
+    }
     if (actionType === 'update_vehicle') return { success: true, demo: true, vin: '' };
     if (actionType === 'update_daily_inspection') return { success: true, demo: true, log_id: '' };
     return { success: true, demo: true };
@@ -1994,14 +2010,15 @@ async function sendToGAS_Safe(actionType, data, opts) {
             ringHandleAuthExpired_(ringGetActiveMode(), actionType);
         }
         if (actionType !== 'system_log') {
-            if ((actionType === 'ocr_vin' || actionType === 'ocr_vin_search' || actionType === 'ocr_gemini_shaken') && /AUTH_/i.test(errMsg)) {
+            if ((actionType === 'ocr_vin' || actionType === 'ocr_vin_search' || actionType === 'ocr_gemini_shaken' || actionType === 'ocr_invoice') && /AUTH_/i.test(errMsg)) {
                 ringLogSystemEvent('AUTH_ERROR', {
                     error_message: errMsg,
                     payload: { gasAction: actionType }
                 });
             } else if (!(actionType === 'ocr_vin' && /VIN_NOT_FOUND|NO_FIELDS|OCR_DISABLED/i.test(errMsg))
                 && !(actionType === 'ocr_vin_search' && /VIN_NOT_FOUND|OCR_NOT_CONFIGURED|IMAGE_REQUIRED/i.test(errMsg))
-                && !(actionType === 'ocr_gemini_shaken' && /GEMINI_|IMAGE_REQUIRED|PROMPT_REQUIRED/i.test(errMsg))) {
+                && !(actionType === 'ocr_gemini_shaken' && /GEMINI_|IMAGE_REQUIRED|PROMPT_REQUIRED/i.test(errMsg))
+                && !(actionType === 'ocr_invoice' && /GEMINI_|IMAGE_REQUIRED|GAS_OCR_FAIL/i.test(errMsg))) {
                 ringLogSystemEvent('GAS_ERROR', {
                     error_message: errMsg,
                     payload: { gasAction: actionType }
@@ -3604,6 +3621,176 @@ function ringApplyOcrPayloadNonEmpty_(payload, applyFn) {
         if (v != null && String(v).trim() !== '') picked[k] = v;
     });
     if (typeof applyFn === 'function') applyFn(picked);
+}
+
+/**
+ * 整備明細 OCR 実行（スロット UI から base64 配列を受け取る）
+ * @param {{ imagesBase64: string[], imageCount?: number }} opts
+ * @returns {Promise<object|null>}
+ */
+async function ringHandleInvoiceOcrScan(opts) {
+    opts = opts || {};
+    var images = opts.imagesBase64 || [];
+    if (!images.length) return null;
+
+    if (ringIsOcrDemoMode_()) {
+        await delay(900);
+        if (typeof ringInvoiceNormalizeResult_ === 'function') {
+            return ringInvoiceNormalizeResult_({
+                vin: 'ZVW50-5012847',
+                documentType: 'invoice',
+                mileage: '124000',
+                works: ['エンジンオイル交換', 'オイルフィルター交換'],
+                parts: [
+                    { n: 'エンジンオイル', s: '5W-30', q: '4.5L' },
+                    { n: 'オイルフィルター', s: '', q: '1個' }
+                ]
+            });
+        }
+        return {
+            vin: 'ZVW50-5012847',
+            documentType: 'invoice',
+            mileage: '124000',
+            works: ['エンジンオイル交換', 'オイルフィルター交換'],
+            parts: [
+                { n: 'エンジンオイル', s: '5W-30', q: '4.5L' },
+                { n: 'オイルフィルター', s: '', q: '1個' }
+            ]
+        };
+    }
+
+    showOcrAnalyzingOverlay({
+        title: '明細書を解析中',
+        messages: ['AIが作業内容・部品を読み取っています…']
+    });
+    try {
+        if (typeof ringInvoiceOcrViaGas_ !== 'function') throw new Error('INVOICE_OCR_UNAVAILABLE');
+        return await ringInvoiceOcrViaGas_(images);
+    } finally {
+        hideOcrAnalyzingOverlay();
+    }
+}
+
+function ringInvoiceDocTypeLabel_(t) {
+    var map = { estimate: '見積書', invoice: '請求書', delivery: '納品書', unknown: '不明' };
+    return map[String(t || '').toLowerCase()] || String(t || '不明');
+}
+
+/**
+ * 整備明細 OCR 結果の確認モーダル
+ * @param {object} ocrResult
+ * @param {{ onApply?: function, onCancel?: function }} opts
+ */
+function showInvoiceOcrReviewModal(ocrResult, opts) {
+    opts = opts || {};
+    var r = typeof ringInvoiceNormalizeResult_ === 'function'
+        ? ringInvoiceNormalizeResult_(ocrResult)
+        : (ocrResult || {});
+    var id = 'ring-invoice-ocr-review';
+    var old = document.getElementById(id);
+    if (old) old.remove();
+
+    var worksText = typeof ringFormatInvoiceOcrWorksText_ === 'function'
+        ? ringFormatInvoiceOcrWorksText_(r.works)
+        : (r.works || []).join('\n');
+    var partsText = typeof ringFormatInvoiceOcrPartsText_ === 'function'
+        ? ringFormatInvoiceOcrPartsText_(r.parts)
+        : '';
+
+    function fieldRow(key, label, type, val) {
+        var inpType = type === 'number' ? 'number' : 'text';
+        var tag = type === 'textarea'
+            ? ('<textarea class="ring-ocr-review__input" data-key="' + key + '" rows="4">' + escapeHtml(val || '') + '</textarea>')
+            : ('<input class="ring-ocr-review__input" data-key="' + key + '" type="' + inpType + '" value="' + escapeHtml(val || '') + '">');
+        return '<div class="ring-ocr-review__row"><label class="ring-ocr-review__lbl">' + escapeHtml(label) + '</label>' + tag + '</div>';
+    }
+
+    var body = '';
+    body += fieldRow('vin', '車台番号 (VIN)', 'text', r.vin || '');
+    body += fieldRow('mileage', '走行距離 (km)', 'number', r.mileage || '');
+    body += '<div class="ring-ocr-review__row"><label class="ring-ocr-review__lbl">書類種別</label>' +
+        '<div class="ring-ocr-review__input" style="background:#f8fafc;border:none;padding:8px 0;">' +
+        escapeHtml(ringInvoiceDocTypeLabel_(r.documentType)) + ' (' + escapeHtml(r.documentType || 'unknown') + ')' +
+        '</div></div>';
+    body += fieldRow('memo', '作業内容', 'textarea', worksText);
+    body += fieldRow('parts', '使用部品', 'textarea', partsText);
+
+    var html = '<div class="ring-save-confirm" id="' + id + '">' +
+        '<div class="ring-save-confirm__backdrop"></div>' +
+        '<div class="ring-save-confirm__card ring-ocr-review__card">' +
+        '<div class="ring-save-confirm__title">OCR確認</div>' +
+        '<p class="ring-save-confirm__lead">読み取り結果を確認・修正してから反映してください。整備区分は保存前に手動で選択してください。</p>' +
+        '<div class="ring-save-confirm__body ring-ocr-review__body">' + body + '</div>' +
+        '<div class="ring-save-confirm__actions">' +
+        '<button type="button" class="ring-save-confirm__btn ring-save-confirm__btn--secondary" data-act="cancel">キャンセル</button>' +
+        '<button type="button" class="ring-save-confirm__btn ring-save-confirm__btn--primary" data-act="apply">内容を確認して反映</button>' +
+        '</div></div></div>';
+    document.body.insertAdjacentHTML('beforeend', html);
+
+    var el = document.getElementById(id);
+    var card = el.querySelector('.ring-save-confirm__card');
+    function syncCardMaxHeight() {
+        if (!card) return;
+        var vv = window.visualViewport;
+        var h = vv ? vv.height : window.innerHeight;
+        card.style.maxHeight = Math.max(160, Math.min(h * 0.85, h - 48)) + 'px';
+    }
+    var detachVv = ringAttachVisualViewportCard(card, syncCardMaxHeight);
+
+    function close() {
+        detachVv();
+        if (el && el.parentNode) el.remove();
+    }
+
+    function collectPayload() {
+        var out = {
+            documentType: r.documentType,
+            works: r.works.slice(),
+            parts: r.parts.map(function (p) { return { n: p.n, s: p.s, q: p.q }; })
+        };
+        el.querySelectorAll('.ring-ocr-review__input').forEach(function (inp) {
+            var k = inp.getAttribute('data-key');
+            if (!k) return;
+            if (k === 'vin') out.vin = inp.value.trim().toUpperCase();
+            else if (k === 'mileage') out.mileage = inp.value.trim().replace(/[^\d]/g, '');
+            else if (k === 'memo') {
+                var lines = inp.value.split(/[\n\r]+/).filter(function (l) { return l.trim(); });
+                out.works = lines.map(function (l) {
+                    return l.replace(/^[\s・\-*]+/, '').trim();
+                }).filter(function (l) { return l && l !== '【作業】'; });
+            } else if (k === 'parts') {
+                var plines = inp.value.split(/[\n\r]+/).filter(function (l) { return l.trim(); });
+                out.parts = plines.map(function (l) {
+                    var t = l.replace(/^[\s・\-*]+/, '').trim();
+                    if (!t || t === '【部品】') return null;
+                    var m = t.match(/^(.+?)（([^）]+)）(?:\s+(.+))?$/);
+                    if (m) return { n: m[1].trim(), s: m[2].trim(), q: (m[3] || '').trim() };
+                    var sp = t.lastIndexOf(' ');
+                    if (sp > 0) return { n: t.slice(0, sp).trim(), s: '', q: t.slice(sp + 1).trim() };
+                    return { n: t, s: '', q: '' };
+                }).filter(Boolean);
+            }
+        });
+        return out;
+    }
+
+    el.querySelector('[data-act="cancel"]').onclick = function () {
+        close();
+        if (typeof opts.onCancel === 'function') opts.onCancel();
+    };
+    el.querySelector('.ring-save-confirm__backdrop').onclick = function () {
+        close();
+        if (typeof opts.onCancel === 'function') opts.onCancel();
+    };
+    el.querySelector('[data-act="apply"]').onclick = function () {
+        var payload = collectPayload();
+        close();
+        if (typeof resetOcrFailureCount === 'function') resetOcrFailureCount();
+        if (typeof ringApplyInvoiceOcrToForm === 'function') {
+            ringApplyInvoiceOcrToForm('factory', payload);
+        }
+        if (typeof opts.onApply === 'function') opts.onApply(payload);
+    };
 }
 
 function ringGetPreSaveLeadText() {

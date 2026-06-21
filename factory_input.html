@@ -15,6 +15,8 @@
   <link rel="stylesheet" href="common.css">
   <script src="app.js?v=20260528-v26"></script>
   <script src="theme.js"></script>
+  <script src="gemini-ocr.js"></script>
+  <script src="gemini-invoice-ocr.js"></script>
   <script src="car-add-date.js"></script>
   
   <style>
@@ -30,6 +32,56 @@
       align-items: center; justify-content: center; color: var(--accent);
       font-weight: 900; font-size: 16px; cursor: pointer; margin-bottom: 34px; 
     }
+
+    .invoice-scan-section { margin-bottom: 34px; }
+    .invoice-scan-label {
+      font-size: 14px; font-weight: 900; color: var(--text);
+      margin: 0 0 10px 2px;
+    }
+    .invoice-slot-row {
+      display: flex; gap: 8px; overflow-x: auto;
+      -webkit-overflow-scrolling: touch; padding-bottom: 4px;
+      margin-bottom: 12px;
+    }
+    .invoice-slot {
+      flex: 0 0 68px; width: 68px; height: 88px;
+      border: 2px dashed var(--line); border-radius: 12px;
+      background: rgba(255, 255, 255, 0.6);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 4px; padding: 0; cursor: pointer; position: relative;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .invoice-slot:active { transform: scale(0.97); }
+    .invoice-slot--filled {
+      border-style: solid; border-color: var(--accent);
+      padding: 0; overflow: hidden;
+    }
+    .invoice-slot__num {
+      font-size: 18px; font-weight: 900; color: var(--muted); line-height: 1;
+    }
+    .invoice-slot__cam { font-size: 20px; line-height: 1; opacity: 0.7; }
+    .invoice-slot__thumb {
+      width: 100%; height: 100%; object-fit: cover; display: block;
+    }
+    .invoice-slot__remove {
+      position: absolute; top: 2px; right: 2px;
+      width: 28px; height: 28px; min-width: 28px; min-height: 28px;
+      border: none; border-radius: 50%; background: rgba(0,0,0,0.55);
+      color: #fff; font-size: 12px; line-height: 28px; text-align: center;
+      padding: 0; cursor: pointer; z-index: 2;
+    }
+    .invoice-scan-btn {
+      width: 100%; min-height: var(--tap-min);
+      border: none; border-radius: 14px;
+      background: var(--accent); color: #fff;
+      font-size: 16px; font-weight: 900; cursor: pointer;
+      margin-bottom: 10px; padding: 14px 16px;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .invoice-scan-btn:disabled {
+      background: #cbd5e1; color: #64748b; cursor: not-allowed;
+    }
+    .invoice-scan-btn:not(:disabled):active { transform: scale(0.98); }
 
     .doc-preview-area {
       display: none; margin-bottom: 34px; border: 2px solid var(--line); 
@@ -145,14 +197,13 @@
       <a href="factory_edit_list.html" class="edit-link">✏️ 過去7日間の入力履歴を編集する</a>
     </header>
     
-    <div class="scan-btn" onclick="document.getElementById('docInput').click()">📄 請求書・明細書をスキャン（最大5枚）</div>
-    <input type="file" id="docInput" accept="image/*" multiple hidden>
-
-    <div class="ring-ocr-thumb-strip" id="ocrThumbStrip"></div>
-    <button type="button" class="ring-ocr-load-btn" id="ocrLoadBtn" disabled>読み込む</button>
-
-    <div class="doc-preview-area" id="docPreviewArea" style="display:none;"><img id="docPreviewImg" src=""><span class="doc-preview-more" id="docPreviewMore"></span></div>
-    <div class="discard-notice" id="discardNotice" style="display:none;">※書類画像は保存されず破棄されます</div>
+    <section class="invoice-scan-section">
+      <p class="invoice-scan-label">書類を撮影（最大5枚）</p>
+      <div class="invoice-slot-row" id="invoiceSlotRow"></div>
+      <input type="file" id="invoiceSlotFileInput" accept="image/*" capture="environment" hidden>
+      <button type="button" id="invoiceScanBtn" class="invoice-scan-btn" disabled>スキャンして読取開始</button>
+      <div class="discard-notice" id="discardNotice">※書類画像は保存されず破棄されます</div>
+    </section>
 
     <div class="note-card">
       <div class="field">
@@ -360,51 +411,8 @@
       }
     });
 
-    const RING_OCR_FIELDS_FACTORY = [
-      { key: 'vin', label: '車体番号', getCurrent: () => document.getElementById('inVin').value },
-      { key: 'mileage', label: '走行距離(km)', getCurrent: () => document.getElementById('inMileage').value },
-      { key: 'parts', label: '交換部品', getCurrent: () => document.getElementById('inParts').value },
-      { key: 'shaken', label: '車検満了日', getCurrent: () => ringFactoryGetShakenValue_() },
-      { key: 'model', label: '型式', getCurrent: () => document.getElementById('inModel').value },
-      { key: 'engine', label: '原動機型式', getCurrent: () => document.getElementById('inEngine').value },
-      { key: 'class', label: '類別区分番号', getCurrent: () => document.getElementById('inClass').value },
-      { key: 'typeDesignation', label: '型式指定番号', getCurrent: () => document.getElementById('inTypeDesig').value },
-    ];
-
-    if (typeof ringInitOcrDocPicker === 'function') {
-      ringInitOcrDocPicker({
-        docInputId: 'docInput',
-        loadBtnId: 'ocrLoadBtn',
-        stripId: 'ocrThumbStrip',
-        discardNotice: 'discardNotice',
-        previewArea: 'docPreviewArea',
-        previewImg: 'docPreviewImg',
-        moreBadge: 'docPreviewMore',
-        scanOpts: {
-          mode: 'factory',
-          saveBtnId: 'saveLogBtn',
-          previewArea: document.getElementById('docPreviewArea'),
-          previewImg: document.getElementById('docPreviewImg'),
-          discardNotice: document.getElementById('discardNotice'),
-          moreBadge: document.getElementById('docPreviewMore'),
-          clearMemoryOpts: {
-            previewImg: document.getElementById('docPreviewImg'),
-            previewArea: document.getElementById('docPreviewArea'),
-            moreBadge: document.getElementById('docPreviewMore'),
-            discardNotice: document.getElementById('discardNotice')
-          },
-          onApply: function (r) {
-            ringApplyOcrToForm('factory', r, {
-              clearMemoryOpts: {
-                previewImg: document.getElementById('docPreviewImg'),
-                previewArea: document.getElementById('docPreviewArea'),
-                moreBadge: document.getElementById('docPreviewMore'),
-                discardNotice: document.getElementById('discardNotice')
-              }
-            });
-          }
-        }
-      });
+    if (typeof ringInitInvoiceSlotPicker === 'function') {
+      ringInitInvoiceSlotPicker({ saveBtnId: 'saveLogBtn' });
     }
 
     document.getElementById('partsPhotoInput').addEventListener('change', (e) => {
@@ -450,7 +458,10 @@
         factoryType: currentProfile.factoryType || '',
         staffId: currentProfile.staffId || currentProfile.loginId || '',
         staffName: currentProfile.displayName || currentProfile.realName || '',
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        documentType: (window.__ringInvoiceOcrMeta || {}).documentType || '',
+        works: (window.__ringInvoiceOcrMeta || {}).works || [],
+        partsItems: (window.__ringInvoiceOcrMeta || {}).partsItems || []
       };
 
       let logResult = { logId: null, localSaved: false, serverSaved: false };
