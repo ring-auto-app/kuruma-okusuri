@@ -1127,10 +1127,13 @@ function ringReportOcrAbort_(stage, err, opts) {
     if (userMsg == null) {
         if (/AUTH_REQUIRED|AUTH_EXPIRED/i.test(msg)) {
             userMsg = 'ログイン期限が切れました。再ログインしてください。';
-        } else if (/IMAGE_ENCODE|read_fail|IMAGE_REQUIRED/i.test(msg)) {
+        } else if (/IMAGE_ENCODE|read_fail|IMAGE_REQUIRED|NO_IMAGES/i.test(msg)) {
             userMsg = '画像の読み込みに失敗しました。別の写真をお試しください。';
+        } else if (typeof ringGasErrorToUserMessage_ === 'function') {
+            userMsg = ringGasErrorToUserMessage_(msg, opts.gasAction || '') ||
+                '読み取れませんでした。再撮影するか手入力で続行してください。';
         } else {
-            userMsg = '読み取りを開始できませんでした（' + msg + '）。手入力で続行できます。';
+            userMsg = '読み取れませんでした。再撮影するか手入力で続行してください。';
         }
     }
     if (opts.toast !== false && userMsg && typeof showToast === 'function') {
@@ -1141,6 +1144,9 @@ function ringReportOcrAbort_(stage, err, opts) {
         error_message: msg,
         payload: Object.assign({ stage: stage }, opts.payload || {})
     });
+    if (typeof hideOcrAnalyzingOverlay === 'function') {
+        try { hideOcrAnalyzingOverlay(); } catch (eOv) { /* ignore */ }
+    }
 }
 
 /**
@@ -1996,18 +2002,46 @@ function getMaintenanceLogsByVin(vin) {
 }
 
 /**
+ * GAS / ネットワークエラーをユーザー向け日本語メッセージへ変換
+ * @param {string} errMsg
+ * @param {string} [actionType]
+ * @returns {string|null} トースト表示すべきメッセージ（null=呼び出し元に委譲）
+ */
+function ringGasErrorToUserMessage_(errMsg, actionType) {
+    var msg = String(errMsg || '').trim();
+    if (/API_RATE_LIMIT|GEMINI_HTTP_429|HTTP_429|\b429\b|RATE_LIMIT/i.test(msg)) {
+        return 'サーバーが混み合っています。少し待ってから再度お試しください';
+    }
+    if (/REQUEST_TIMEOUT|タイムアウト|AbortError|TIMED_OUT/i.test(msg)) {
+        return 'サーバー応答がタイムアウトしました。電波の良い場所で再試行してください';
+    }
+    if (/NETWORK_ERROR|Failed to fetch|NetworkError|Network request failed|Load failed|net::ERR/i.test(msg)) {
+        return '通信に失敗しました。電波の良い場所で再試行してください';
+    }
+    if (/HTTP_5\d{2}|GEMINI_HTTP_5|502|503|504|500/i.test(msg)) {
+        return 'サーバーが混み合っています。少し待ってから再度お試しください';
+    }
+    if (/INVALID_JSON|HTTP_4\d{2}/i.test(msg) && actionType !== 'verify_session') {
+        return 'サーバーからの応答を処理できませんでした。しばらくしてから再度お試しください';
+    }
+    return null;
+}
+
+/**
  * GAS：fetch タイムアウト（H-01）
  */
 async function fetchJsonWithTimeout(url, options, timeoutMs) {
     const ms = timeoutMs != null ? timeoutMs : 20000;
     if (typeof AbortController === 'undefined') {
-        const res = await fetch(url, options || {});
-        if (!res.ok) throw new Error('HTTP_' + res.status);
-        const text = await res.text();
         try {
+            const res = await fetch(url, options || {});
+            if (!res.ok) throw new Error('HTTP_' + res.status);
+            const text = await res.text();
             return safeJsonParse(text, {});
         } catch (e) {
-            throw new Error('INVALID_JSON');
+            var m0 = String(e && e.message ? e.message : e || '');
+            if (/Failed to fetch|NetworkError|network/i.test(m0)) throw new Error('NETWORK_ERROR');
+            throw e;
         }
     }
     const controller = new AbortController();
@@ -2016,14 +2050,14 @@ async function fetchJsonWithTimeout(url, options, timeoutMs) {
         const res = await fetch(url, Object.assign({}, options || {}, { signal: controller.signal }));
         if (!res.ok) throw new Error('HTTP_' + res.status);
         const text = await res.text();
-        try {
-            return safeJsonParse(text, {});
-        } catch (e) {
-            throw new Error('INVALID_JSON');
-        }
+        return safeJsonParse(text, {});
     } catch (e) {
         if (e && e.name === 'AbortError') {
-            throw new Error('サーバー応答がタイムアウトしました。GASをデプロイ済みか・ネットワークを確認してください。');
+            throw new Error('REQUEST_TIMEOUT');
+        }
+        var m = String(e && e.message ? e.message : e || '');
+        if (/Failed to fetch|NetworkError|network/i.test(m)) {
+            throw new Error('NETWORK_ERROR');
         }
         throw e;
     } finally {
@@ -2071,7 +2105,8 @@ async function sendToGAS_Safe(actionType, data, opts) {
         if (actionType === 'ocr_vin_search' && json && (Array.isArray(json.candidates) || /VIN_NOT_FOUND|OCR_NOT_CONFIGURED|IMAGE_REQUIRED/i.test(String(json.error || '')))) {
             return json;
         }
-        throw new Error((json && json.error) || 'GAS保存に失敗しました');
+        var gasErr = (json && json.error) ? String(json.error) : 'GAS保存に失敗しました';
+        throw new Error(gasErr);
     }
     return json;
     } catch (err) {
@@ -2087,15 +2122,24 @@ async function sendToGAS_Safe(actionType, data, opts) {
                 });
             } else if (!(actionType === 'ocr_vin' && /VIN_NOT_FOUND|NO_FIELDS|OCR_DISABLED/i.test(errMsg))
                 && !(actionType === 'ocr_vin_search' && /VIN_NOT_FOUND|OCR_NOT_CONFIGURED|IMAGE_REQUIRED/i.test(errMsg))
-                && !(actionType === 'ocr_gemini_shaken' && /GEMINI_|IMAGE_REQUIRED|PROMPT_REQUIRED/i.test(errMsg))
-                && !(actionType === 'ocr_invoice' && /GEMINI_|IMAGE_REQUIRED|GAS_OCR_FAIL/i.test(errMsg))) {
+                && !(actionType === 'ocr_gemini_shaken' && /GEMINI_|IMAGE_REQUIRED|PROMPT_REQUIRED|NO_IMAGES/i.test(errMsg))
+                && !(actionType === 'ocr_invoice' && /GEMINI_|IMAGE_REQUIRED|NO_IMAGES|GAS_OCR_FAIL/i.test(errMsg))) {
                 ringLogSystemEvent('GAS_ERROR', {
                     error_message: errMsg,
                     payload: { gasAction: actionType }
                 });
             }
         }
+        var userMsg = ringGasErrorToUserMessage_(errMsg, actionType);
+        if (userMsg && !(opts && opts.silentToast) && typeof showToast === 'function') {
+            var toastType = /API_RATE_LIMIT|429|混み合|HTTP_5/i.test(errMsg) ? 'warning' : 'warning';
+            showToast(toastType, userMsg);
+        }
         throw err;
+    } finally {
+        if (typeof hideOcrAnalyzingOverlay === 'function') {
+            try { hideOcrAnalyzingOverlay(); } catch (eOv) { /* ignore */ }
+        }
     }
 }
 

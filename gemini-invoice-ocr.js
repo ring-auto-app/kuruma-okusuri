@@ -78,19 +78,49 @@
     }
 
     function ringInvoiceClearSlot_(index) {
-        var slot = ringInvoiceSlotState.slots[index];
-        if (!slot) return;
-        ringInvoiceRevokeThumb_(slot);
-        slot.base64 = null;
-        ringInvoiceRenderAllSlots_();
+        try {
+            var slot = ringInvoiceSlotState.slots[index];
+            if (!slot) return;
+            try { ringInvoiceRevokeThumb_(slot); } catch (e0) { /* ignore */ }
+            try { slot.base64 = null; } catch (e1) { /* ignore */ }
+            try { ringInvoiceRenderAllSlots_(); } catch (e2) { /* ignore */ }
+        } catch (e) { /* ignore */ }
+    }
+
+    /** OCR 完了後: プレビュー用 Object URL は残し Base64 のみ解放 */
+    function ringInvoiceClearBase64Only_() {
+        ringInvoiceSlotState.slots.forEach(function (s) {
+            try { if (s) s.base64 = null; } catch (e0) { /* ignore */ }
+        });
+        try { ringInvoiceUpdateScanBtnState_(); } catch (e1) { /* ignore */ }
     }
 
     function ringClearInvoiceSlots_() {
-        ringInvoiceSlotState.slots.forEach(function (s, i) {
-            ringInvoiceRevokeThumb_(s);
-            s.base64 = null;
+        ringInvoiceSlotState.slots.forEach(function (s) {
+            try { ringInvoiceRevokeThumb_(s); } catch (e0) { /* ignore */ }
+            try { if (s) s.base64 = null; } catch (e1) { /* ignore */ }
         });
-        ringInvoiceRenderAllSlots_();
+        try { ringInvoiceRenderAllSlots_(); } catch (e2) { /* ignore */ }
+    }
+
+    var ringInvoiceMemoryListenersInstalled_ = false;
+
+    function ringInvoiceInstallMemoryReleaseListeners_() {
+        if (ringInvoiceMemoryListenersInstalled_) return;
+        ringInvoiceMemoryListenersInstalled_ = true;
+
+        function releaseAllInvoiceMemory_() {
+            try { ringClearInvoiceSlots_(); } catch (e) { /* ignore */ }
+        }
+
+        window.addEventListener('pagehide', function () {
+            try { releaseAllInvoiceMemory_(); } catch (e) { /* ignore */ }
+        });
+
+        document.addEventListener('visibilitychange', function () {
+            if (document.visibilityState !== 'hidden') return;
+            try { releaseAllInvoiceMemory_(); } catch (e) { /* ignore */ }
+        });
     }
 
     function ringInvoiceNormalizeResult_(raw) {
@@ -213,7 +243,7 @@
         opts = opts || {};
         var images = ringInvoiceCollectBase64_();
         if (!images.length) {
-            if (typeof showToast === 'function') showToast('info', '撮影した画像がありません。');
+            if (typeof showToast === 'function') showToast('warning', '画像がセットされていません');
             return null;
         }
         if (typeof navigator !== 'undefined' && navigator.onLine === false) {
@@ -237,10 +267,12 @@
             }
             if (!result) return null;
 
+            var ocrApplied = false;
             if (typeof showInvoiceOcrReviewModal === 'function') {
                 await new Promise(function (resolve) {
                     showInvoiceOcrReviewModal(result, {
                         onApply: function (edited) {
+                            ocrApplied = true;
                             if (typeof opts.onApply === 'function') opts.onApply(edited);
                             resolve();
                         },
@@ -249,24 +281,35 @@
                 });
             } else if (typeof opts.onApply === 'function') {
                 opts.onApply(result);
+                ocrApplied = true;
             }
-            ringClearInvoiceSlots_();
-            if (typeof showToast === 'function') {
-                showToast('success', '読み取り内容を入力欄に反映しました。整備区分を選択してから登録してください。');
+            if (ocrApplied) {
+                try { ringInvoiceClearBase64Only_(); } catch (eClr) { /* ignore */ }
+            }
+            if (ocrApplied) {
+                if (typeof showToast === 'function') {
+                    showToast('success', '読み取り内容を入力欄に反映しました。整備区分を選択してから登録してください。');
+                }
             }
         } catch (e) {
             var msg = String(e && e.message ? e.message : e || '');
             if (/AUTH_/i.test(msg) && typeof ringHandleAuthExpired_ === 'function') {
                 ringHandleAuthExpired_(typeof ringGetActiveMode === 'function' ? ringGetActiveMode() : '', 'ocr_invoice');
             } else if (typeof showToast === 'function') {
-                showToast('warning', '読み取れませんでした。再撮影するか手入力で続行してください。');
+                var userMsg = (typeof ringGasErrorToUserMessage_ === 'function')
+                    ? ringGasErrorToUserMessage_(msg, 'ocr_invoice')
+                    : null;
+                showToast('warning', userMsg || '読み取れませんでした。再撮影するか手入力で続行してください。');
             }
             if (typeof ringLogSystemEvent === 'function') {
                 ringLogSystemEvent('OCR_FAIL', { error_message: msg, payload: { stage: 'ocr_invoice' } });
             }
         } finally {
             if (saveBtn) saveBtn.disabled = false;
-            ringInvoiceUpdateScanBtnState_();
+            try { ringInvoiceUpdateScanBtnState_(); } catch (eBtn) { /* ignore */ }
+            if (typeof hideOcrAnalyzingOverlay === 'function') {
+                try { hideOcrAnalyzingOverlay(); } catch (eOv) { /* ignore */ }
+            }
         }
         return result;
     }
@@ -330,10 +373,10 @@
                     var b64 = await compressFn(file);
                     if (!b64) throw new Error('IMAGE_ENCODE_EMPTY');
                     var slot = ringInvoiceSlotState.slots[idx];
-                    ringInvoiceRevokeThumb_(slot);
-                    slot.base64 = b64;
-                    slot.thumbUrl = URL.createObjectURL(file);
-                    ringInvoiceRenderAllSlots_();
+                    try { ringInvoiceRevokeThumb_(slot); } catch (e0) { /* ignore */ }
+                    try { slot.base64 = b64; } catch (e1) { /* ignore */ }
+                    try { slot.thumbUrl = URL.createObjectURL(file); } catch (e2) { slot.thumbUrl = null; }
+                    try { ringInvoiceRenderAllSlots_(); } catch (e3) { /* ignore */ }
                 } catch (err) {
                     ringInvoiceClearSlot_(idx);
                     if (typeof showToast === 'function') {
@@ -345,10 +388,15 @@
 
         if (scanBtn) {
             scanBtn.addEventListener('click', async function () {
-                if (ringInvoiceFilledCount_() === 0) return;
+                if (ringInvoiceFilledCount_() === 0) {
+                    if (typeof showToast === 'function') showToast('warning', '画像がセットされていません');
+                    return;
+                }
                 await ringRunInvoiceOcrFromSlots(opts);
             });
         }
+
+        try { ringInvoiceInstallMemoryReleaseListeners_(); } catch (e) { /* ignore */ }
     }
 
     global.RING_INVOICE_OCR_ACTION = RING_INVOICE_OCR_ACTION;
