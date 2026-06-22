@@ -32,6 +32,10 @@
       padding: 0; border-radius: 50%; -webkit-tap-highlight-color: transparent;
     }
     .pw-eye:active { background: rgba(0,0,0,0.06); }
+    #inShopType.shop-type-locked {
+      pointer-events: none;
+      background-color: #f0f0f0;
+    }
   </style>
 </head>
 <body>
@@ -191,6 +195,46 @@
   </div>
 
   <script>
+    var BIZ_FACTORY_BUSINESS_TYPE_ = '整備工場（分解整備を行う）';
+
+    function applyShopTypeOptionsByAccountKind_() {
+      var sel = document.getElementById('inShopType');
+      if (!sel) return;
+      var kind = getAccountKind_();
+
+      sel.classList.remove('shop-type-locked');
+      sel.style.pointerEvents = '';
+      sel.style.backgroundColor = '';
+
+      if (kind === 'factory') {
+        var keepOption = null;
+        var removeNodes = [];
+        var i;
+        for (i = 0; i < sel.children.length; i++) {
+          var node = sel.children[i];
+          if (node.tagName === 'OPTION' && node.value === BIZ_FACTORY_BUSINESS_TYPE_) {
+            keepOption = node;
+          } else {
+            removeNodes.push(node);
+          }
+        }
+        removeNodes.forEach(function (n) { n.remove(); });
+        if (keepOption) {
+          sel.value = BIZ_FACTORY_BUSINESS_TYPE_;
+        }
+        sel.classList.add('shop-type-locked');
+        sel.style.pointerEvents = 'none';
+        sel.style.backgroundColor = '#f0f0f0';
+      } else {
+        var opts = sel.querySelectorAll('option');
+        for (i = 0; i < opts.length; i++) {
+          if (opts[i].value === BIZ_FACTORY_BUSINESS_TYPE_) {
+            opts[i].remove();
+          }
+        }
+      }
+    }
+
     function getAccountKind_() {
       var el = document.getElementById('inAccountKind');
       var kind = el ? String(el.value || '').trim() : '';
@@ -221,6 +265,7 @@
       if (type === 'factory' || type === 'dealer') {
         if (kindEl) kindEl.value = type;
       }
+      applyShopTypeOptionsByAccountKind_();
       syncFactoryAreaVisibility_();
       if (loginLink) {
         loginLink.href = getAccountKind_() === 'factory'
