@@ -41,18 +41,19 @@
       <a class="back-link" onclick="goBackSmart('index.html')">◁ 戻る</a>
     </div>
 
-    <h1 class="title" style="margin-bottom: 34px;">🏢 業者アカウント登録</h1>
+    <h1 class="title" id="bizRegisterTitle" style="margin-bottom: 34px;">🏢 業者アカウント登録</h1>
     
-    <div class="card">
+    <form id="bizRegisterForm" class="card" onsubmit="registerShop(event)">
+      <input type="hidden" id="inAccountKind" value="dealer">
       <div class="field">
         <span class="label">会社名 / 屋号 <span class="required">必須</span></span>
-        <input type="text" id="inShopName" placeholder="例：Aモータース">
+        <input type="text" id="inShopName" placeholder="例：Aモータース" required>
       </div>
       
       <div class="field">
         <span class="label">業態 <span class="required">必須</span></span>
-        <select id="inShopType" onchange="document.getElementById('factoryArea').style.display = this.value === 'factory' ? 'block' : 'none'">
-          <option value="" disabled selected>選択してください</option>
+        <select id="inShopType" required>
+          <option value="" disabled selected hidden>選択してください</option>
           <option value="整備工場（分解整備を行う）">整備工場（分解整備を行う）</option>
           <optgroup label="販売・サービス">
             <option value="整備工場（分解整備を行わない）">整備工場（分解整備を行わない）</option>
@@ -81,7 +82,7 @@
         <div class="field">
           <span class="label">管轄の運輸局・支局 <span class="required">必須</span></span>
           <select id="inTransportBureau">
-            <option value="" disabled selected>選択してください</option>
+            <option value="" disabled selected hidden>選択してください</option>
             <optgroup label="北海道運輸局">
               <option value="北海道運輸局 札幌">札幌</option>
               <option value="北海道運輸局 函館">函館</option>
@@ -167,44 +168,69 @@
       <div class="field">
         <span class="label">ログイン用メールアドレス <span class="required">必須</span></span>
         <input type="email" id="inLoginEmail" placeholder="例：shop@example.com" autocomplete="username"
-               autocapitalize="none" inputmode="email">
+               autocapitalize="none" inputmode="email" required>
       </div>
 
       <div class="field">
         <span class="label">代表者名・ご担当者名 <span class="required">必須</span></span>
-        <input type="text" id="inRepresentativeName" placeholder="例：山田 太郎（日常点検などの入力者表示に使います）" autocomplete="name">
+        <input type="text" id="inRepresentativeName" placeholder="例：山田 太郎（日常点検などの入力者表示に使います）" autocomplete="name" required>
       </div>
       
       <div class="field">
         <span class="label">会社共通パスワード <span class="required">必須</span></span>
         <div class="pw-wrap">
-          <input type="password" id="inPassword" placeholder="スタッフ全員で使うパスワード">
+          <input type="password" id="inPassword" placeholder="スタッフ全員で使うパスワード" required minlength="1">
           <button type="button" class="pw-eye" onclick="const i=document.getElementById('inPassword'); i.type=i.type==='password'?'text':'password'; this.textContent=i.type==='password'?'👁':'🙈';">👁</button>
         </div>
       </div>
       
-      <button class="save-btn" onclick="registerShop()">この内容で登録する</button>
-    </div>
+      <button type="submit" class="save-btn">この内容で登録する</button>
+    </form>
     
     <div class="login-link">すでに登録済みの方は <a id="bizRegisterLoginLink" href="login.html?tab=business">こちらからログイン</a></div>
   </div>
 
   <script>
+    function getAccountKind_() {
+      var el = document.getElementById('inAccountKind');
+      var kind = el ? String(el.value || '').trim() : '';
+      return kind === 'factory' || kind === 'dealer' ? kind : 'dealer';
+    }
+
+    function syncFactoryFieldRequired_() {
+      var isFactory = getAccountKind_() === 'factory';
+      var bureau = document.getElementById('inTransportBureau');
+      var fNum = document.getElementById('inFactoryNumber');
+      if (bureau) bureau.required = isFactory;
+      if (fNum) fNum.required = isFactory;
+    }
+
+    function syncFactoryAreaVisibility_() {
+      var factoryArea = document.getElementById('factoryArea');
+      var isFactory = getAccountKind_() === 'factory';
+      if (factoryArea) factoryArea.style.display = isFactory ? 'block' : 'none';
+      syncFactoryFieldRequired_();
+    }
+
     function applyBizRegisterTypeFromUrl() {
       var params = new URLSearchParams(window.location.search);
       var type = params.get('type');
-      var sel = document.getElementById('inShopType');
-      var factoryArea = document.getElementById('factoryArea');
+      var kindEl = document.getElementById('inAccountKind');
       var loginLink = document.getElementById('bizRegisterLoginLink');
-      if (!sel) return;
-      if (type === 'factory') {
-        sel.value = 'factory';
-        if (factoryArea) factoryArea.style.display = 'block';
-        if (loginLink) loginLink.href = 'login.html?tab=factory';
-      } else if (type === 'dealer') {
-        sel.value = 'dealer';
-        if (factoryArea) factoryArea.style.display = 'none';
-        if (loginLink) loginLink.href = 'login.html?tab=business';
+      var titleEl = document.getElementById('bizRegisterTitle');
+      if (type === 'factory' || type === 'dealer') {
+        if (kindEl) kindEl.value = type;
+      }
+      syncFactoryAreaVisibility_();
+      if (loginLink) {
+        loginLink.href = getAccountKind_() === 'factory'
+          ? 'login.html?tab=factory'
+          : 'login.html?tab=business';
+      }
+      if (titleEl) {
+        titleEl.textContent = getAccountKind_() === 'factory'
+          ? '🏭 整備工場アカウント登録'
+          : '🏢 事業者アカウント登録';
       }
     }
 
@@ -213,11 +239,20 @@
     /**
      * アカウント登録処理：GASとの通信およびプロフィールの保存
      */
-    async function registerShop() {
+    async function registerShop(ev) {
+      if (ev && ev.preventDefault) ev.preventDefault();
+
+      const form = document.getElementById('bizRegisterForm');
+      if (form && !form.checkValidity()) {
+        form.reportValidity();
+        return;
+      }
+
+      const accountKind = getAccountKind_();
       const shopName = document.getElementById('inShopName').value.trim();
       const loginEmail = document.getElementById('inLoginEmail').value.trim();
       const representativeName = document.getElementById('inRepresentativeName').value.trim();
-      const shopType = document.getElementById('inShopType').value;
+      const businessType = document.getElementById('inShopType').value.trim();
       const password = document.getElementById('inPassword').value.trim();
       
       let factoryType = "";
@@ -225,6 +260,10 @@
 
       if (!shopName || !password) {
         if (typeof showToast === 'function') showToast('error', '会社名とパスワードは必須です');
+        return;
+      }
+      if (!businessType) {
+        if (typeof showToast === 'function') showToast('error', '業態を選択してください');
         return;
       }
       if (!loginEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(loginEmail)) {
@@ -236,7 +275,7 @@
         return;
       }
 
-      if (shopType === 'factory') {
+      if (accountKind === 'factory') {
         factoryType = document.getElementById('inFactoryType').value;
         const bureau = document.getElementById('inTransportBureau').value;
         const fNum = document.getElementById('inFactoryNumber').value.trim();
@@ -250,13 +289,15 @@
       }
 
       const randomStr = Math.random().toString(36).substr(2, 4).toUpperCase();
-      const shopId = "FAC-" + randomStr;
+      const shopIdPrefix = accountKind === 'dealer' ? 'DLR' : 'FAC';
+      const shopId = shopIdPrefix + "-" + randomStr;
       const masterLoginId = shopId + "-0000";
 
       const profile = { 
         shopId: shopId, 
         shopName: shopName, 
-        shopType: shopType, 
+        shopType: accountKind, 
+        businessType: businessType,
         factoryType: factoryType, 
         factoryNumber: fullFactoryNumber,
         staffId: "0000", 
@@ -277,7 +318,8 @@
             shopName:      shopName,
             loginEmail:    loginEmail,
             representativeName: representativeName,
-            shopType:      shopType,
+            shopType:      accountKind,
+            businessType:  businessType,
             factoryType:   factoryType,
             factoryNumber: fullFactoryNumber,
             password:      password
@@ -290,7 +332,7 @@
           const finalShopId    = result.shopId        || shopId;
           const finalMasterId  = result.masterLoginId || (finalShopId + '-0000');
           const savedEmail = loginEmail;
-          const loginTab = shopType === 'factory' ? 'factory' : 'business';
+          const loginTab = accountKind === 'factory' ? 'factory' : 'business';
 
           if (typeof ringClearUserAuthForShopLogin === 'function') {
             ringClearUserAuthForShopLogin();
