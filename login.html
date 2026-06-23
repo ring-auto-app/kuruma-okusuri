@@ -268,8 +268,8 @@
 
       <form id="loginForm" onsubmit="doEmailLogin(event)">
         <div class="field">
-          <label class="label" for="loginEmail">メールアドレス</label>
-          <input type="email" id="loginEmail" name="username" autocomplete="username"
+          <label class="label" for="loginEmail" id="loginEmailLabel">メールアドレス</label>
+          <input type="text" id="loginEmail" name="username" autocomplete="username"
                  inputmode="email" autocapitalize="none" autocorrect="off" placeholder="you@example.com" required>
           <div class="err-msg" id="errLoginEmail">⚠ メールアドレスを入力してください</div>
         </div>
@@ -416,6 +416,28 @@
       return null;
     }
 
+    function isShopLoginAccount_() {
+      return loginAccountType === 'shop' || isShopLoginPersona();
+    }
+
+    function syncLoginIdentifierFieldUI_() {
+      var label = document.getElementById('loginEmailLabel');
+      var input = document.getElementById('loginEmail');
+      var err = document.getElementById('errLoginEmail');
+      if (!label || !input) return;
+      if (isShopLoginAccount_()) {
+        label.textContent = 'ログイン用メールアドレス または スタッフID';
+        input.placeholder = '例：shop@example.com または FAC-1234...';
+        input.setAttribute('inputmode', 'text');
+        if (err) err.textContent = '⚠ メールアドレスまたはスタッフIDを入力してください';
+      } else {
+        label.textContent = 'メールアドレス';
+        input.placeholder = 'you@example.com';
+        input.setAttribute('inputmode', 'email');
+        if (err) err.textContent = '⚠ メールアドレスを入力してください';
+      }
+    }
+
     function applyRegisterHintAction(action, hintLink) {
       if (!hintLink) return;
       if (action === 'register') {
@@ -466,6 +488,7 @@
           personaNote.classList.remove('is-visible');
         }
       }
+      syncLoginIdentifierFieldUI_();
     }
 
     function switchMainTab(tab) {
@@ -501,6 +524,7 @@
           hint.onclick = function () { switchMainTab('register'); };
         }
       }
+      syncLoginIdentifierFieldUI_();
     }
 
     function clearErr(id) { var el = document.getElementById(id); if (el) el.style.display = 'none'; }
@@ -572,12 +596,20 @@
 
     async function doEmailLogin(e) {
       if (e) e.preventDefault();
-      var email = document.getElementById('loginEmail').value.trim();
+      var inputValue = document.getElementById('loginEmail').value.trim();
       var pw = document.getElementById('loginPassword').value;
       clearErr('errLoginEmail');
       clearErr('errLoginPw');
       var hasErr = false;
-      if (!email || email.indexOf('@') < 0) { showErr('errLoginEmail'); hasErr = true; }
+      var accountType = loginAccountType === 'shop' ? 'business' : 'user';
+      var isBusinessLogin = accountType === 'business';
+      if (!inputValue) {
+        showErr('errLoginEmail');
+        hasErr = true;
+      } else if (!isBusinessLogin && inputValue.indexOf('@') < 0) {
+        showErr('errLoginEmail');
+        hasErr = true;
+      }
       if (!pw) { showErr('errLoginPw'); hasErr = true; }
       if (hasErr) return;
 
@@ -585,12 +617,17 @@
       btn.disabled = true;
       showLoading('認証中', 'ログイン情報を照合しています…');
 
-      var accountType = loginAccountType === 'shop' ? 'business' : 'user';
+      var loginPayload = { action: 'login', password: pw, accountType: accountType };
+      if (inputValue.indexOf('@') >= 0) {
+        loginPayload.email = inputValue;
+      } else {
+        loginPayload.loginId = inputValue;
+      }
       try {
         var res = await fetch(GAS_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain' },
-          body: JSON.stringify({ action: 'login', email: email, password: pw, accountType: accountType })
+          body: JSON.stringify(loginPayload)
         });
         var data = await res.json();
         hideLoading();
@@ -609,7 +646,9 @@
           location.replace(typeof ringGetHomeForProfile === 'function' ? ringGetHomeForProfile(data.profile) : 'index.html');
           return;
         }
-        showToast('error', data.error || 'メールアドレスまたはパスワードが違います');
+        showToast('error', data.error || (isBusinessLogin
+          ? 'メールアドレス・スタッフIDまたはパスワードが違います'
+          : 'メールアドレスまたはパスワードが違います'));
       } catch (err) {
         hideLoading();
         showToast('error', '通信エラーが発生しました');
@@ -690,6 +729,8 @@
       if (persona && typeof applyRingPalette === 'function') {
         applyRingPalette(persona);
         applyLoginChameleonUI(persona);
+      } else {
+        syncLoginIdentifierFieldUI_();
       }
 
       if (tab === 'register') {
