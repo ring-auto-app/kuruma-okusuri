@@ -581,46 +581,20 @@
       color: #94a3b8;
       margin-top: 6px;
     }
-    .dash-export-bar {
+    .dash-ai-answer-export {
       display: flex;
       flex-wrap: wrap;
-      align-items: center;
       gap: 8px;
-      margin-bottom: 16px;
-      padding: 10px 12px;
-      background: #fff;
-      border: 1px solid #e2e8f0;
-      border-radius: 8px;
+      margin-bottom: 12px;
     }
-    .dash-export-bar label {
-      font-size: 12px;
-      font-weight: 700;
-      color: #64748b;
-    }
-    .dash-export-bar select {
-      padding: 6px 8px;
-      border: 1px solid #cbd5e1;
-      border-radius: 6px;
-      font-size: 13px;
-      min-width: 160px;
-    }
-    .dash-export-bar .btn-sm {
+    .dash-ai-answer-export .btn-sm {
       width: auto;
       min-width: 0;
-      padding: 8px 12px;
+      padding: 6px 12px;
       font-size: 12px;
     }
-    .data-export-toolbar {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      margin-bottom: 10px;
-    }
-    .data-export-toolbar .btn-sm {
-      width: auto;
-      min-width: 0;
-      padding: 6px 10px;
-      font-size: 11px;
+    .dash-ai-print-area {
+      display: none;
     }
     .dash-ai-chat-log {
       min-height: 160px;
@@ -665,10 +639,27 @@
       resize: vertical;
     }
     @media print {
-      .no-print { display: none !important; }
-      body.ring-admin-app { background: #fff; padding: 12px; }
-      .admin-accordion { break-inside: avoid; }
-      .admin-accordion[open] summary { border-bottom: 1px solid #ccc; }
+      body:not(.dash-ai-print-active) .no-print { display: none !important; }
+      body:not(.dash-ai-print-active).ring-admin-app { background: #fff; padding: 12px; }
+      body:not(.dash-ai-print-active) .admin-accordion { break-inside: avoid; }
+      body:not(.dash-ai-print-active) .admin-accordion[open] summary { border-bottom: 1px solid #ccc; }
+      body.dash-ai-print-active * { visibility: hidden !important; }
+      body.dash-ai-print-active #dashAiPrintArea,
+      body.dash-ai-print-active #dashAiPrintArea * { visibility: visible !important; }
+      body.dash-ai-print-active #dashAiPrintArea {
+        display: block !important;
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        padding: 24px;
+        box-sizing: border-box;
+        font-size: 14px;
+        line-height: 1.6;
+        white-space: pre-wrap;
+        color: #000;
+        background: #fff;
+      }
     }
   </style>
 </head>
@@ -692,19 +683,6 @@
 
     <div id="dashMain" style="display:none;">
     <p id="dashLoadError" class="muted no-print" style="display:none; color:#dc2626; font-weight:700;"></p>
-
-    <div class="dash-export-bar no-print" id="dashExportBar">
-      <label for="dashExportTarget">出力対象</label>
-      <select id="dashExportTarget">
-        <option value="errorDetail">エラー詳細リスト</option>
-        <option value="errorSummary">エラー集計（サマリー）</option>
-        <option value="monitor">即時監視サマリー</option>
-        <option value="page">ダッシュボード全体（表示中）</option>
-      </select>
-      <button type="button" class="btn-sm secondary" id="dashExportCopyBtn">📋 クリップボードにコピー</button>
-      <button type="button" class="btn-sm secondary" id="dashExportPrintBtn">🖨 ページを印刷</button>
-      <button type="button" class="btn-sm secondary" id="dashExportPdfBtn">📄 PDFで保存</button>
-    </div>
 
     <!-- 行動喚起型ダッシュボード Phase 1: 既存セクションの上に新規追加 -->
     <section id="dashboard-action-area" class="section no-print" aria-label="行動喚起ダッシュボード">
@@ -743,10 +721,6 @@
         <details class="admin-accordion">
           <summary>エラー集計を表示</summary>
           <div class="admin-accordion__body">
-            <div class="data-export-toolbar no-print" data-export-scope="errorSummary">
-              <button type="button" class="btn-sm secondary dash-local-copy" data-export-key="errorSummary">📋 コピー</button>
-              <button type="button" class="btn-sm secondary dash-local-print">🖨 印刷</button>
-            </div>
             <div id="errorActionRanking"></div>
           </div>
         </details>
@@ -755,10 +729,6 @@
         <details class="admin-accordion">
           <summary>エラー詳細リストを表示</summary>
           <div class="admin-accordion__body">
-            <div class="data-export-toolbar no-print" data-export-scope="errorDetail">
-              <button type="button" class="btn-sm secondary dash-local-copy" data-export-key="errorDetail">📋 コピー</button>
-              <button type="button" class="btn-sm secondary dash-local-print">🖨 印刷</button>
-            </div>
             <div id="errorDetailTable"></div>
           </div>
         </details>
@@ -774,7 +744,11 @@
           <h2 style="font-size:1.1rem;margin:0 0 12px;">Gemini in dashboard (AIアナリスト)</h2>
           <p class="muted" style="margin-top:0;">読み取り専用ルート経由のデータ分析窓（既存OCRとは独立）</p>
           <div id="dashAiChatLog" class="dash-ai-chat-log" aria-live="polite">
-            <div class="dash-ai-msg dash-ai-msg--bot">ダッシュボードデータについて質問できます。（Read-Only スタブ）</div>
+            <div class="dash-ai-msg dash-ai-msg--bot">System_Logs 等の集計データを参照して質問できます。</div>
+          </div>
+          <div id="dashAiAnswerExportBar" class="dash-ai-answer-export no-print" style="display:none;">
+            <button type="button" class="btn-sm secondary" id="dashAiCopyReplyBtn">📋 回答をコピー</button>
+            <button type="button" class="btn-sm secondary" id="dashAiPrintReplyBtn">🖨 回答を印刷・PDF</button>
           </div>
           <div class="dash-ai-input-row no-print">
             <textarea id="dashAiInput" placeholder="例：本日のOCR失敗件数の傾向を教えて"></textarea>
@@ -855,6 +829,7 @@
     }
 
     var __adminDashState = { dash: null };
+    var __lastDashAiReply = '';
     var __statsFilterTimer = null;
 
     /** ダッシュボード専用 AI 通信（既存 sendToGAS_Safe / OCR とは独立した Read-Only ルート） */
@@ -1022,77 +997,60 @@
       }
     }
 
-    function tableToTsv_(tableEl) {
-      if (!tableEl) return '';
-      var lines = [];
-      tableEl.querySelectorAll('tr').forEach(function (tr) {
-        var cells = tr.querySelectorAll('th, td');
-        var row = [];
-        cells.forEach(function (c) {
-          row.push(String(c.textContent || '').trim().replace(/\t/g, ' ').replace(/\n/g, ' '));
-        });
-        if (row.length) lines.push(row.join('\t'));
-      });
-      return lines.join('\n');
+    function showDashAiAnswerExportBar_(visible) {
+      var bar = document.getElementById('dashAiAnswerExportBar');
+      if (bar) bar.style.display = visible ? 'flex' : 'none';
     }
 
-    function getAdminExportText_(targetKey) {
-      try {
-        if (targetKey === 'errorDetail') {
-          var td = document.querySelector('#errorDetailTable table');
-          return td ? tableToTsv_(td) : (document.getElementById('errorDetailTable') || {}).textContent || '';
-        }
-        if (targetKey === 'errorSummary') {
-          var ts = document.querySelector('#errorActionRanking table');
-          return ts ? tableToTsv_(ts) : (document.getElementById('errorActionRanking') || {}).textContent || '';
-        }
-        if (targetKey === 'monitor') {
-          var parts = [];
-          ['monitorGrid', 'monitorBreakdown', 'monitorRecent'].forEach(function (id) {
-            var el = document.getElementById(id);
-            if (!el) return;
-            var tbl = el.querySelector('table');
-            if (tbl) parts.push(tableToTsv_(tbl));
-            else if (el.textContent) parts.push(String(el.textContent).trim());
-          });
-          return parts.filter(Boolean).join('\n\n');
-        }
-        if (targetKey === 'page') {
-          var main = document.getElementById('dashMain');
-          return main ? String(main.innerText || '').trim() : '';
-        }
-      } catch (e) {
-        console.error('[admin] getAdminExportText_', e);
-      }
-      return '';
+    function setLastDashAiReply_(text) {
+      __lastDashAiReply = String(text || '').trim();
+      showDashAiAnswerExportBar_(__lastDashAiReply.length > 0);
     }
 
-    async function copyAdminExportData_(targetKey) {
+    async function copyDashAiReply_() {
       try {
-        var text = getAdminExportText_(targetKey);
-        if (!text) {
-          if (typeof showToast === 'function') showToast('warning', 'コピーするデータがありません');
+        if (!__lastDashAiReply) {
+          if (typeof showToast === 'function') showToast('warning', 'コピーする回答がありません');
           return;
         }
         if (navigator.clipboard && navigator.clipboard.writeText) {
-          await navigator.clipboard.writeText(text);
+          await navigator.clipboard.writeText(__lastDashAiReply);
         } else {
           var ta = document.createElement('textarea');
-          ta.value = text;
+          ta.value = __lastDashAiReply;
           document.body.appendChild(ta);
           ta.select();
           document.execCommand('copy');
           document.body.removeChild(ta);
         }
-        if (typeof showToast === 'function') showToast('success', 'クリップボードにコピーしました');
+        if (typeof showToast === 'function') showToast('success', '回答をコピーしました');
       } catch (e) {
-        console.error('[admin] copyAdminExportData_', e);
+        console.error('[admin] copyDashAiReply_', e);
         if (typeof showToast === 'function') showToast('error', 'コピーに失敗しました');
       }
     }
 
-    function adminDashboardPrint_() {
-      try { window.print(); } catch (e) { console.error('[admin] print', e); }
+    function printDashAiReply_() {
+      try {
+        if (!__lastDashAiReply) {
+          if (typeof showToast === 'function') showToast('warning', '印刷する回答がありません');
+          return;
+        }
+        var area = document.getElementById('dashAiPrintArea');
+        if (!area) return;
+        area.textContent = __lastDashAiReply;
+        document.body.classList.add('dash-ai-print-active');
+        var afterPrint = function () {
+          document.body.classList.remove('dash-ai-print-active');
+          window.removeEventListener('afterprint', afterPrint);
+        };
+        window.addEventListener('afterprint', afterPrint);
+        window.print();
+      } catch (e) {
+        document.body.classList.remove('dash-ai-print-active');
+        console.error('[admin] printDashAiReply_', e);
+        if (typeof showToast === 'function') showToast('error', '印刷に失敗しました');
+      }
     }
 
     function appendDashAiMessage_(role, text) {
@@ -1122,10 +1080,13 @@
         appendDashAiMessage_('user', q);
         if (input) input.value = '';
         var res = await sendToDashboardAi_Safe(q);
-        appendDashAiMessage_('bot', (res && res.reply) ? res.reply : '（応答なし）');
+        var reply = (res && res.reply) ? res.reply : ((res && res.error) ? ('エラー: ' + res.error) : '（応答なし）');
+        appendDashAiMessage_('bot', reply);
+        if (res && res.success && res.reply) setLastDashAiReply_(reply);
       } catch (e) {
         console.error('[admin] submitDashboardAiQuestion_', e);
-        appendDashAiMessage_('bot', '分析リクエストに失敗しました。しばらくしてから再度お試しください。');
+        var errMsg = '分析リクエストに失敗しました。しばらくしてから再度お試しください。';
+        appendDashAiMessage_('bot', errMsg);
         if (typeof showToast === 'function') showToast('error', e.message || 'AI分析に失敗しました');
       } finally {
         if (btn) btn.disabled = false;
@@ -1134,26 +1095,6 @@
 
     function initAdminDashboardExportUi_() {
       try {
-        var copyBtn = document.getElementById('dashExportCopyBtn');
-        var printBtn = document.getElementById('dashExportPrintBtn');
-        var pdfBtn = document.getElementById('dashExportPdfBtn');
-        var targetSel = document.getElementById('dashExportTarget');
-        if (copyBtn) {
-          copyBtn.addEventListener('click', function () {
-            var key = targetSel ? targetSel.value : 'errorDetail';
-            copyAdminExportData_(key);
-          });
-        }
-        if (printBtn) printBtn.addEventListener('click', adminDashboardPrint_);
-        if (pdfBtn) pdfBtn.addEventListener('click', adminDashboardPrint_);
-        document.querySelectorAll('.dash-local-copy').forEach(function (btn) {
-          btn.addEventListener('click', function () {
-            copyAdminExportData_(btn.getAttribute('data-export-key') || 'errorDetail');
-          });
-        });
-        document.querySelectorAll('.dash-local-print').forEach(function (btn) {
-          btn.addEventListener('click', adminDashboardPrint_);
-        });
         var aiBtn = document.getElementById('dashAiSubmitBtn');
         if (aiBtn) aiBtn.addEventListener('click', submitDashboardAiQuestion_);
         var aiInput = document.getElementById('dashAiInput');
@@ -1165,6 +1106,10 @@
             }
           });
         }
+        var aiCopyBtn = document.getElementById('dashAiCopyReplyBtn');
+        if (aiCopyBtn) aiCopyBtn.addEventListener('click', copyDashAiReply_);
+        var aiPrintBtn = document.getElementById('dashAiPrintReplyBtn');
+        if (aiPrintBtn) aiPrintBtn.addEventListener('click', printDashAiReply_);
         var errDetailWrap = document.getElementById('errorDetailTable');
         if (errDetailWrap && !errDetailWrap.__deleteBound) {
           errDetailWrap.__deleteBound = true;
@@ -1983,5 +1928,6 @@
       }
     });
   </script>
+  <div id="dashAiPrintArea" class="dash-ai-print-area" aria-hidden="true"></div>
 </body>
 </html>
