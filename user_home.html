@@ -178,6 +178,33 @@
       background: #fef3c7; border: 2px solid #f59e0b; border-radius: 12px;
       padding: 12px 14px; margin-bottom: 20px; font-size: 13px; font-weight: 800; color: #92400e; line-height: 1.5;
     }
+    .ring-ownership-transfer-alert {
+      background: #fef2f2; border: 2px solid #dc2626; border-radius: 12px;
+      padding: 14px 16px; margin-bottom: 20px; font-size: 13px; font-weight: 800;
+      color: #991b1b; line-height: 1.55;
+    }
+    .ring-ownership-transfer-alert p { margin: 0 0 10px; }
+    .ring-ownership-transfer-alert p:last-of-type { margin-bottom: 12px; }
+    .ring-ownership-transfer-alert .ring-ownership-vin {
+      font-weight: 900; word-break: break-all;
+    }
+    .ring-ownership-transfer-dismiss {
+      display: inline-block; min-height: var(--tap-min); padding: 8px 16px;
+      border: 2px solid #dc2626; border-radius: 10px; background: #fff;
+      color: #dc2626; font-size: 13px; font-weight: 900; cursor: pointer;
+    }
+    .ring-ownership-notice {
+      background: #fffbeb; border: 2px dashed #eab308; border-radius: 12px;
+      padding: 14px 16px; margin: 28px 0 20px; font-size: 12px; font-weight: 700;
+      color: #713f12; line-height: 1.6;
+    }
+    .ring-ownership-notice-title {
+      font-size: 13px; font-weight: 900; margin: 0 0 8px; color: #92400e;
+    }
+    .ring-ownership-notice ul {
+      margin: 0; padding-left: 1.2em;
+    }
+    .ring-ownership-notice li { margin-bottom: 4px; }
   </style>
 </head>
 <body>
@@ -210,6 +237,7 @@
     </div>
 
     <div id="ringPendingSyncBar" class="ring-pending-sync" style="display:none;" role="status"></div>
+    <div id="ringOwnershipTransferAlert" style="display:none;" role="alert"></div>
 
     <!-- メインメニュー -->
     <div class="menu-list">
@@ -224,6 +252,15 @@
       </a>
     </div>
 
+    <div class="ring-ownership-notice" aria-label="ご利用上のお願い">
+      <p class="ring-ownership-notice-title">⚠️ ご利用上のお願い</p>
+      <ul>
+        <li>車両を譲渡・売却・廃車した場合は、マイカー一覧から削除してください。</li>
+        <li>新しいオーナーが車両登録を行った場合、自動的に所有権が移転されます。</li>
+        <li>身に覚えのない所有権移転があった場合はお問い合わせください。</li>
+      </ul>
+    </div>
+
     <!-- 広告枠（ads/ads.js・RING_ADS_ENABLED 時のみ表示） -->
     <div class="ring-ad-section" aria-hidden="true" style="display:none;">
       <div class="ring-ad-section-label">おすすめ・お知らせ</div>
@@ -232,6 +269,73 @@
   </div>
 
   <script>
+    var RING_OWNERSHIP_SUPPORT_EMAIL = 'info@ring-auto.com';
+
+    function escHtmlOwnership_(s) {
+      if (s == null) return '';
+      return String(s).replace(/[&<>"']/g, function (c) {
+        return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+      });
+    }
+
+    function renderOwnershipTransferAlerts_(profile) {
+      var wrap = document.getElementById('ringOwnershipTransferAlert');
+      if (!wrap) return;
+      var notices = profile && Array.isArray(profile.ownershipTransferNotices)
+        ? profile.ownershipTransferNotices : [];
+      if (!notices.length) {
+        wrap.style.display = 'none';
+        wrap.innerHTML = '';
+        return;
+      }
+      var html = notices.map(function (n, idx) {
+        var vin = escHtmlOwnership_(String(n.vin || '').trim() || '（不明）');
+        return '<div class="ring-ownership-transfer-alert" data-notice-idx="' + idx + '">' +
+          '<p><strong>【所有権移転済み】</strong>車台番号 <span class="ring-ownership-vin">' + vin + '</span> は別のユーザーへ譲渡されたため、あなたのマイカーから削除されました。身に覚えがない場合は ' +
+          RING_OWNERSHIP_SUPPORT_EMAIL + ' までお問い合わせください。</p>' +
+          '<button type="button" class="ring-ownership-transfer-dismiss" data-vin="' + vin + '">確認（閉じる）</button>' +
+          '</div>';
+      }).join('');
+      wrap.innerHTML = html;
+      wrap.style.display = 'block';
+      wrap.querySelectorAll('.ring-ownership-transfer-dismiss').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          ackOwnershipTransferNotices_(btn.getAttribute('data-vin') || '');
+        });
+      });
+    }
+
+    async function ackOwnershipTransferNotices_(vin) {
+      try {
+        var payload = {};
+        if (vin) payload.vins = [vin];
+        var res = typeof sendToGAS_Safe === 'function'
+          ? await sendToGAS_Safe('ack_ownership_transfer_notices', payload)
+          : null;
+        if (res && res.profile && typeof ringSaveAuthSlot === 'function') {
+          ringSaveAuthSlot(res.profile);
+          renderOwnershipTransferAlerts_(res.profile);
+          return;
+        }
+        var profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+        if (profile && Array.isArray(profile.ownershipTransferNotices)) {
+          if (vin) {
+            var norm = typeof _normalize === 'function' ? _normalize(vin) : String(vin).toUpperCase();
+            profile.ownershipTransferNotices = profile.ownershipTransferNotices.filter(function (n) {
+              var nv = typeof _normalize === 'function' ? _normalize(n.vin) : String(n.vin || '').toUpperCase();
+              return nv !== norm;
+            });
+          } else {
+            profile.ownershipTransferNotices = [];
+          }
+          if (typeof ringSaveAuthSlot === 'function') ringSaveAuthSlot(profile);
+          renderOwnershipTransferAlerts_(profile);
+        }
+      } catch (e) {
+        if (typeof showToast === 'function') showToast('error', '通知の確認に失敗しました');
+      }
+    }
+
     window.addEventListener('DOMContentLoaded', function () {
       if (typeof ringBootAuthForMode === 'function') {
         var boot = ringBootAuthForMode('user');
@@ -265,6 +369,8 @@
       }
       if (idEl)   idEl.textContent   = 'ログインID：' + (profile.loginId || profile.userId || '---');
       if (idInner) idInner.textContent = 'ユーザーID：' + (profile.userId || '---');
+
+      renderOwnershipTransferAlerts_(profile);
 
       if (typeof ringDeferAfterPaint_ === 'function') {
         ringDeferAfterPaint_(function () {

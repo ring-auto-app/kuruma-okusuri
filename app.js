@@ -1059,6 +1059,11 @@ function ringDemoGasStubResponse_(actionType) {
         };
     }
     if (actionType === 'update_vehicle') return { success: true, demo: true, vin: '' };
+    if (actionType === 'ack_ownership_transfer_notices') {
+        var p = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+        if (p) p = Object.assign({}, p, { ownershipTransferNotices: [] });
+        return { success: true, demo: true, profile: p || {} };
+    }
     if (actionType === 'update_daily_inspection') return { success: true, demo: true, log_id: '' };
     if (actionType === 'get_admin_dashboard') {
         return {
@@ -1856,7 +1861,7 @@ function ringLogClientAccess(surface) {
 /**
  * 車両の追加・更新
  * @param {object} v
- * @param {{ transferOwnership?: boolean }} [options]
+ * @param {{ transferOwnership?: boolean, forceTransfer?: boolean }} [options]
  */
 async function addVehicle(v, options) {
     const opt = options || {};
@@ -1869,11 +1874,15 @@ async function addVehicle(v, options) {
     if (i !== -1) list[i] = merged; else list.push(merged);
     localStorage.setItem(DB_VEHICLES, JSON.stringify(list));
     try {
-        const gasPayload = Object.assign({}, merged, opt.transferOwnership ? { transferOwnership: true } : {});
+        const gasPayload = Object.assign({}, merged);
+        if (opt.forceTransfer || opt.transferOwnership) {
+            gasPayload.forceTransfer = true;
+            gasPayload.transferOwnership = true;
+        }
         return await sendToGAS_Safe('vehicle', gasPayload);
     } catch (err) {
         const msg = String(err.message || '');
-        if (/VIN_REQUIRED|VIN_OWNED_BY_OTHER_USER|VIN_REGISTERED_BY_SHOP/i.test(msg)) {
+        if (/VIN_REQUIRED|ALREADY_OWNED_BY_USER|VIN_OWNED_BY_OTHER_USER|VIN_REGISTERED_BY_SHOP/i.test(msg)) {
             ringLogSystemEvent('SAVE_FAIL', {
                 error_message: msg,
                 payload: { gasAction: 'vehicle', queued: false }
