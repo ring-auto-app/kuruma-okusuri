@@ -1061,11 +1061,6 @@ function ringDemoGasStubResponse_(actionType) {
         };
     }
     if (actionType === 'update_vehicle') return { success: true, demo: true, vin: '' };
-    if (actionType === 'ack_ownership_transfer_notices') {
-        var p = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
-        if (p) p = Object.assign({}, p, { ownershipTransferNotices: [] });
-        return { success: true, demo: true, profile: p || {} };
-    }
     if (actionType === 'update_daily_inspection') return { success: true, demo: true, log_id: '' };
     if (actionType === 'get_admin_dashboard') {
         return {
@@ -1626,25 +1621,29 @@ function maintenanceLogMergeKeyOf_(item) {
  */
 function mergeMaintenanceHistoryLocalAndServer(localList, serverList) {
     const map = new Map();
+    (serverList || []).forEach(function (row) {
+        const loc = mapGasMaintenanceLogToLocal(row);
+        if (!loc) return;
+        loc._fromServer = true;
+        map.set(maintenanceLogMergeKeyOf_(loc), loc);
+    });
     (localList || []).forEach(function (item) {
         if (!item) return;
         const t = item.type;
         if (t === "inspection" || t === "inspection_user") return;
-        map.set(maintenanceLogMergeKeyOf_(item), item);
-    });
-    (serverList || []).forEach(function (row) {
-        const loc = mapGasMaintenanceLogToLocal(row);
-        if (!loc) return;
-        const k = maintenanceLogMergeKeyOf_(loc);
-        if (map.has(k)) {
-            const prev = map.get(k);
-            map.set(k, Object.assign({}, loc, prev, {
-                photoUrl: prev.partsPhoto || prev.photoUrl || loc.photoUrl,
-                partsPhoto: prev.partsPhoto || prev.photoUrl || loc.photoUrl
+        const k = maintenanceLogMergeKeyOf_(item);
+        if (!map.has(k)) {
+            map.set(k, item);
+            return;
+        }
+        const serverItem = map.get(k);
+        const localPhoto = item.partsPhoto || item.photoUrl;
+        const serverPhoto = serverItem.partsPhoto || serverItem.photoUrl;
+        if (localPhoto && !serverPhoto) {
+            map.set(k, Object.assign({}, serverItem, {
+                photoUrl: localPhoto,
+                partsPhoto: localPhoto
             }));
-        } else {
-            loc._fromServer = true;
-            map.set(k, loc);
         }
     });
     return Array.from(map.values());
@@ -1979,10 +1978,8 @@ function ringLogClientAccess(surface) {
 /**
  * 車両の追加・更新
  * @param {object} v
- * @param {{ transferOwnership?: boolean, forceTransfer?: boolean }} [options]
  */
-async function addVehicle(v, options) {
-    const opt = options || {};
+async function addVehicle(v) {
     const list = loadVehicles();
     const i = list.findIndex(x => _normalize(x.vin) === _normalize(v.vin));
     const merged = i !== -1 ? { ...list[i], ...v } : { ...v };
@@ -1992,15 +1989,10 @@ async function addVehicle(v, options) {
     if (i !== -1) list[i] = merged; else list.push(merged);
     localStorage.setItem(DB_VEHICLES, JSON.stringify(list));
     try {
-        const gasPayload = Object.assign({}, merged);
-        if (opt.forceTransfer || opt.transferOwnership) {
-            gasPayload.forceTransfer = true;
-            gasPayload.transferOwnership = true;
-        }
-        return await sendToGAS_Safe('vehicle', gasPayload);
+        return await sendToGAS_Safe('vehicle', Object.assign({}, merged));
     } catch (err) {
         const msg = String(err.message || '');
-        if (/VIN_REQUIRED|ALREADY_OWNED_BY_USER|VIN_OWNED_BY_OTHER_USER|VIN_REGISTERED_BY_SHOP/i.test(msg)) {
+        if (/VIN_REQUIRED/i.test(msg)) {
             ringLogSystemEvent('SAVE_FAIL', {
                 error_message: msg,
                 payload: { gasAction: 'vehicle', queued: false }
@@ -2059,7 +2051,7 @@ async function updateVehicle(v) {
         return await sendToGAS_Safe('update_vehicle', gasPayload);
     } catch (err) {
         const msg = String(err.message || '');
-        if (/VIN_REQUIRED|VEHICLE_NOT_FOUND|VEHICLE_ACCESS_DENIED|VIN_REGISTERED_BY_SHOP/i.test(msg)) {
+        if (/VIN_REQUIRED|VEHICLE_NOT_FOUND|VEHICLE_ACCESS_DENIED/i.test(msg)) {
             ringLogSystemEvent('SAVE_FAIL', {
                 error_message: msg,
                 payload: { gasAction: 'update_vehicle', queued: false }
