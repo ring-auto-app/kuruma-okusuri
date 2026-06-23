@@ -228,7 +228,9 @@
 
       <div class="field">
         <span class="label">車台番号 (VIN) <span class="required">※必須</span></span>
-        <input id="inVin" type="text" placeholder="例：ZVW50-123456" autocomplete="off"
+        <input id="inVin" type="text" inputmode="text" autocapitalize="characters"
+               placeholder="例：ZVW50-123456" autocomplete="off"
+               style="text-transform: uppercase;"
                oninput="clearErr('inVin')">
         <div class="err-msg" id="errVin">⚠ 車台番号は必須です</div>
       </div>

@@ -3630,7 +3630,7 @@ function showOcrBatchReviewModal(merged, opts) {
         var confHint = ringOcrConfIsLow_(conf) ? ' <span class="ring-ocr-review__conf">要確認</span>' : '';
         var inpType = type === 'date' ? 'date' : (type === 'number' ? 'number' : 'text');
         var tag = type === 'textarea' ? ('<textarea class="ring-ocr-review__input' + confClass(conf) + '" data-key="' + key + '" rows="3">' + escapeHtml(val || '') + '</textarea>') :
-            ('<input class="ring-ocr-review__input' + confClass(conf) + '" data-key="' + key + '" type="' + inpType + '" value="' + escapeHtml(val || '') + '">');
+            ('<input class="ring-ocr-review__input' + confClass(conf) + '" data-key="' + key + '" type="' + inpType + '"' + ringVinInputExtraAttrs_(key) + ' value="' + escapeHtml(val || '') + '">');
         return '<div class="ring-ocr-review__row"><label class="ring-ocr-review__lbl">' + escapeHtml(label) + ' ' + srcHint + confHint + '</label>' + tag + '</div>';
     }
     function partsBlock() {
@@ -3656,7 +3656,7 @@ function showOcrBatchReviewModal(merged, opts) {
     var vinConf = merged.vin && merged.vin.confidence;
     body += '<div class="ring-ocr-review__row"><label class="ring-ocr-review__lbl">車台番号 (VIN)' +
         (ringOcrConfIsLow_(vinConf) ? ' <span class="ring-ocr-review__conf">要確認</span>' : '') + '</label>' + vinRadio +
-        '<input class="ring-ocr-review__input' + confClass(vinConf) + '" data-key="vin" type="text" value="' + escapeHtml(flat.vin || '') + '"></div>';
+        '<input class="ring-ocr-review__input' + confClass(vinConf) + '" data-key="vin" type="text"' + ringVinInputExtraAttrs_('vin') + ' value="' + escapeHtml(flat.vin || '') + '"></div>';
     if (mode === 'factory') {
         body += fieldRow('shaken', '車検満了日', 'date', flat.shaken, merged.shaken && merged.shaken.source, merged.shaken && merged.shaken.confidence);
         body += fieldRow('mileage', '走行距離 (km)', 'number', flat.mileage, merged.mileage && merged.mileage.source, merged.mileage && merged.mileage.confidence);
@@ -3824,7 +3824,7 @@ function showInvoiceOcrReviewModal(ocrResult, opts) {
         var inpType = type === 'number' ? 'number' : 'text';
         var tag = type === 'textarea'
             ? ('<textarea class="ring-ocr-review__input" data-key="' + key + '" rows="4">' + escapeHtml(val || '') + '</textarea>')
-            : ('<input class="ring-ocr-review__input" data-key="' + key + '" type="' + inpType + '" value="' + escapeHtml(val || '') + '">');
+            : ('<input class="ring-ocr-review__input" data-key="' + key + '" type="' + inpType + '"' + ringVinInputExtraAttrs_(key) + ' value="' + escapeHtml(val || '') + '">');
         return '<div class="ring-ocr-review__row"><label class="ring-ocr-review__lbl">' + escapeHtml(label) + '</label>' + tag + '</div>';
     }
 
@@ -4291,54 +4291,61 @@ window.addEventListener('load', () => {
 });
 
 /**
- * VIN入力欄の自動フォーマット（全ページ共通）
- * - 全角アルファベット・数字 → 半角変換
- * - 小文字 → 大文字固定
- * - モノスペースフォント適用（視認性向上）
+ * VIN入力欄の表示用フォーマット（半角化・大文字化。ハイフンは保持）
+ * IME入力中は呼ばず、blur / 送信時のみ使用すること。
  */
+function ringFormatVinDisplayValue_(raw) {
+    if (raw == null) return '';
+    return String(raw)
+        .replace(/[Ａ-Ｚａ-ｚ０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0))
+        .toUpperCase();
+}
+
+/** VIN入力欄の value を安全にフォーマット（readOnly/disabled は触らない） */
+function ringApplyVinInputFormat_(input) {
+    if (!input || input.readOnly || input.disabled) return;
+    const formatted = ringFormatVinDisplayValue_(input.value);
+    if (input.value !== formatted) input.value = formatted;
+}
+
+function ringIsVinInputEl_(el) {
+    if (!el || el.tagName !== 'INPUT' || el.type === 'hidden') return false;
+    if (el.readOnly || el.disabled) return false;
+    const id = String(el.id || '');
+    if (id === 'inVin' || id === 'vinInput') return true;
+    if (el.getAttribute('data-vin-input') === 'true') return true;
+    if (el.getAttribute('data-key') === 'vin') return true;
+    return false;
+}
+
+/** スマホ向け属性・見た目のみの大文字CSSを付与 */
+function ringInitVinInputAttrs_(input) {
+    if (!input || input.tagName !== 'INPUT') return;
+    input.type = 'text';
+    input.setAttribute('inputmode', 'text');
+    input.setAttribute('autocapitalize', 'characters');
+    if (!input.getAttribute('autocomplete')) input.setAttribute('autocomplete', 'off');
+    input.style.fontFamily = '"Helvetica Neue", "SF Mono", monospace';
+    input.style.letterSpacing = '0.06em';
+    input.style.textTransform = 'uppercase';
+}
+
+function ringVinInputExtraAttrs_(key) {
+    return key === 'vin'
+        ? ' inputmode="text" autocapitalize="characters" style="text-transform:uppercase;"'
+        : '';
+}
+
+window.ringFormatVinDisplayValue_ = ringFormatVinDisplayValue_;
+window.ringApplyVinInputFormat_ = ringApplyVinInputFormat_;
+window.ringInitVinInputAttrs_ = ringInitVinInputAttrs_;
+
+document.addEventListener('blur', function (e) {
+    if (ringIsVinInputEl_(e.target)) ringApplyVinInputFormat_(e.target);
+}, true);
+
 window.addEventListener('DOMContentLoaded', () => {
-    const vinSelectors = [
-        'input[id*="Vin"]',
-        'input[id*="vin"]',
-        'input[id*="VIN"]',
-        'input[placeholder*="VIN"]',
-        'input[placeholder*="車台番号"]'
-    ];
-    const vinInputs = document.querySelectorAll(vinSelectors.join(','));
-
-    vinInputs.forEach(input => {
-        if (input.readOnly || input.disabled) return;
-
-        // VIN専用スタイル
-        input.style.fontFamily = '"Helvetica Neue", "SF Mono", monospace';
-        input.style.letterSpacing = '0.06em';
-        input.style.textTransform = 'uppercase';
-
-        input.addEventListener('input', (e) => {
-            const cur = e.target.selectionStart;
-            let val = e.target.value;
-            // 全角英数字 → 半角
-            val = val.replace(/[Ａ-Ｚａ-ｚ０-９]/g, s =>
-                String.fromCharCode(s.charCodeAt(0) - 0xFEE0)
-            );
-            // 大文字固定
-            val = val.toUpperCase();
-            e.target.value = val;
-            // カーソル位置を維持
-            try { e.target.setSelectionRange(cur, cur); } catch(_) {}
-        });
-
-        // ペースト時にも正規化
-        input.addEventListener('paste', (e) => {
-            setTimeout(() => {
-                let val = e.target.value;
-                val = val.replace(/[Ａ-Ｚａ-ｚ０-９]/g, s =>
-                    String.fromCharCode(s.charCodeAt(0) - 0xFEE0)
-                );
-                e.target.value = val.toUpperCase();
-            }, 0);
-        });
-    });
+    document.querySelectorAll('#inVin, #vinInput, input[data-vin-input="true"], input[data-key="vin"]').forEach(ringInitVinInputAttrs_);
 });
 
 /**

@@ -59,7 +59,7 @@
 
     <div class="search-section">
       <div class="section-label">✏️ 手入力で検索</div>
-      <input type="text" id="vinInput" class="unified-box search-input" placeholder="例：ZVW50-123456" autocomplete="off">
+      <input type="text" id="vinInput" class="unified-box search-input" inputmode="text" autocapitalize="characters" style="text-transform: uppercase;" placeholder="例：ZVW50-123456" autocomplete="off">
       
       <div style="display: flex; justify-content: center; width: 100%; margin-top: 24px;">
         <button class="save-btn" id="searchBtn" style="padding: 14px 68px;">検索する</button>
@@ -88,7 +88,9 @@
 
     document.getElementById('searchBtn').addEventListener('click', function () {
       document.getElementById('errorMsg').style.display = 'none';
-      runVinHistorySearch(document.getElementById('vinInput').value);
+      var inputEl = document.getElementById('vinInput');
+      if (inputEl && typeof ringApplyVinInputFormat_ === 'function') ringApplyVinInputFormat_(inputEl);
+      runVinHistorySearch(inputEl ? inputEl.value : '');
     });
   </script>
 </body>

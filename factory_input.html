@@ -208,7 +208,7 @@
     <div class="note-card">
       <div class="field">
         <span class="label">車台番号 (VIN) ※必須</span>
-        <input id="inVin" type="text" placeholder="手入力も可" onblur="lookupVehicle(this.value)">
+        <input id="inVin" type="text" inputmode="text" autocapitalize="characters" autocomplete="off" style="text-transform: uppercase;" placeholder="手入力も可" onblur="lookupVehicle(this.value)">
         <div id="vinVehicleInfo" style="display:none; margin-top:6px; font-size:12px; font-weight:800; color:var(--accent); background:rgba(37,99,235,0.06); border-radius:8px; padding:6px 10px; line-height:1.6;"></div>
       </div>
 
@@ -393,7 +393,7 @@
       const localToday = new Date(today.getTime() - offset);
       document.getElementById('inDate').value = localToday.toISOString().split('T')[0];
 
-      // VIN自動フォーマットは app.js のグローバル処理に統合済み
+      // VIN表示フォーマットは app.js（blur時）に統合済み。IME入力中は value を書き換えない。
 
       const limitDate = new Date(localToday.getTime());
       limitDate.setDate(limitDate.getDate() - 14); 

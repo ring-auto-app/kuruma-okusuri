@@ -124,7 +124,7 @@
     <div class="basic-info-card">
       <div class="field">
         <span class="label">車台番号 (VIN) ※必須</span>
-        <input id="inVin" type="text" placeholder="車台番号を入力" onblur="lookupVehicle(this.value)">
+        <input id="inVin" type="text" inputmode="text" autocapitalize="characters" autocomplete="off" style="text-transform: uppercase;" placeholder="車台番号を入力" onblur="lookupVehicle(this.value)">
         <div id="errVin" style="display:none; color:#dc2626; font-size:12px; font-weight:800; margin-top:4px;">⚠ 車体番号を入力してください</div>
       </div>
       <div class="row">
