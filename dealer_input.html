@@ -135,8 +135,8 @@
         </div>
         <div class="field"><span class="label">走行距離 (km)</span><input id="inMileage" type="number" min="0"></div>
       </div>
-      <div class="field">
-        <span class="label">車検満了日 ※必須</span>
+      <div class="field" id="shakenExpiryBlock" style="display:none;">
+        <span class="label shaken-expiry-label">車検満了日 ※必須</span>
         <div class="era-date-row">
           <span class="era-date-unit era-date-fixed" aria-label="車検満了日元号">令和</span>
           <select id="expiryYear" class="era-date-box" aria-label="車検満了和暦年"></select>
@@ -269,7 +269,7 @@
       }
     }
 
-    function lookupVehicle(rawVin) {
+    async function lookupVehicle(rawVin) {
       var vin = ringDealerNormVin_(rawVin);
       if (!vin) return;
       var vehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
@@ -281,6 +281,12 @@
         if (latestOnly != null && !isNaN(latestOnly)) {
           document.getElementById('inMileage').value = latestOnly;
         }
+      }
+
+      if (typeof ringFetchAndApplyVehicleInfoByVin_ === 'function') {
+        await ringFetchAndApplyVehicleInfoByVin_(vin, {
+          onApplied: function (v) { ringDealerApplyVehiclePrefill_(v, vin); }
+        });
       }
     }
 
@@ -473,9 +479,7 @@
       let hasErr = false;
       if (!vin)    { errVin.style.display   = 'block'; hasErr = true; }
       if (!date)   { errDate.style.display  = 'block'; hasErr = true; }
-      if (!shaken) {
-        document.getElementById('errShaken').style.display = 'block';
-        if (typeof ringCarAddMarkDateFieldsError === 'function') ringCarAddMarkDateFieldsError('expiry', true);
+      if (typeof ringValidateShakenExpiryIfRequired_ === 'function' && !ringValidateShakenExpiryIfRequired_()) {
         hasErr = true;
       }
       if (typeof ringValidateWorkTitleSelect === 'function' && !ringValidateWorkTitleSelect()) {

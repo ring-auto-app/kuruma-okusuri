@@ -245,8 +245,8 @@
         <div class="field"><span class="label">作業日 ※必須</span><input id="inDate" type="date"></div>
         <div class="field"><span class="label">走行距離 (km)</span><input id="inMileage" type="number" min="0"></div>
       </div>
-      <div class="field">
-        <span class="label">車検満了日 ※必須</span>
+      <div class="field" id="shakenExpiryBlock" style="display:none;">
+        <span class="label shaken-expiry-label">車検満了日 ※必須</span>
         <div class="era-date-row">
           <span class="era-date-unit era-date-fixed" aria-label="車検満了日元号">令和</span>
           <select id="expiryYear" class="era-date-box" aria-label="車検満了和暦年"></select>
@@ -341,8 +341,24 @@
       }
     }
 
+    function ringFactoryUpdateVinInfoBanner_(rec) {
+      const infoEl = document.getElementById('vinVehicleInfo');
+      if (!infoEl || !rec) return;
+      const parts = [];
+      if (rec.vehicleModel || rec.model) parts.push('型式：' + (rec.vehicleModel || rec.model));
+      if (rec.engine) parts.push('原動機：' + rec.engine);
+      if (rec.classification || rec.category) parts.push('類別：' + (rec.classification || rec.category));
+      if (rec.typeDesignation) parts.push('型式指定：' + rec.typeDesignation);
+      if (parts.length) {
+        infoEl.textContent = '✅ ' + parts.join('　');
+        infoEl.style.display = 'block';
+      } else {
+        infoEl.style.display = 'none';
+      }
+    }
+
     // VIN入力後に既存車両データを引き当てて表示・フォームへ反映
-    function lookupVehicle(rawVin) {
+    async function lookupVehicle(rawVin) {
       const vin = ringFactoryNormVin_(rawVin);
       if (!vin) return;
       const vehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
@@ -354,17 +370,7 @@
         document.getElementById('inEngine').value    = rec.engine || '';
         document.getElementById('inClass').value     = rec.classification || rec.category || '';
         document.getElementById('inTypeDesig').value = rec.typeDesignation || '';
-        const parts = [];
-        if (rec.vehicleModel || rec.model) parts.push('型式：' + (rec.vehicleModel || rec.model));
-        if (rec.engine)                    parts.push('原動機：' + rec.engine);
-        if (rec.classification || rec.category) parts.push('類別：' + (rec.classification || rec.category));
-        if (rec.typeDesignation)           parts.push('型式指定：' + rec.typeDesignation);
-        if (parts.length) {
-          infoEl.textContent = '✅ ' + parts.join('　');
-          infoEl.style.display = 'block';
-        } else {
-          infoEl.style.display = 'none';
-        }
+        ringFactoryUpdateVinInfoBanner_(rec);
       } else {
         infoEl.style.display = 'none';
         if (!document.getElementById('inMileage').value) {
@@ -373,6 +379,15 @@
             document.getElementById('inMileage').value = latestOnly;
           }
         }
+      }
+
+      if (typeof ringFetchAndApplyVehicleInfoByVin_ === 'function') {
+        await ringFetchAndApplyVehicleInfoByVin_(vin, {
+          onApplied: function (v) {
+            ringFactoryApplyVehiclePrefill_(v, vin);
+            ringFactoryUpdateVinInfoBanner_(v);
+          }
+        });
       }
     }
 
@@ -531,18 +546,16 @@
 
       let hasErr = false;
       if (!vin || !date) { showToast('error', 'VINと作業日は必須です'); return; }
-      if (!shaken) {
-        document.getElementById('errShaken').style.display = 'block';
-        if (typeof ringCarAddMarkDateFieldsError === 'function') ringCarAddMarkDateFieldsError('expiry', true);
+      if (typeof ringValidateShakenExpiryIfRequired_ === 'function' && !ringValidateShakenExpiryIfRequired_()) {
         hasErr = true;
-      } else {
-        document.getElementById('errShaken').style.display = 'none';
-        if (typeof ringCarAddMarkDateFieldsError === 'function') ringCarAddMarkDateFieldsError('expiry', false);
       }
       if (typeof ringValidateWorkTitleSelect === 'function' && !ringValidateWorkTitleSelect()) {
         hasErr = true;
       }
       if (hasErr) return;
+
+      const isShakenCat = typeof ringIsShakenWorkTitle_ === 'function' &&
+        ringIsShakenWorkTitle_(document.getElementById('inTitle').value);
 
       const currentMileage = parseInt(mileageInput, 10);
       if (!isNaN(currentMileage)) {
@@ -572,7 +585,7 @@
       const bodyHtml =
         ringConfirmRow('車台番号(VIN)', vin) +
         ringConfirmRow('作業日', date) +
-        ringConfirmRow('車検満了日', shaken) +
+        (isShakenCat ? ringConfirmRow('車検満了日', shaken) : '') +
         ringConfirmRow('整備区分', document.getElementById('inTitle').value) +
         ringConfirmRow('走行距離(km)', mileageInput || '—') +
         ringConfirmRow('型式', document.getElementById('inModel').value) +

@@ -1012,6 +1012,7 @@ function ringIsDemoGasOffline_() {
 /** sendToGAS_Safe デモ短路用の最小レスポンス */
 function ringDemoGasStubResponse_(actionType) {
     if (actionType === 'get_vehicles') return { success: true, vehicles: [] };
+    if (actionType === 'get_vehicle_info') return { success: true, found: false };
     if (actionType === 'verify_session') return { success: true };
     if (actionType === 'get_daily_history') return { success: true, logs: [] };
     if (actionType === 'ocr_vin') return { success: true, partial: true, demo: true };
@@ -3071,6 +3072,100 @@ function ringValidateWorkTitleSelect(selectEl, errElId) {
     return ok;
 }
 
+/** 整備区分が「車検」かどうか */
+function ringIsShakenWorkTitle_(titleVal) {
+    return String(titleVal || '').trim() === '車検';
+}
+
+/** 整備区分に応じて車検満了日ブロックの表示・必須を切り替え */
+function ringSyncShakenExpiryBlock_() {
+    var block = document.getElementById('shakenExpiryBlock');
+    if (!block) return;
+    var titleEl = document.getElementById('inTitle');
+    var isShaken = ringIsShakenWorkTitle_(titleEl ? titleEl.value : '');
+    block.style.display = isShaken ? '' : 'none';
+    var labelEl = block.querySelector('.shaken-expiry-label');
+    if (labelEl) labelEl.textContent = isShaken ? '車検満了日 ※必須' : '車検満了日';
+    ['expiryYear', 'expiryMonth', 'expiryDay'].forEach(function (id) {
+        var sel = document.getElementById(id);
+        if (!sel) return;
+        if (isShaken) sel.setAttribute('required', 'required');
+        else sel.removeAttribute('required');
+    });
+    if (!isShaken) {
+        var errSh = document.getElementById('errShaken');
+        if (errSh) errSh.style.display = 'none';
+        if (typeof ringCarAddMarkDateFieldsError === 'function') ringCarAddMarkDateFieldsError('expiry', false);
+    }
+}
+
+/** 整備区分が車検のときのみ車検満了日を必須チェック */
+function ringValidateShakenExpiryIfRequired_() {
+    var titleEl = document.getElementById('inTitle');
+    if (!ringIsShakenWorkTitle_(titleEl ? titleEl.value : '')) return true;
+    if (typeof ringCarAddSyncAllDateHidden === 'function') ringCarAddSyncAllDateHidden();
+    var shaken = String((document.getElementById('inExpiry') || {}).value || '').trim();
+    var ok = !!shaken;
+    var errSh = document.getElementById('errShaken');
+    if (errSh) errSh.style.display = ok ? 'none' : 'block';
+    if (typeof ringCarAddMarkDateFieldsError === 'function') ringCarAddMarkDateFieldsError('expiry', !ok);
+    return ok;
+}
+
+/**
+ * VIN からサーバー上の車両基本情報を取得してフォームへ反映（読み取り専用 API）
+ * @returns {Promise<{found: boolean, vehicle?: object, applied?: boolean}>}
+ */
+async function ringFetchAndApplyVehicleInfoByVin_(rawVin, opts) {
+    opts = opts || {};
+    var vin = typeof ringFormatVinDisplayValue_ === 'function'
+        ? ringFormatVinDisplayValue_(rawVin)
+        : String(rawVin || '').trim().toUpperCase();
+    if (!vin) return { found: false };
+
+    try {
+        var json = await sendToGAS_Safe('get_vehicle_info', { vin: vin });
+        if (!json || json.found !== true) return { found: false };
+
+        var v = json.vehicle || {};
+        var applied = false;
+
+        function setField(id, val) {
+            if (val == null || String(val).trim() === '') return;
+            var el = document.getElementById(id);
+            if (!el || el.readOnly) return;
+            el.value = String(val).trim();
+            applied = true;
+        }
+
+        setField('inModel', v.vehicleModel || v.model);
+        setField('inEngine', v.engine);
+        setField('inClass', v.classification);
+        setField('inTypeDesig', v.typeDesignation);
+
+        if (v.nextShaken) {
+            var expiryEl = document.getElementById('inExpiry');
+            if (expiryEl && !String(expiryEl.value || '').trim() && typeof ringCarAddSetExpiryFromIso === 'function') {
+                ringCarAddSetExpiryFromIso(v.nextShaken);
+                applied = true;
+            }
+        }
+
+        if (applied && opts.toast !== false && typeof showToast === 'function') {
+            showToast('success', '過去の登録データを反映しました');
+        }
+        if (typeof opts.onApplied === 'function') opts.onApplied(v, applied);
+        return { found: true, vehicle: v, applied: applied };
+    } catch (e) {
+        return { found: false };
+    }
+}
+
+window.ringIsShakenWorkTitle_ = ringIsShakenWorkTitle_;
+window.ringSyncShakenExpiryBlock_ = ringSyncShakenExpiryBlock_;
+window.ringValidateShakenExpiryIfRequired_ = ringValidateShakenExpiryIfRequired_;
+window.ringFetchAndApplyVehicleInfoByVin_ = ringFetchAndApplyVehicleInfoByVin_;
+
 function ringHasOcrResult_(res) {
     if (!res || typeof res !== 'object') return false;
     if (res.partial === true) return true;
@@ -4646,7 +4741,11 @@ if (typeof document !== 'undefined') {
         if (titleSel && titleSel.tagName === 'SELECT') {
             titleSel.addEventListener('change', function () {
                 ringValidateWorkTitleSelect(titleSel);
+                ringSyncShakenExpiryBlock_();
             });
+        }
+        if (document.getElementById('shakenExpiryBlock')) {
+            ringSyncShakenExpiryBlock_();
         }
     });
 }
