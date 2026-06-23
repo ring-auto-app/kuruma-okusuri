@@ -13,7 +13,7 @@
     <title>車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20260528-v26"></script>
+  <script src="app.js?v=20260621-v27"></script>
   <script src="theme.js"></script>
   
   <style>
@@ -273,13 +273,27 @@
       }
 
       const vehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
-      const myCar = vehicles.find(v => v.vin === targetVin);
+      const vinNorm = (typeof _normalize === 'function') ? _normalize(targetVin) : targetVin;
+      const myCar = vehicles.find(v =>
+        (typeof _normalize === 'function' ? _normalize(v.vin) : v.vin) === vinNorm
+      );
       if (myCar) {
         document.getElementById('carInfo').innerText = `マイカー: ${myCar.nickname || 'マイカー'} (VIN: ${myCar.vin})`;
       }
 
-      renderHistory();
+      loadAndRenderHistory();
     });
+
+    /** GAS から整備履歴を同期してから描画 */
+    async function loadAndRenderHistory() {
+      showLoading("読込中", "整備履歴をサーバーと同期しています...");
+      try {
+        if (typeof syncMaintenanceHistoryForVin === 'function') {
+          await syncMaintenanceHistoryForVin(targetVin);
+        }
+      } catch (eSync) { /* オフライン時はローカルのみ表示 */ }
+      renderHistory();
+    }
 
     /**
      * 履歴データの描画（フィルター・西暦対応）
@@ -288,11 +302,12 @@
       showLoading("読込中", "整備履歴を取得しています...");
 
       setTimeout(() => {
-        const allLogs = safeJsonParse(localStorage.getItem('nappy_logs_v1'), []);
         const filterKey = document.getElementById('filterSelect')?.value || 'all';
 
-        // このVINの全ログを取得（inspection_userも含む）
-        const baseLogs = allLogs.filter(log => log.vin === targetVin);
+        // このVINの全ログを取得（inspection_userも含む・VIN正規化比較）
+        const baseLogs = (typeof getLogsByVin === 'function')
+          ? getLogsByVin(targetVin)
+          : safeJsonParse(localStorage.getItem('nappy_logs_v1'), []).filter(log => log.vin === targetVin);
         // サジェスト用にキャッシュ（フィルター前の全ログ）
         baseLogsCache = baseLogs;
 

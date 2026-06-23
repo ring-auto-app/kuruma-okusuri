@@ -13,7 +13,7 @@
     <title>車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20260528-v26"></script>
+  <script src="app.js?v=20260621-v27"></script>
   <script src="theme.js"></script>
   
   <style>
@@ -81,8 +81,18 @@
       document.getElementById("backBtn").onclick = () => {
         goBackSmart(vin ? `user_history.html?vin=${encodeURIComponent(vin)}` : "user_home.html");
       };
-      render();
+      loadAndRender();
     });
+
+    async function loadAndRender() {
+      showLoading("読込中", "履歴詳細を取得しています...");
+      try {
+        if (typeof syncMaintenanceHistoryForVin === "function" && vin) {
+          await syncMaintenanceHistoryForVin(vin);
+        }
+      } catch (eSync) { /* ignore */ }
+      render();
+    }
 
     // inspection_biz.html の点検項目ID → 名前マップ
     const INSPECT_ITEM_NAMES = {
@@ -97,7 +107,6 @@
     };
 
     function render() {
-      showLoading("読込中", "履歴詳細を取得しています...");
       setTimeout(() => {
         const logs = safeJsonParse(localStorage.getItem("nappy_logs_v1"), []);
         const log = logs.find(l => String(l.log_id) === String(logId));
