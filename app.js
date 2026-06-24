@@ -1016,6 +1016,9 @@ function ringDemoGasStubResponse_(actionType) {
     if (actionType === 'verify_session') return { success: true };
     if (actionType === 'get_daily_history') return { success: true, history: [] };
     if (actionType === 'get_maintenance_history') return { success: true, logs: [] };
+    if (actionType === 'get_shop_maintenance_history') return { success: true, logs: [] };
+    if (actionType === 'delete_log') return { success: true, log_id: '' };
+    if (actionType === 'update_log') return { success: true, log_id: '', updatedAt: new Date().toISOString() };
     if (actionType === 'ocr_vin') return { success: true, partial: true, demo: true };
     if (actionType === 'ocr_vin_search') {
         return {
@@ -1555,6 +1558,42 @@ async function fetchDailyHistoryFromGas(vin) {
 }
 
 /**
+ * 整備ログの登録日時 ms（createdAt / created_at 優先、作業日は使わない）
+ */
+function ringLogCreatedAtMs_(log) {
+    if (!log) return 0;
+    var raw = log.createdAt || log.created_at || "";
+    var t = new Date(raw).getTime();
+    return isNaN(t) ? 0 : t;
+}
+
+/** 登録から7日以内か */
+function ringIsLogEditableWithin7Days_(log) {
+    var ms = ringLogCreatedAtMs_(log);
+    if (!ms) return false;
+    return (Date.now() - ms) < 7 * 24 * 60 * 60 * 1000;
+}
+
+/**
+ * 描画差分判定用シグネチャ（件数・最新 logId・最新 updatedAt/createdAt）
+ */
+function ringMaintenanceLogsSignature_(logs) {
+    var arr = Array.isArray(logs) ? logs : [];
+    if (!arr.length) return "0::0";
+    var latestLogId = "";
+    var maxTs = 0;
+    arr.forEach(function (l) {
+        var ts = new Date(l.updatedAt || l.createdAt || l.created_at || l.date || 0).getTime();
+        if (isNaN(ts)) ts = 0;
+        if (ts >= maxTs) {
+            maxTs = ts;
+            latestLogId = String(l.log_id || l.logId || "");
+        }
+    });
+    return arr.length + ":" + latestLogId + ":" + maxTs;
+}
+
+/**
  * GAS get_maintenance_history 応答1件をローカル整備ログ形へ
  * @param {object} row
  * @returns {object|null}
@@ -1580,7 +1619,8 @@ function mapGasMaintenanceLogToLocal(row) {
         memo: String(row.memo || ""),
         photoUrl: photoUrl,
         partsPhoto: photoUrl,
-        createdAt: String(row.createdAt || ""),
+        createdAt: String(row.createdAt || row.created_at || ""),
+        updatedAt: String(row.updatedAt || row.createdAt || row.created_at || ""),
         staffId: String(row.staffId || ""),
         staffName: String(row.staffName || ""),
         documentType: String(row.documentType || row.document_type || ""),
@@ -1590,19 +1630,117 @@ function mapGasMaintenanceLogToLocal(row) {
 }
 
 /**
- * GAS から整備履歴（History_Events）を取得（認証失敗時は空配列）
- * @param {string} vin
- * @returns {Promise<object[]>}
+ * GAS から整備履歴（History_Events）を取得
+ * @returns {Promise<{ logs: object[], ok: boolean }>}
  */
 async function fetchMaintenanceHistoryFromGas(vin) {
-    if (!vin) return [];
-    if (ringIsDemoGasOffline_()) return [];
+    if (!vin) return { logs: [], ok: false };
+    if (ringIsDemoGasOffline_()) return { logs: [], ok: false };
     try {
         const json = await sendToGAS_Safe("get_maintenance_history", { vin: String(vin).trim() });
-        return Array.isArray(json.logs) ? json.logs : [];
+        return { logs: Array.isArray(json.logs) ? json.logs : [], ok: true };
     } catch (e) {
-        return [];
+        return { logs: [], ok: false };
     }
+}
+
+/**
+ * GAS から自店7日以内の整備履歴を取得（工場編集一覧用）
+ * @returns {Promise<{ logs: object[], ok: boolean }>}
+ */
+async function fetchShopMaintenanceHistoryFromGas() {
+    if (ringIsDemoGasOffline_()) return { logs: [], ok: false };
+    try {
+        const json = await sendToGAS_Safe("get_shop_maintenance_history", {});
+        return { logs: Array.isArray(json.logs) ? json.logs : [], ok: true };
+    } catch (e) {
+        return { logs: [], ok: false };
+    }
+}
+
+/** サーバー行配列をローカル整備ログ配列へ */
+function mapGasMaintenanceLogsToLocal_(serverList) {
+    return (serverList || []).map(function (row) {
+        var loc = mapGasMaintenanceLogToLocal(row);
+        if (loc) loc._fromServer = true;
+        return loc;
+    }).filter(Boolean);
+}
+
+/**
+ * VIN 単位: History_Events を SSOT として localStorage キャッシュを置換
+ * @returns {Promise<{ ok: boolean, logs: object[], signature: string }>}
+ */
+async function syncMaintenanceHistoryForVin(vin) {
+    if (!vin) return { ok: false, logs: [], signature: "0::0" };
+    const vinNorm = _normalize(vin);
+    const allLogs = readLogsArray();
+    const otherLogs = allLogs.filter(function (l) { return _normalize(l.vin) !== vinNorm; });
+    const inspectionLocal = allLogs.filter(function (l) {
+        return _normalize(l.vin) === vinNorm &&
+            (l.type === "inspection" || l.type === "inspection_user");
+    });
+
+    const fetched = await fetchMaintenanceHistoryFromGas(vin);
+    if (!fetched.ok) {
+        const cached = allLogs.filter(function (l) { return _normalize(l.vin) === vinNorm; });
+        return { ok: false, logs: cached, signature: ringMaintenanceLogsSignature_(cached) };
+    }
+
+    const maintenance = mapGasMaintenanceLogsToLocal_(fetched.logs);
+    const mergedVin = inspectionLocal.concat(maintenance);
+    localStorage.setItem(DB_LOGS, JSON.stringify(otherLogs.concat(mergedVin)));
+    return {
+        ok: true,
+        logs: mergedVin,
+        signature: ringMaintenanceLogsSignature_(maintenance.concat(inspectionLocal))
+    };
+}
+
+/**
+ * 工場・事業者: 自店7日以内ログを SSOT 同期
+ * @returns {Promise<{ ok: boolean, signature: string }>}
+ */
+async function syncShopMaintenanceLogsForEdit(shopId) {
+    var sid = String(shopId || "").trim();
+    if (!sid) return { ok: false, signature: "0::0" };
+
+    var fetched = await fetchShopMaintenanceHistoryFromGas();
+    var allLogs = readLogsArray();
+    if (!fetched.ok) {
+        var cached = allLogs.filter(function (l) {
+            return String(l.shopId || "").trim() === sid && ringIsLogEditableWithin7Days_(l);
+        });
+        return { ok: false, signature: ringMaintenanceLogsSignature_(cached) };
+    }
+
+    var serverLogs = mapGasMaintenanceLogsToLocal_(fetched.logs);
+
+    var cutoffMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    var kept = allLogs.filter(function (l) {
+        if (String(l.shopId || "").trim() !== sid) return true;
+        var ms = ringLogCreatedAtMs_(l);
+        if (ms && ms < cutoffMs) return true;
+        return false;
+    });
+
+    var merged = kept.concat(serverLogs);
+    localStorage.setItem(DB_LOGS, JSON.stringify(merged));
+    return { ok: true, signature: ringMaintenanceLogsSignature_(serverLogs) };
+}
+
+/**
+ * History_Events 上で整備ログを物理削除
+ */
+async function deleteMaintenanceLogOnServer(logId) {
+    return await sendToGAS_Safe("delete_log", { logId: String(logId || "").trim() });
+}
+
+/**
+ * History_Events 上で整備ログを更新（VIN / 部品 / メモ / 数量）
+ */
+async function updateMaintenanceLogOnServer(payload) {
+    return await sendToGAS_Safe("update_log", payload || {});
 }
 
 /** 整備履歴マージ用ユニークキー（log_id 優先、なければ日付+区分+店舗） */
@@ -1611,67 +1749,6 @@ function maintenanceLogMergeKeyOf_(item) {
     if (k) return "id:" + k;
     return "fallback:" + _normalize(item.vin) + ":" + String(item.date || "") + ":" +
         String(item.title || "") + ":" + String(item.shopId || "");
-}
-
-/**
- * ローカル整備履歴とサーバ History_Events を log_id 等で重複排除マージ
- * @param {object[]} localList 当該 VIN の整備ログ（日常点検タイプ除く）
- * @param {object[]} serverList GAS から取得した logs
- * @returns {object[]}
- */
-function mergeMaintenanceHistoryLocalAndServer(localList, serverList) {
-    const map = new Map();
-    (serverList || []).forEach(function (row) {
-        const loc = mapGasMaintenanceLogToLocal(row);
-        if (!loc) return;
-        loc._fromServer = true;
-        map.set(maintenanceLogMergeKeyOf_(loc), loc);
-    });
-    (localList || []).forEach(function (item) {
-        if (!item) return;
-        const t = item.type;
-        if (t === "inspection" || t === "inspection_user") return;
-        const k = maintenanceLogMergeKeyOf_(item);
-        if (!map.has(k)) {
-            map.set(k, item);
-            return;
-        }
-        const serverItem = map.get(k);
-        const localPhoto = item.partsPhoto || item.photoUrl;
-        const serverPhoto = serverItem.partsPhoto || serverItem.photoUrl;
-        if (localPhoto && !serverPhoto) {
-            map.set(k, Object.assign({}, serverItem, {
-                photoUrl: localPhoto,
-                partsPhoto: localPhoto
-            }));
-        }
-    });
-    return Array.from(map.values());
-}
-
-/**
- * 指定 VIN の整備履歴を GAS から取得しローカル nappy_logs_v1 にマージ保存
- * @param {string} vin
- * @returns {Promise<object[]>} 当該 VIN のマージ後ログ（日常点検含む）
- */
-async function syncMaintenanceHistoryForVin(vin) {
-    if (!vin) return [];
-    const vinNorm = _normalize(vin);
-    const allLogs = readLogsArray();
-    const otherLogs = allLogs.filter(function (l) { return _normalize(l.vin) !== vinNorm; });
-    const localVinLogs = allLogs.filter(function (l) { return _normalize(l.vin) === vinNorm; });
-    const inspectionLocal = localVinLogs.filter(function (l) {
-        return l.type === "inspection" || l.type === "inspection_user";
-    });
-    const maintenanceLocal = localVinLogs.filter(function (l) {
-        return l.type !== "inspection" && l.type !== "inspection_user";
-    });
-
-    const serverLogs = await fetchMaintenanceHistoryFromGas(vin);
-    const mergedMaintenance = mergeMaintenanceHistoryLocalAndServer(maintenanceLocal, serverLogs);
-    const mergedVin = inspectionLocal.concat(mergedMaintenance);
-    localStorage.setItem(DB_LOGS, JSON.stringify(otherLogs.concat(mergedVin)));
-    return mergedVin;
 }
 
 /**

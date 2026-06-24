@@ -13,7 +13,7 @@
     <title>車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20260528-v26"></script>
+  <script src="app.js?v=20260622-v28"></script>
   <script src="theme.js"></script>
   
   <style>
@@ -67,8 +67,8 @@
 
     <div class="card">
       <div class="field">
-        <span class="label">車台番号 (VIN) ※変更不可</span>
-        <div class="readonly-text" id="dispVin">---</div>
+        <span class="label">車台番号 (VIN)</span>
+        <input id="inVin" class="readonly-text" style="width:100%;box-sizing:border-box;font-size:16px;font-weight:900;" autocomplete="off" autocapitalize="characters">
       </div>
       <div class="row">
         <div class="field">
@@ -115,19 +115,19 @@
     let originalCreatedAt = null;
 
     window.addEventListener('DOMContentLoaded', () => {
-      // 掟3：読込開始時にローディングを表示
       showLoading("データ取得中", "対象の記録を読み込んでいます...");
-      setTimeout(() => {
-        init();
-        hideLoading();
-      }, 300);
+      init().finally(function () { hideLoading(); });
     });
 
-    function init() {
+    async function init() {
       if (!vin || !logId) {
         alert("データが見つかりません。");
         location.replace("factory_edit_list.html");
         return;
+      }
+
+      if (typeof syncMaintenanceHistoryForVin === 'function') {
+        try { await syncMaintenanceHistoryForVin(vin); } catch (eSync) { /* キャッシュ */ }
       }
 
       const logs = typeof readLogsArray === 'function' ? readLogsArray() : safeJsonParse(localStorage.getItem("nappy_logs_v1"), []);
@@ -139,15 +139,15 @@
         return;
       }
 
-      originalCreatedAt = targetLog.createdAt || targetLog.date;
-      const diffDays = (new Date() - new Date(originalCreatedAt)) / (1000 * 60 * 60 * 24);
-      if (diffDays >= 7) {
+      originalCreatedAt = targetLog.createdAt || targetLog.created_at || targetLog.date;
+      const createdMs = typeof ringLogCreatedAtMs_ === 'function' ? ringLogCreatedAtMs_(targetLog) : new Date(originalCreatedAt).getTime();
+      if (!createdMs || (Date.now() - createdMs) >= 7 * 24 * 60 * 60 * 1000) {
         alert("【エラー】この記録は登録から7日以上経過しているため、ロック（確定）されています。");
         location.replace("factory_edit_list.html");
         return;
       }
 
-      document.getElementById("dispVin").innerText = targetLog.vin;
+      document.getElementById("inVin").value = targetLog.vin;
       const dateVal = targetLog.date || "";
       document.getElementById("inDate").value = dateVal;
       document.getElementById("dispDate").textContent = dateVal || "---";
@@ -198,72 +198,79 @@
       if (typeof ringValidateWorkTitleSelect === 'function' && !ringValidateWorkTitleSelect()) {
         return;
       }
-      const date = document.getElementById('inDate').value;
 
       showLoading("保存中", "修正内容を上書き保存しています...");
 
       if (typeof window !== 'undefined') window.__ringSaving = true;
       try {
+        const vinNew = document.getElementById('inVin').value.trim().toUpperCase();
+        const partsVal = document.getElementById('inParts').value;
+        const memoVal = document.getElementById('inMemo').value;
         const logs = typeof readLogsArray === 'function' ? readLogsArray() : safeJsonParse(localStorage.getItem("nappy_logs_v1"), []);
         const logIndex = logs.findIndex(l => l.log_id === logId);
-
-        if (logIndex === -1) {
-          hideLoading();
-          showToast('error', '保存エラー：データが見つかりません。');
-          return;
+        var qty = '';
+        if (logIndex >= 0 && Array.isArray(logs[logIndex].partsItems) && logs[logIndex].partsItems[0]) {
+          qty = logs[logIndex].partsItems[0].q || logs[logIndex].partsItems[0].quantity || '';
         }
 
-        const updated = {
-          ...logs[logIndex],
-          date: date,
-          mileage: document.getElementById('inMileage').value,
-          title: document.getElementById('inTitle').value,
-          parts: document.getElementById('inParts').value,
-          memo: document.getElementById('inMemo').value,
-          partsPhoto: document.getElementById('inPartsPhotoBase64').value,
-          createdAt: originalCreatedAt
+        const updatePayload = {
+          logId: logId,
+          vin: vinNew,
+          parts: partsVal,
+          memo: memoVal,
+          quantity: qty
         };
-        logs[logIndex] = updated;
-        localStorage.setItem("nappy_logs_v1", JSON.stringify(logs));
 
         const correctionPayload = {
           originalLogId: logId,
-          vin: vin,
-          mileage: updated.mileage,
-          title: updated.title,
-          parts: updated.parts,
-          memo: updated.memo,
-          photoUrl: updated.partsPhoto || '',
-          partsPhoto: updated.partsPhoto || ''
+          vin: vinNew,
+          mileage: document.getElementById('inMileage').value,
+          title: document.getElementById('inTitle').value,
+          parts: partsVal,
+          memo: memoVal,
+          photoUrl: document.getElementById('inPartsPhotoBase64').value || '',
+          partsPhoto: document.getElementById('inPartsPhotoBase64').value || ''
         };
 
         try {
+          if (typeof updateMaintenanceLogOnServer === 'function') {
+            await updateMaintenanceLogOnServer(updatePayload);
+          } else if (typeof sendToGAS_Safe === 'function') {
+            await sendToGAS_Safe('update_log', updatePayload);
+          }
           if (typeof sendToGAS_Safe === 'function') {
             await sendToGAS_Safe('correct_log', correctionPayload);
-          } else {
-            throw new Error('NO_SENDER');
           }
+          if (typeof syncMaintenanceHistoryForVin === 'function') {
+            await syncMaintenanceHistoryForVin(vinNew);
+          }
+          var profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+          if (profile && profile.shopId && typeof syncShopMaintenanceLogsForEdit === 'function') {
+            await syncShopMaintenanceLogsForEdit(profile.shopId);
+          }
+          const destVin = encodeURIComponent(vinNew);
           if (typeof showRingSavedSplash === 'function') {
             showRingSavedSplash({
               variant: 'success',
-              onDone: () => location.replace(`factory_detail.html?vin=${encodeURIComponent(vin)}&log_id=${logId}`),
+              onDone: () => location.replace(`factory_detail.html?vin=${destVin}&log_id=${logId}`),
             });
           } else {
             showToast('success', '正常に登録されました');
-            setTimeout(() => location.replace(`factory_detail.html?vin=${encodeURIComponent(vin)}&log_id=${logId}`), 1200);
+            setTimeout(() => location.replace(`factory_detail.html?vin=${destVin}&log_id=${logId}`), 1200);
           }
         } catch (gasErr) {
           if (typeof enqueueRetry === 'function') {
+            enqueueRetry('update_log', updatePayload);
             enqueueRetry('correct_log', correctionPayload);
           }
           if (typeof showRingSavedSplash === 'function') {
             showRingSavedSplash({
               variant: 'queued',
-              onDone: () => location.replace(`factory_detail.html?vin=${encodeURIComponent(vin)}&log_id=${logId}`),
+              onDone: () => location.replace(`factory_detail.html?vin=${encodeURIComponent(vinNew)}&log_id=${logId}`),
             });
           } else if (typeof showToast === 'function') {
             showToast('info', '端末に保存しました。サーバー反映は回線復旧後に自動で再試行されます。');
-            setTimeout(() => location.replace(`factory_detail.html?vin=${encodeURIComponent(vin)}&log_id=${logId}`), 1200);
+            setTimeout(() => location.replace(`factory_detail.html?vin=${encodeURIComponent(vinNew)}&log_id=${logId}`), 1200);
           }
         }
       } catch (err) {

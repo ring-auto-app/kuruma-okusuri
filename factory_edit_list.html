@@ -13,7 +13,7 @@
     <title>車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20260528-v26"></script>
+  <script src="app.js?v=20260622-v28"></script>
   <script src="theme.js"></script>
   
   <style>
@@ -54,7 +54,10 @@
     
     <div class="header">
       <a id="backToInputBtn" class="back-link">≪戻る</a>
-      <h1 class="title">入力履歴一覧</h1>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+        <h1 class="title">入力履歴一覧</h1>
+        <button type="button" id="ringRefreshEditListBtn" style="font-size:13px;font-weight:800;border:none;background:transparent;color:var(--accent);cursor:pointer;padding:0;line-height:34px;white-space:nowrap;">🔄 更新</button>
+      </div>
       <p class="sub-title" id="shopIndicator">読み込み中...</p>
     </div>
 
@@ -64,44 +67,65 @@
 
   <script>
     let currentProfile = null;
+    let lastEditListSignature = '';
 
     window.addEventListener('DOMContentLoaded', () => {
-      showLoading("データ取得中", "入力履歴を読み込んでいます...");
+      currentProfile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+      if (!currentProfile) {
+        return location.replace("login.html");
+      }
 
-      setTimeout(() => {
-        currentProfile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
-        if (!currentProfile) {
-          hideLoading();
-          return location.replace("login.html");
-        }
+      document.getElementById('shopIndicator').innerHTML = 
+        `<strong>${currentProfile.shopName}</strong> の直近7日間の記録です。<br>` +
+        `それ以前の記録は改ざん防止のためロックされています。`;
 
-        document.getElementById('shopIndicator').innerHTML = 
-          `<strong>${currentProfile.shopName}</strong> の直近7日間の記録です。<br>` +
-          `それ以前の記録は改ざん防止のためロックされています。`;
+      const inputPage = currentProfile.shopType === 'dealer' ? 'dealer_input.html' : 'factory_input.html';
+      document.getElementById('backToInputBtn').onclick = () => goBackSmart(inputPage);
+      document.getElementById('ringRefreshEditListBtn').onclick = () => loadAndRenderEditList(true);
 
-        const inputPage = currentProfile.shopType === 'dealer' ? 'dealer_input.html' : 'factory_input.html';
-        document.getElementById('backToInputBtn').onclick = () => goBackSmart(inputPage);
-
-        renderEditList();
-        hideLoading();
-      }, 300);
+      loadAndRenderEditList(false);
     });
 
-    function renderEditList() {
-      let logs = safeJsonParse(localStorage.getItem('nappy_logs_v1'), []);
-      const container = document.getElementById('editListArea');
+    async function loadAndRenderEditList(isManualRefresh) {
+      if (typeof showLoading === 'function') {
+        showLoading(isManualRefresh ? '更新中' : 'データ取得中', 'サーバーから最新履歴を取得しています...');
+      }
+      var scrollY = window.scrollY;
+      var shopId = (currentProfile && currentProfile.shopId) || '';
+      var syncOk = false;
+      try {
+        if (typeof syncShopMaintenanceLogsForEdit === 'function' && shopId) {
+          var r = await syncShopMaintenanceLogsForEdit(shopId);
+          syncOk = !!(r && r.ok);
+          if (!lastEditListSignature || (r && r.signature !== lastEditListSignature)) {
+            lastEditListSignature = r ? r.signature : lastEditListSignature;
+            renderEditList();
+          }
+        } else {
+          renderEditList();
+        }
+      } catch (eLoad) {
+        if (!syncOk) renderEditList();
+      }
+      window.scrollTo(0, scrollY);
+      if (typeof hideLoading === 'function') hideLoading();
+    }
 
-      const now = new Date();
-      const sevenDaysAgo = new Date(now.getTime() - (7 * 24 * 60 * 60 * 1000));
-
+    function getMyRecentShopLogs() {
+      let logs = typeof readLogsArray === 'function' ? readLogsArray() : safeJsonParse(localStorage.getItem('nappy_logs_v1'), []);
       const myShopId = (currentProfile.shopId || "").trim();
-      const myRecentLogs = logs.filter(log => {
+      const cutoffMs = Date.now() - (7 * 24 * 60 * 60 * 1000);
+      return logs.filter(log => {
         if (!myShopId) return false;
         if ((log.shopId || "").trim() !== myShopId) return false;
-        if (log.voidedAt) return false;
-        const createdDate = new Date(log.createdAt || log.date);
-        return createdDate >= sevenDaysAgo;
+        var ms = typeof ringLogCreatedAtMs_ === 'function' ? ringLogCreatedAtMs_(log) : new Date(log.createdAt || log.date).getTime();
+        return ms && ms >= cutoffMs;
       });
+    }
+
+    function renderEditList() {
+      const myRecentLogs = getMyRecentShopLogs();
+      const container = document.getElementById('editListArea');
 
       if (myRecentLogs.length === 0) {
         container.innerHTML = `
@@ -150,31 +174,35 @@
       const ok = typeof showRingConfirm === 'function'
         ? await showRingConfirm({
             title: '記録の取消',
-            message: 'この記録を取消しますか？\n※記録はサーバー上に残ります（不正防止のため物理削除はできません）。',
+            message: 'この記録を取消しますか？\n※サーバーから削除されます。',
             okLabel: '取消する',
             cancelLabel: '閉じる',
             danger: true,
           })
-        : confirm("この記録を取消しますか？\n※記録はサーバー上に残ります（不正防止のため物理削除はできません）。");
+        : confirm("この記録を取消しますか？\n※サーバーから削除されます。");
       if (!ok) return;
 
-      showLoading("取消処理中", "記録を取消しています...");
+      showLoading("取消処理中", "記録を削除しています...");
 
-      if (typeof markLogVoided === 'function') {
-        markLogVoided(targetId, '入力元による取消');
-      } else {
-        const logs = safeJsonParse(localStorage.getItem('nappy_logs_v1'), []);
-        const next = logs.map(log => {
-          if (log.log_id !== targetId) return log;
-          if (currentProfile && log.shopId && log.shopId !== currentProfile.shopId) return log;
-          return { ...log, voidedAt: new Date().toISOString(), voidReason: '入力元による取消' };
-        });
-        localStorage.setItem('nappy_logs_v1', JSON.stringify(next));
+      try {
+        if (typeof deleteMaintenanceLogOnServer === 'function') {
+          await deleteMaintenanceLogOnServer(targetId);
+        } else if (typeof sendToGAS_Safe === 'function') {
+          await sendToGAS_Safe('delete_log', { logId: targetId });
+        } else {
+          throw new Error('NO_SENDER');
+        }
+        if (typeof syncShopMaintenanceLogsForEdit === 'function' && currentProfile && currentProfile.shopId) {
+          var r = await syncShopMaintenanceLogsForEdit(currentProfile.shopId);
+          lastEditListSignature = r ? r.signature : '';
+        }
+        renderEditList();
+        hideLoading();
+        showToast('success', '取消しました');
+      } catch (eDel) {
+        hideLoading();
+        if (typeof showToast === 'function') showToast('error', '取消に失敗しました。通信環境を確認してください');
       }
-
-      hideLoading();
-      renderEditList();
-      showToast('success', '取消しました（記録は保持されています）');
     }
   </script>
 </body>

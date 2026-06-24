@@ -13,7 +13,7 @@
     <title>車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20260621-v27"></script>
+  <script src="app.js?v=20260622-v28"></script>
   <script src="theme.js"></script>
   
   <style>
@@ -147,7 +147,10 @@
   <div class="container">
     <div class="header">
       <a onclick="goBackSmart('user_home.html')" class="back-link">◁ マイカーへ戻る</a>
-      <h1 class="title">整備履歴</h1>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+        <h1 class="title">整備履歴</h1>
+        <button type="button" onclick="manualRefreshHistory()" style="font-size:13px;font-weight:800;border:none;background:transparent;color:var(--accent);cursor:pointer;padding:0;line-height:34px;white-space:nowrap;">🔄 更新</button>
+      </div>
       <p class="sub-title" id="carInfo">車両情報を読み込み中...</p>
     </div>
 
@@ -186,6 +189,23 @@
     /* ── 検索関連 ── */
     let currentSearchQuery = '';  // 現在の検索クエリ
     let baseLogsCache = [];        // サジェスト用にログをキャッシュ
+    let lastHistSignature = '';
+
+    async function manualRefreshHistory() {
+      if (typeof showLoading === 'function') showLoading('更新中', 'サーバーから最新履歴を取得しています...');
+      var scrollY = window.scrollY;
+      try {
+        if (typeof syncMaintenanceHistoryForVin === 'function') {
+          var r = await syncMaintenanceHistoryForVin(targetVin);
+          if (r && r.signature !== lastHistSignature) {
+            lastHistSignature = r.signature;
+            renderHistory();
+          }
+        }
+      } catch (eRef) { /* キャッシュ維持 */ }
+      window.scrollTo(0, scrollY);
+      if (typeof hideLoading === 'function') hideLoading();
+    }
 
     // カタカナ→ひらがな変換（検索の正規化用）
     function toHira(str) {
@@ -284,15 +304,25 @@
       loadAndRenderHistory();
     });
 
-    /** GAS から整備履歴を同期してから描画 */
+    /** GAS から整備履歴を同期してから描画（キャッシュ→同期→差分時のみ再描画） */
     async function loadAndRenderHistory() {
-      showLoading("読込中", "整備履歴をサーバーと同期しています...");
+      renderHistory();
+      if (typeof ringMaintenanceLogsSignature_ === 'function' && typeof getLogsByVin === 'function') {
+        lastHistSignature = ringMaintenanceLogsSignature_(getLogsByVin(targetVin));
+      }
+      if (typeof showLoading === 'function') showLoading('読込中', '整備履歴をサーバーと同期しています...');
+      var scrollY = window.scrollY;
       try {
         if (typeof syncMaintenanceHistoryForVin === 'function') {
-          await syncMaintenanceHistoryForVin(targetVin);
+          var r = await syncMaintenanceHistoryForVin(targetVin);
+          if (r && r.signature !== lastHistSignature) {
+            lastHistSignature = r.signature;
+            renderHistory();
+          }
         }
       } catch (eSync) { /* オフライン時はローカルのみ表示 */ }
-      renderHistory();
+      window.scrollTo(0, scrollY);
+      if (typeof hideLoading === 'function') hideLoading();
     }
 
     /**

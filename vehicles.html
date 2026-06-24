@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.json">
     <title>車のお薬手帳</title>
   <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20260528-v26"></script>
+  <script src="app.js?v=20260622-v28"></script>
   <script src="theme.js"></script>
   <style>
     /* 掟：34pxグリッドと付箋デザインを完全維持 */
@@ -95,7 +95,10 @@
     <div>
       <a id="backBtn" class="back-link">◁ ホームへ戻る</a>
       <div class="header">
-        <h1 class="title" id="pageTitle">車両一覧</h1>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;">
+          <h1 class="title" id="pageTitle">車両一覧</h1>
+          <button type="button" id="ringRefreshVehiclesBtn" style="font-size:13px;font-weight:800;border:none;background:transparent;color:var(--accent);cursor:pointer;padding:0;line-height:34px;white-space:nowrap;">🔄 更新</button>
+        </div>
       </div>
     </div>
     <!-- 車両区分タブ（工場・事業者のみ JS で表示） -->
@@ -152,6 +155,20 @@
 
       // 登録ボタンの飛び先
       if (addBtn) addBtn.onclick = () => location.href = 'car_add.html';
+
+      var refreshBtn = document.getElementById('ringRefreshVehiclesBtn');
+      if (refreshBtn) {
+        refreshBtn.onclick = async function () {
+          if (typeof showLoading === 'function') showLoading('更新中', 'サーバーから最新情報を取得しています...');
+          try {
+            if (profile && typeof syncVehiclesFromServer === 'function') {
+              await syncVehiclesFromServer();
+            }
+            renderCars(false);
+          } catch (eRef) { renderCars(false); }
+          if (typeof hideLoading === 'function') hideLoading();
+        };
+      }
 
       // キャッシュファースト: localStorage を即描画 → バックグラウンドで GAS 同期
       renderCars(false);
