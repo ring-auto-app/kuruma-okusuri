@@ -613,12 +613,24 @@
         : confirm(`「${document.getElementById('inName').value || targetVin}」を一覧から削除しますか？\n※整備履歴は残ります`);
       if (!ok) return;
 
-      const vehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
-      const updated = vehicles.filter(v => v.vin !== targetVin);
-      localStorage.setItem('nappy_vehicles_v1', JSON.stringify(updated));
-
-      if (typeof showToast === 'function') showToast('success', '削除しました');
-      setTimeout(() => location.replace('vehicles.html'), 800); // 削除後は常に一覧へ
+      try {
+        if (typeof showLoading === 'function') showLoading('削除中', 'サーバーから削除しています...');
+        const response = await sendToGAS_Safe('delete_vehicle', { vin: targetVin }, { silentToast: true });
+        if (response && response.ok === true) {
+          const vehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
+          const updated = vehicles.filter(v => v.vin !== targetVin);
+          localStorage.setItem('nappy_vehicles_v1', JSON.stringify(updated));
+          if (typeof hideLoading === 'function') hideLoading();
+          if (typeof showToast === 'function') showToast('success', '削除しました');
+          setTimeout(() => location.replace('vehicles.html'), 800);
+        } else {
+          if (typeof hideLoading === 'function') hideLoading();
+          if (typeof showToast === 'function') showToast('error', '削除に失敗しました');
+        }
+      } catch (eDel) {
+        if (typeof hideLoading === 'function') hideLoading();
+        if (typeof showToast === 'function') showToast('error', '削除に失敗しました');
+      }
     }
   </script>
 </body>

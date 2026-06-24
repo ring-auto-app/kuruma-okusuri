@@ -1018,6 +1018,7 @@ function ringDemoGasStubResponse_(actionType) {
     if (actionType === 'get_maintenance_history') return { success: true, logs: [] };
     if (actionType === 'get_shop_maintenance_history') return { success: true, logs: [] };
     if (actionType === 'delete_log') return { success: true, log_id: '' };
+    if (actionType === 'delete_vehicle') return { success: true, ok: true };
     if (actionType === 'update_log') return { success: true, log_id: '', updatedAt: new Date().toISOString() };
     if (actionType === 'ocr_vin') return { success: true, partial: true, demo: true };
     if (actionType === 'ocr_vin_search') {
@@ -1634,17 +1635,27 @@ function ringIsPageCacheFresh_(cacheKey, pageId) {
  */
 function ringFormatDateLocal_(value, withTime) {
     if (value == null || value === "") return "---";
-    var s = String(value).trim();
-    if (!s) return "---";
-    var mDate = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
-    if (mDate && !withTime) {
-        return mDate[1] + "/" + mDate[2] + "/" + mDate[3];
+    var d = null;
+    if (typeof value === "number" && isFinite(value)) {
+        d = new Date(value);
+    } else {
+        var s = String(value).trim();
+        if (!s) return "---";
+        if (/^\d{12,}$/.test(s)) {
+            d = new Date(Number(s));
+        } else {
+            var mDate = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+            if (mDate && !withTime) {
+                return mDate[1] + "/" + mDate[2] + "/" + mDate[3];
+            }
+            if (/^\d{4}\/\d{2}\/\d{2}( \d{2}:\d{2})?$/.test(s)) return s;
+            d = new Date(s);
+        }
     }
-    if (/^\d{4}\/\d{2}\/\d{2}( \d{2}:\d{2})?$/.test(s)) return s;
-    var d = new Date(s);
-    if (isNaN(d.getTime())) {
-        var head = s.split("T")[0].replace(/-/g, "/");
-        return head || s;
+    if (!d || isNaN(d.getTime())) {
+        var sFallback = String(value).trim();
+        var head = sFallback.split("T")[0].replace(/-/g, "/");
+        return head || sFallback || "---";
     }
     var y = d.getFullYear();
     var mo = ("0" + (d.getMonth() + 1)).slice(-2);
