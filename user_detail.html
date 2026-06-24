@@ -174,7 +174,7 @@
           <div class="card">
             <div class="field">
               <span class="label">日付</span>
-              <div class="value">${escapeHtml(log.date || "-")}</div>
+              <div class="value">${escapeHtml(typeof ringFormatDateLocal_ === 'function' ? ringFormatDateLocal_(log.date, false) : (log.date || "-"))}</div>
             </div>
             <div class="field">
               <span class="label">走行距離</span>

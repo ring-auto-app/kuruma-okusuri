@@ -1843,6 +1843,8 @@ function mapGasMaintenanceLogToLocal(row) {
         shopName: String(row.shopName || ""),
         shopType: String(row.shopType || ""),
         factoryType: String(row.factoryType || ""),
+        transportBureau: String(row.transportBureau || ""),
+        factoryNumber: String(row.factoryNumber || ""),
         parts: String(row.parts || ""),
         memo: String(row.memo || ""),
         photoUrl: photoUrl,

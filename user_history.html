@@ -515,7 +515,7 @@
               <div class="log-header">
                 <div class="log-header-left">
                   ${badgeHtml}
-                  <span class="log-date">${escapeHtml(typeof ringFormatDateLocal_ === 'function' ? ringFormatDateLocal_(log.date, false) : log.date)}</span>
+                  <span class="log-date">${escapeHtml(ringFormatDateLocal_(log.date, false))}</span>
                 </div>
                 <span class="log-mileage">${log.mileage ? escapeHtml(log.mileage) + ' km' : ''}</span>
               </div>
