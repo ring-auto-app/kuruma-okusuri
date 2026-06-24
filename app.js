@@ -4949,7 +4949,7 @@ function ringBackFromSupportPage() {
 }
 
 /**
- * 戻る処理。第1引数に URL を渡した場合は常にそのURLへ遷移（履歴ループ防止）。
+ * 戻る処理。第1引数に URL を渡した場合は replace で遷移（履歴への push を避ける）。
  * 未指定のときだけ history.back() を試す。
  */
 function goBackSmart(fallbackUrl) {
@@ -4958,7 +4958,7 @@ function goBackSmart(fallbackUrl) {
             ringGoToTopMenu();
             return;
         }
-        window.location.href = fallbackUrl;
+        window.location.replace(fallbackUrl);
         return;
     }
     if (history.length > 1) {

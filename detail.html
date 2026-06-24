@@ -114,10 +114,7 @@
     <div class="section" id="shopSection" style="display:none;">
       <span class="label">担当工場・事業者</span>
       <div class="value" id="logShopName" style="font-size:15px;"></div>
-      <span class="label" style="margin-top:8px;">陸運支局</span>
-      <div class="value" id="logBureau" style="font-size:15px;"></div>
-      <span class="label" id="logCertTypeLabel" style="margin-top:8px;">指定/認証番号</span>
-      <div class="value" id="logCertNumber" style="font-size:15px;"></div>
+      <div class="value" id="logFactoryNumber" style="font-size:15px;"></div>
     </div>
 
     <button type="button" class="ring-btn-print-sheet no-print" onclick="window.print()">
@@ -165,7 +162,7 @@
     function init() {
       if (!vin || !logId) { alert("データが見つかりません。"); location.href = "index.html"; return; }
 
-      document.getElementById("backBtn").onclick = () => goBackSmart("history.html?vin=" + encodeURIComponent(vin));
+      document.getElementById("backBtn").onclick = () => goBackSmart();
       showLoading("データ照会中", "整備内容を読み込んでいます...");
 
       setTimeout(() => {
@@ -250,17 +247,15 @@
         // 担当工場情報（ユーザー日常点検は非表示）
         const isUserInspect = log.type === 'inspection_user' || log.shopType === 'user';
         if (!isUserInspect && (log.shopName || log.shopId)) {
-          const shops       = safeJsonParse(localStorage.getItem('nappy_shops_v1'), []);
-          const shop        = shops.find(s => s.shopId === log.shopId) || {};
-          const shopName    = log.shopName  || shop.shopName  || '-';
-          const bureau      = log.transportBureau || shop.transportBureau || shop.riku_un || '-';
-          const certNum     = log.factoryNumber   || shop.factoryNumber   || '-';
-          const certType    = log.factoryType     || '';
-          document.getElementById('logShopName').textContent       = shopName;
-          document.getElementById('logBureau').textContent         = bureau;
-          document.getElementById('logCertNumber').textContent     = certNum;
-          document.getElementById('logCertTypeLabel').textContent  = certType ? `${certType}番号` : '指定/認証番号';
-          document.getElementById('shopSection').style.display     = '';
+          const shops        = safeJsonParse(localStorage.getItem('nappy_shops_v1'), []);
+          const shop         = shops.find(s => s.shopId === log.shopId) || {};
+          const shopName     = log.shopName || shop.shopName || '-';
+          const factoryNum   = log.factoryNumber || shop.factoryNumber || '';
+          document.getElementById('logShopName').textContent = shopName;
+          const fnEl = document.getElementById('logFactoryNumber');
+          fnEl.textContent = factoryNum;
+          fnEl.style.display = factoryNum ? '' : 'none';
+          document.getElementById('shopSection').style.display = '';
         }
 
         hideLoading();

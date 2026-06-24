@@ -79,7 +79,7 @@
 
     window.addEventListener("DOMContentLoaded", () => {
       document.getElementById("backBtn").onclick = () => {
-        goBackSmart(vin ? `user_history.html?vin=${encodeURIComponent(vin)}` : "user_home.html");
+        goBackSmart();
       };
       loadAndRender();
     });
@@ -150,23 +150,16 @@
         if (log.type !== 'inspection_user' && log.shopType !== 'user') {
           const shops = safeJsonParse(localStorage.getItem('nappy_shops_v1'), []);
           const shop  = shops.find(s => s.shopId === log.shopId) || {};
-          const shopName   = log.shopName  || shop.shopName  || '-';
-          const bureau     = log.transportBureau || shop.transportBureau || shop.riku_un || '-';
-          const certNumber = log.factoryNumber   || shop.factoryNumber   || '-';
-          const certType   = log.factoryType     || '';
-          const certLabel  = certType ? `${certType}番号` : '指定/認証番号';
+          const shopName = log.shopName || shop.shopName || '-';
+          const factoryNum = log.factoryNumber || shop.factoryNumber || '';
+          const factoryNumHtml = factoryNum
+            ? `<div class="value">${escapeHtml(factoryNum)}</div>`
+            : '';
           shopSectionHtml = `
             <div class="field">
               <span class="label">担当工場・事業者</span>
               <div class="value">${escapeHtml(shopName)}</div>
-            </div>
-            <div class="field">
-              <span class="label">陸運支局</span>
-              <div class="value">${escapeHtml(bureau)}</div>
-            </div>
-            <div class="field">
-              <span class="label">${escapeHtml(certLabel)}</span>
-              <div class="value">${escapeHtml(certNumber)}</div>
+              ${factoryNumHtml}
             </div>`;
         }
 
