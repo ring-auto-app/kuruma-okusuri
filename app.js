@@ -1593,6 +1593,223 @@ function ringMaintenanceLogsSignature_(logs) {
     return arr.length + ":" + latestLogId + ":" + maxTs;
 }
 
+/** 画面別 TTL（未設定時は 10 分） */
+var RING_PAGE_TTL_MS = {
+    factory_edit_list: 60 * 1000,
+    user_history: 10 * 60 * 1000,
+    vehicles: 5 * 60 * 1000,
+    user_home: 5 * 60 * 1000
+};
+var RING_SYNC_META_KEY = "ring_page_sync_meta_v1";
+var ringPageSyncInFlight_ = {};
+
+function ringPageTtlMs_(pageId) {
+    var id = String(pageId || "");
+    if (RING_PAGE_TTL_MS[id] != null) return RING_PAGE_TTL_MS[id];
+    return 10 * 60 * 1000;
+}
+
+function ringGetPageSyncMeta_(cacheKey) {
+    var all = safeJsonParse(localStorage.getItem(RING_SYNC_META_KEY), {});
+    return all[String(cacheKey || "")] || null;
+}
+
+function ringSetPageSyncMeta_(cacheKey) {
+    if (!cacheKey) return;
+    var all = safeJsonParse(localStorage.getItem(RING_SYNC_META_KEY), {});
+    all[String(cacheKey)] = { syncedAt: Date.now() };
+    try {
+        localStorage.setItem(RING_SYNC_META_KEY, JSON.stringify(all));
+    } catch (e) { /* ignore */ }
+}
+
+function ringIsPageCacheFresh_(cacheKey, pageId) {
+    var meta = ringGetPageSyncMeta_(cacheKey);
+    if (!meta || !meta.syncedAt) return false;
+    return (Date.now() - meta.syncedAt) < ringPageTtlMs_(pageId);
+}
+
+/**
+ * ISO（Z 付き）をローカルタイムで表示。一覧=日付のみ / 詳細=日付+時刻
+ */
+function ringFormatDateLocal_(value, withTime) {
+    if (value == null || value === "") return "---";
+    var s = String(value).trim();
+    if (!s) return "---";
+    var mDate = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+    if (mDate && !withTime) {
+        return mDate[1] + "/" + mDate[2] + "/" + mDate[3];
+    }
+    if (/^\d{4}\/\d{2}\/\d{2}( \d{2}:\d{2})?$/.test(s)) return s;
+    var d = new Date(s);
+    if (isNaN(d.getTime())) {
+        var head = s.split("T")[0].replace(/-/g, "/");
+        return head || s;
+    }
+    var y = d.getFullYear();
+    var mo = ("0" + (d.getMonth() + 1)).slice(-2);
+    var da = ("0" + d.getDate()).slice(-2);
+    if (!withTime) return y + "/" + mo + "/" + da;
+    var hh = ("0" + d.getHours()).slice(-2);
+    var mm = ("0" + d.getMinutes()).slice(-2);
+    return y + "/" + mo + "/" + da + " " + hh + ":" + mm;
+}
+
+function ringFormatDateTimeLocal_(value) {
+    return ringFormatDateLocal_(value, true);
+}
+
+function ringMaintenanceLogsFullSignature_(logs) {
+    var base = ringMaintenanceLogsSignature_(logs);
+    try {
+        return base + "|" + JSON.stringify(logs);
+    } catch (e) {
+        return base;
+    }
+}
+
+function ringVehiclesFullSignature_(vehicles) {
+    var arr = Array.isArray(vehicles) ? vehicles : [];
+    var maxTs = 0;
+    arr.forEach(function (v) {
+        var ts = new Date(v.updatedAt || v.createdAt || 0).getTime();
+        if (!isNaN(ts) && ts > maxTs) maxTs = ts;
+    });
+    try {
+        return arr.length + ":" + maxTs + "|" + JSON.stringify(arr);
+    } catch (e) {
+        return arr.length + ":" + maxTs;
+    }
+}
+
+function ringRestoreScrollY_(scrollY) {
+    var y = typeof scrollY === "number" ? scrollY : window.scrollY;
+    requestAnimationFrame(function () {
+        window.scrollTo(0, y);
+        setTimeout(function () { window.scrollTo(0, y); }, 0);
+    });
+}
+
+function ringShowSyncStatus_(elementId, message, isError) {
+    var el = document.getElementById(elementId);
+    if (!el) return;
+    if (!message) {
+        el.style.display = "none";
+        el.textContent = "";
+        return;
+    }
+    el.style.display = "block";
+    el.textContent = message;
+    el.style.color = isError ? "#b45309" : "var(--muted)";
+    el.style.fontSize = "11px";
+    el.style.fontWeight = "700";
+    el.style.marginTop = "4px";
+    el.style.lineHeight = "1.4";
+}
+
+function ringUpdateLastSyncLabel_(labelId, cacheKey) {
+    var el = document.getElementById(labelId);
+    var meta = ringGetPageSyncMeta_(cacheKey);
+    if (!el) return;
+    if (!meta || !meta.syncedAt) {
+        el.textContent = "";
+        return;
+    }
+    el.textContent = "最終同期：" + ringFormatDateLocal_(meta.syncedAt, true);
+}
+
+function ringSetRefreshButtonBusy_(btn, busy, defaultLabel) {
+    if (!btn) return;
+    btn.disabled = !!busy;
+    btn.style.opacity = busy ? "0.5" : "1";
+    btn.style.pointerEvents = busy ? "none" : "";
+    if (defaultLabel) btn.textContent = busy ? "同期中…" : defaultLabel;
+}
+
+/** 整備ログキャッシュ破損検知（破損時はキー削除） */
+function ringTryReadLogsArray_() {
+    try {
+        var raw = localStorage.getItem(DB_LOGS);
+        if (raw == null || raw === "") return { ok: true, logs: [], corrupt: false };
+        var v = JSON.parse(sanitizeJsonResponse(raw) || raw);
+        if (!Array.isArray(v)) throw new Error("NOT_ARRAY");
+        return { ok: true, logs: v, corrupt: false };
+    } catch (e) {
+        try { localStorage.removeItem(DB_LOGS); } catch (e2) { /* ignore */ }
+        return { ok: false, logs: [], corrupt: true };
+    }
+}
+
+/**
+ * ページ同期（二重通信防止・差分時のみ renderFn）
+ * @returns {Promise<{ ok: boolean }>}
+ */
+async function ringRunPageSync_(opts) {
+    opts = opts || {};
+    var cacheKey = String(opts.cacheKey || "");
+    if (!cacheKey || typeof opts.syncFn !== "function") return { ok: false, rendered: false };
+    if (ringPageSyncInFlight_[cacheKey]) return ringPageSyncInFlight_[cacheKey];
+
+    var task = (async function () {
+        var prevSig = typeof opts.getSignatureFn === "function" ? opts.getSignatureFn() : "";
+        var scrollY = opts.preserveScroll ? window.scrollY : null;
+        ringSetRefreshButtonBusy_(opts.refreshBtn, true, opts.refreshLabel || "🔄 更新");
+        if (opts.statusElId) {
+            ringShowSyncStatus_(opts.statusElId, opts.statusMessage || "同期中…", false);
+        }
+        var ok = false;
+        var rendered = false;
+        try {
+            var r = await opts.syncFn();
+            ok = !!(r && r.ok !== false);
+            if (ok) {
+                ringSetPageSyncMeta_(cacheKey);
+                if (opts.lastSyncElId) ringUpdateLastSyncLabel_(opts.lastSyncElId, cacheKey);
+                if (opts.statusElId) ringShowSyncStatus_(opts.statusElId, "", false);
+                var newSig = typeof opts.getSignatureFn === "function" ? opts.getSignatureFn() : "";
+                if (typeof opts.renderFn === "function" && newSig !== prevSig) {
+                    opts.renderFn(false, scrollY);
+                    rendered = true;
+                }
+            } else if (opts.statusElId) {
+                ringShowSyncStatus_(opts.statusElId, "最新データを取得できませんでした", true);
+            }
+        } catch (eSync) {
+            if (opts.statusElId) {
+                ringShowSyncStatus_(opts.statusElId, "最新データを取得できませんでした", true);
+            }
+        } finally {
+            ringSetRefreshButtonBusy_(opts.refreshBtn, false, opts.refreshLabel || "🔄 更新");
+            delete ringPageSyncInFlight_[cacheKey];
+        }
+        return { ok: ok, rendered: rendered };
+    })();
+
+    ringPageSyncInFlight_[cacheKey] = task;
+    return task;
+}
+
+/** 30 秒以上非表示後の復帰同期 */
+function ringSetupBackgroundResync_(opts) {
+    opts = opts || {};
+    var hiddenAt = 0;
+    function tryResume() {
+        if (!hiddenAt || (Date.now() - hiddenAt) < 30000) return;
+        hiddenAt = 0;
+        if (typeof opts.onResume === "function") opts.onResume();
+    }
+    document.addEventListener("visibilitychange", function () {
+        if (document.visibilityState === "hidden") {
+            hiddenAt = Date.now();
+        } else if (document.visibilityState === "visible") {
+            tryResume();
+        }
+    });
+    window.addEventListener("pageshow", function (e) {
+        if (e.persisted) tryResume();
+    });
+}
+
 /**
  * GAS get_maintenance_history 応答1件をローカル整備ログ形へ
  * @param {object} row

@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.json">
     <title>車のお薬手帳</title>
   <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20260622-v28"></script>
+  <script src="app.js?v=20260621-v29"></script>
   <script src="theme.js"></script>
   <style>
     /* 掟：34pxグリッドと付箋デザインを完全維持 */
@@ -97,9 +97,13 @@
       <div class="header">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;">
           <h1 class="title" id="pageTitle">車両一覧</h1>
-          <button type="button" id="ringRefreshVehiclesBtn" style="font-size:13px;font-weight:800;border:none;background:transparent;color:var(--accent);cursor:pointer;padding:0;line-height:34px;white-space:nowrap;">🔄 更新</button>
+          <div style="text-align:right;flex-shrink:0;">
+            <button type="button" id="ringRefreshVehiclesBtn" style="font-size:13px;font-weight:800;border:none;background:transparent;color:var(--accent);cursor:pointer;padding:0;line-height:34px;white-space:nowrap;">🔄 更新</button>
+            <div id="ringVehiclesLastSync" style="font-size:11px;color:var(--muted);font-weight:700;line-height:1.2;margin-top:-4px;"></div>
+          </div>
         </div>
       </div>
+      <div id="ringVehiclesSyncStatus" style="display:none;"></div>
     </div>
     <!-- 車両区分タブ（工場・事業者のみ JS で表示） -->
     <div class="cat-tabs" id="categoryTabs" style="display:none;">
@@ -112,7 +116,7 @@
     </div>
 
     <div class="sort-area">
-      <select id="sortSelect" class="sort-select" onchange="renderCars()">
+      <select id="sortSelect" class="sort-select" onchange="renderCars(false, window.scrollY)">
         <option value="inspect_near">点検が近い順</option>
         <option value="shaken_near">車検が近い順</option>
         <option value="created_new">登録した順</option>
@@ -130,6 +134,84 @@
 
     // 現在選択中の車両区分タブ（工場・事業者のみ使用）
     let currentCategoryTab = 'managed';
+    let vehiclesCacheKey = '';
+
+    function getMyVehiclesFilter() {
+      return function (car) {
+        if (!profile) return false;
+        const myShopId = profile.shopId || "";
+        const myUserId = profile.userId || "";
+        return (myShopId && car.shopId === myShopId) ||
+          car.shopId === myUserId ||
+          car.userId === myUserId ||
+          car.ownerId === myUserId;
+      };
+    }
+
+    function getFilteredVehicles() {
+      let allVehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
+      return allVehicles.filter(getMyVehiclesFilter());
+    }
+
+    function getVehiclesSignature() {
+      return (typeof ringVehiclesFullSignature_ === 'function')
+        ? ringVehiclesFullSignature_(getFilteredVehicles())
+        : String(getFilteredVehicles().length);
+    }
+
+    function buildVehiclesSyncOpts(statusMsg) {
+      return {
+        cacheKey: vehiclesCacheKey,
+        refreshBtn: document.getElementById('ringRefreshVehiclesBtn'),
+        refreshLabel: '🔄 更新',
+        statusElId: 'ringVehiclesSyncStatus',
+        lastSyncElId: 'ringVehiclesLastSync',
+        statusMessage: statusMsg || '最新データ取得中…',
+        preserveScroll: true,
+        getSignatureFn: getVehiclesSignature,
+        renderFn: renderCars,
+        syncFn: async function () {
+          if (!profile || typeof syncVehiclesFromServer !== 'function') return { ok: false };
+          try {
+            await syncVehiclesFromServer();
+            return { ok: true };
+          } catch (e) {
+            return { ok: false };
+          }
+        }
+      };
+    }
+
+    async function loadAndRenderVehicles(isManualRefresh) {
+      var hasLocal = getFilteredVehicles().length > 0;
+      var fresh = (typeof ringIsPageCacheFresh_ === 'function') && ringIsPageCacheFresh_(vehiclesCacheKey, 'vehicles');
+      var hasMeta = !!(typeof ringGetPageSyncMeta_ === 'function' && ringGetPageSyncMeta_(vehiclesCacheKey));
+      var isFirstAccess = !hasMeta || (!hasLocal && !fresh);
+
+      if (isManualRefresh) {
+        if (typeof showLoading === 'function') showLoading('更新中', 'サーバーから最新情報を取得しています...');
+        await ringRunPageSync_(buildVehiclesSyncOpts('最新データ取得中…'));
+        if (typeof hideLoading === 'function') hideLoading();
+        return;
+      }
+
+      if (isFirstAccess) {
+        if (typeof showLoading === 'function') showLoading('読込中', '車両情報を取得しています...');
+        var syncResult = await ringRunPageSync_(buildVehiclesSyncOpts('同期中…'));
+        if (!syncResult.rendered) {
+          renderCars(false);
+        }
+        if (typeof hideLoading === 'function') hideLoading();
+        return;
+      }
+
+      renderCars(false);
+      if (typeof ringUpdateLastSyncLabel_ === 'function') ringUpdateLastSyncLabel_('ringVehiclesLastSync', vehiclesCacheKey);
+
+      if (fresh) return;
+
+      ringRunPageSync_(buildVehiclesSyncOpts('最新データ取得中…'));
+    }
 
     window.addEventListener('DOMContentLoaded', () => {
       // 役職ごとの戻り先とタイトルの設定
@@ -156,30 +238,23 @@
       // 登録ボタンの飛び先
       if (addBtn) addBtn.onclick = () => location.href = 'car_add.html';
 
+      vehiclesCacheKey = 'vehicles:' + ((profile && (profile.userId || profile.shopId)) || 'unknown');
+
       var refreshBtn = document.getElementById('ringRefreshVehiclesBtn');
       if (refreshBtn) {
-        refreshBtn.onclick = async function () {
-          if (typeof showLoading === 'function') showLoading('更新中', 'サーバーから最新情報を取得しています...');
-          try {
-            if (profile && typeof syncVehiclesFromServer === 'function') {
-              await syncVehiclesFromServer();
-            }
-            renderCars(false);
-          } catch (eRef) { renderCars(false); }
-          if (typeof hideLoading === 'function') hideLoading();
-        };
+        refreshBtn.onclick = function () { loadAndRenderVehicles(true); };
       }
 
-      // キャッシュファースト: localStorage を即描画 → バックグラウンドで GAS 同期
-      renderCars(false);
-      (async function () {
-        if (profile && typeof syncVehiclesFromServer === 'function') {
-          try {
-            await syncVehiclesFromServer();
-            renderCars(false);
-          } catch (e) { /* キャッシュ表示を維持 */ }
-        }
-      })();
+      if (typeof ringSetupBackgroundResync_ === 'function') {
+        ringSetupBackgroundResync_({
+          onResume: function () {
+            if (typeof ringIsPageCacheFresh_ === 'function' && ringIsPageCacheFresh_(vehiclesCacheKey, 'vehicles')) return;
+            ringRunPageSync_(buildVehiclesSyncOpts('最新データ取得中…'));
+          }
+        });
+      }
+
+      loadAndRenderVehicles(false);
     });
 
     /* ── 車両区分タブ切替 ── */
@@ -187,7 +262,7 @@
       currentCategoryTab = tab;
       document.getElementById('tabManaged').classList.toggle('active', tab === 'managed');
       document.getElementById('tabLoaner').classList.toggle('active', tab === 'loaner');
-      renderCars();
+      renderCars(false, window.scrollY);
     }
 
     /* ── 次回点検日の計算 ── */
@@ -210,6 +285,7 @@
 
     function fmtDate(d) {
       if (!d) return '---';
+      if (typeof ringFormatDateLocal_ === 'function') return ringFormatDateLocal_(d, false);
       const dd = d instanceof Date ? d : new Date(d);
       if (isNaN(dd)) return '---';
       return dd.getFullYear() + '/' +
@@ -223,7 +299,7 @@
       return Math.ceil((d - today) / 86400000);
     }
 
-    function renderCars(showLoadOverlay) {
+    function renderCars(showLoadOverlay, scrollYToRestore) {
       const sortType = document.getElementById('sortSelect').value;
       if (showLoadOverlay !== false && typeof showLoading === "function") {
         showLoading("読込中", "リストを作成中...");
@@ -231,18 +307,7 @@
 
       setTimeout(() => {
         let allVehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
-        let vehicles = [];
-
-        if (profile) {
-          const myShopId = profile.shopId || "";
-          const myUserId = profile.userId || "";
-          vehicles = allVehicles.filter(car =>
-            (myShopId && car.shopId === myShopId) ||
-            car.shopId  === myUserId ||
-            car.userId  === myUserId ||
-            car.ownerId === myUserId
-          );
-        }
+        let vehicles = allVehicles.filter(getMyVehiclesFilter());
 
         // 次回点検日を事前計算してキャッシュ
         vehicles = vehicles.map(car => ({
@@ -271,6 +336,7 @@
             : '登録車両がありません。';
           container.innerHTML = `<div class="empty-msg">${emptyMsg}</div>`;
           if (showLoadOverlay !== false && typeof hideLoading === "function") hideLoading();
+          if (scrollYToRestore != null && typeof ringRestoreScrollY_ === 'function') ringRestoreScrollY_(scrollYToRestore);
           return;
         }
 
@@ -332,6 +398,7 @@
         });
         container.innerHTML = html;
         if (showLoadOverlay !== false && typeof hideLoading === "function") hideLoading();
+        if (scrollYToRestore != null && typeof ringRestoreScrollY_ === 'function') ringRestoreScrollY_(scrollYToRestore);
       }, 300);
     }
 

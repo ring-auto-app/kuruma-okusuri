@@ -13,7 +13,7 @@
     <title>車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20260622-v28"></script>
+  <script src="app.js?v=20260621-v29"></script>
   <script src="theme.js"></script>
   
   <style>
@@ -149,19 +149,23 @@
       <a onclick="goBackSmart('user_home.html')" class="back-link">◁ マイカーへ戻る</a>
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
         <h1 class="title">整備履歴</h1>
-        <button type="button" onclick="manualRefreshHistory()" style="font-size:13px;font-weight:800;border:none;background:transparent;color:var(--accent);cursor:pointer;padding:0;line-height:34px;white-space:nowrap;">🔄 更新</button>
+        <div style="text-align:right;flex-shrink:0;">
+          <button type="button" id="ringRefreshHistoryBtn" onclick="manualRefreshHistory()" style="font-size:13px;font-weight:800;border:none;background:transparent;color:var(--accent);cursor:pointer;padding:0;line-height:34px;white-space:nowrap;">🔄 更新</button>
+          <div id="ringHistoryLastSync" style="font-size:11px;color:var(--muted);font-weight:700;line-height:1.2;margin-top:-4px;"></div>
+        </div>
       </div>
+      <div id="ringHistorySyncStatus" style="display:none;"></div>
       <p class="sub-title" id="carInfo">車両情報を読み込み中...</p>
     </div>
 
     <div class="filter-row">
-      <select id="filterSelect" class="filter-select" onchange="renderHistory()">
+      <select id="filterSelect" class="filter-select" onchange="renderHistory(false, window.scrollY)">
         <option value="all">新しい順（全て）</option>
         <option value="inspection">日常点検</option>
         <option value="factory">工場入力のみ</option>
         <option value="dealer">事業者入力のみ</option>
       </select>
-      <select id="yearSelect" class="year-select" onchange="renderHistory()">
+      <select id="yearSelect" class="year-select" onchange="renderHistory(false, window.scrollY)">
         <option value="all">全年</option>
       </select>
     </div>
@@ -189,21 +193,37 @@
     /* ── 検索関連 ── */
     let currentSearchQuery = '';  // 現在の検索クエリ
     let baseLogsCache = [];        // サジェスト用にログをキャッシュ
-    let lastHistSignature = '';
+    let historyCacheKey = 'user_history:' + targetVin;
+
+    function getHistSignature() {
+      var logs = (typeof getLogsByVin === 'function') ? getLogsByVin(targetVin) : [];
+      return (typeof ringMaintenanceLogsFullSignature_ === 'function')
+        ? ringMaintenanceLogsFullSignature_(logs)
+        : (typeof ringMaintenanceLogsSignature_ === 'function' ? ringMaintenanceLogsSignature_(logs) : '');
+    }
+
+    function buildHistorySyncOpts(forceMsg) {
+      return {
+        cacheKey: historyCacheKey,
+        refreshBtn: document.getElementById('ringRefreshHistoryBtn'),
+        refreshLabel: '🔄 更新',
+        statusElId: 'ringHistorySyncStatus',
+        lastSyncElId: 'ringHistoryLastSync',
+        statusMessage: forceMsg || '最新データ取得中…',
+        preserveScroll: true,
+        getSignatureFn: getHistSignature,
+        renderFn: renderHistory,
+        syncFn: function () {
+          return (typeof syncMaintenanceHistoryForVin === 'function')
+            ? syncMaintenanceHistoryForVin(targetVin)
+            : Promise.resolve({ ok: false });
+        }
+      };
+    }
 
     async function manualRefreshHistory() {
       if (typeof showLoading === 'function') showLoading('更新中', 'サーバーから最新履歴を取得しています...');
-      var scrollY = window.scrollY;
-      try {
-        if (typeof syncMaintenanceHistoryForVin === 'function') {
-          var r = await syncMaintenanceHistoryForVin(targetVin);
-          if (r && r.signature !== lastHistSignature) {
-            lastHistSignature = r.signature;
-            renderHistory();
-          }
-        }
-      } catch (eRef) { /* キャッシュ維持 */ }
-      window.scrollTo(0, scrollY);
+      await ringRunPageSync_(buildHistorySyncOpts('最新データ取得中…'));
       if (typeof hideLoading === 'function') hideLoading();
     }
 
@@ -226,11 +246,19 @@
       return qi === q.length ? 1 : 0;
     }
 
-    // ログから部品名を収集して件数マップを返す
+    // ログから部品名を収集して件数マップを返す（voided 除外）
     function collectParts(logs) {
       const map = new Map();
       logs.forEach(log => {
-        const text = (log.parts || '') + ' ' + (log.title || '');
+        if (log.voidedAt) return;
+        let partsItemsText = '';
+        if (Array.isArray(log.partsItems)) {
+          partsItemsText = log.partsItems.map(function (p) {
+            if (!p) return '';
+            return String(p.name || p.partName || p.title || p.parts || '').trim();
+          }).filter(Boolean).join(' ');
+        }
+        const text = (log.parts || '') + ' ' + (log.title || '') + ' ' + partsItemsText + ' ' + (log.memo || '');
         text.split(/[・、/／\n\s]/).forEach(p => {
           const t = p.replace(/^[•\-]+/, '').trim();
           if (t.length >= 2) map.set(t, (map.get(t) || 0) + 1);
@@ -244,7 +272,7 @@
       const query = document.getElementById('searchInput').value.trim();
       const box   = document.getElementById('suggestionBox');
       currentSearchQuery = query;
-      renderHistory();
+      renderHistory(false, window.scrollY);
 
       if (!query) { box.style.display = 'none'; return; }
 
@@ -274,7 +302,7 @@
       document.getElementById('searchInput').value = name;
       document.getElementById('suggestionBox').style.display = 'none';
       currentSearchQuery = name;
-      renderHistory();
+      renderHistory(false, window.scrollY);
     }
 
     // 検索クリア
@@ -282,7 +310,7 @@
       document.getElementById('searchInput').value = '';
       document.getElementById('suggestionBox').style.display = 'none';
       currentSearchQuery = '';
-      renderHistory();
+      renderHistory(false, window.scrollY);
     }
 
     window.addEventListener('DOMContentLoaded', () => {
@@ -301,35 +329,57 @@
         document.getElementById('carInfo').innerText = `マイカー: ${myCar.nickname || 'マイカー'} (VIN: ${myCar.vin})`;
       }
 
+      if (typeof ringSetupBackgroundResync_ === 'function') {
+        ringSetupBackgroundResync_({
+          onResume: function () {
+            if (typeof ringIsPageCacheFresh_ === 'function' && ringIsPageCacheFresh_(historyCacheKey, 'user_history')) return;
+            ringRunPageSync_(buildHistorySyncOpts('最新データ取得中…'));
+          }
+        });
+      }
+
       loadAndRenderHistory();
     });
 
-    /** GAS から整備履歴を同期してから描画（キャッシュ→同期→差分時のみ再描画） */
+    /** TTL に応じた初回表示 / キャッシュ即表示 / 裏同期 */
     async function loadAndRenderHistory() {
-      renderHistory();
-      if (typeof ringMaintenanceLogsSignature_ === 'function' && typeof getLogsByVin === 'function') {
-        lastHistSignature = ringMaintenanceLogsSignature_(getLogsByVin(targetVin));
+      var corrupt = false;
+      if (typeof ringTryReadLogsArray_ === 'function') {
+        var cacheCheck = ringTryReadLogsArray_();
+        corrupt = !cacheCheck.ok && cacheCheck.corrupt;
       }
-      if (typeof showLoading === 'function') showLoading('読込中', '整備履歴をサーバーと同期しています...');
-      var scrollY = window.scrollY;
-      try {
-        if (typeof syncMaintenanceHistoryForVin === 'function') {
-          var r = await syncMaintenanceHistoryForVin(targetVin);
-          if (r && r.signature !== lastHistSignature) {
-            lastHistSignature = r.signature;
-            renderHistory();
-          }
+
+      var hasLocal = (typeof getLogsByVin === 'function') && getLogsByVin(targetVin).length > 0;
+      var fresh = (typeof ringIsPageCacheFresh_ === 'function') && ringIsPageCacheFresh_(historyCacheKey, 'user_history');
+      var hasMeta = !!(typeof ringGetPageSyncMeta_ === 'function' && ringGetPageSyncMeta_(historyCacheKey));
+      var isFirstAccess = corrupt || !hasMeta || (!hasLocal && !fresh);
+
+      if (isFirstAccess) {
+        if (typeof showLoading === 'function') showLoading('読込中', '整備履歴を取得しています...');
+        var syncResult = await ringRunPageSync_(buildHistorySyncOpts('同期中…'));
+        var hasDataNow = (typeof getLogsByVin === 'function') && getLogsByVin(targetVin).length > 0;
+        if (!syncResult.rendered) {
+          renderHistory(hasLocal || hasDataNow ? false : true);
         }
-      } catch (eSync) { /* オフライン時はローカルのみ表示 */ }
-      window.scrollTo(0, scrollY);
-      if (typeof hideLoading === 'function') hideLoading();
+        if (typeof hideLoading === 'function') hideLoading();
+        return;
+      }
+
+      renderHistory(false);
+      if (typeof ringUpdateLastSyncLabel_ === 'function') ringUpdateLastSyncLabel_('ringHistoryLastSync', historyCacheKey);
+
+      if (fresh) return;
+
+      ringRunPageSync_(buildHistorySyncOpts('最新データ取得中…'));
     }
 
     /**
      * 履歴データの描画（フィルター・西暦対応）
      */
-    function renderHistory() {
-      showLoading("読込中", "整備履歴を取得しています...");
+    function renderHistory(showOverlay, scrollYToRestore) {
+      if (showOverlay !== false && typeof showLoading === "function") {
+        showLoading("読込中", "整備履歴を取得しています...");
+      }
 
       setTimeout(() => {
         const filterKey = document.getElementById('filterSelect')?.value || 'all';
@@ -368,10 +418,18 @@
           });
         }
 
-        // 検索フィルター（並び替えは維持したまま適用）
+        // 検索フィルター（voided 除外・parts/title/partsItems/memo）
+        myLogs = myLogs.filter(log => !log.voidedAt);
         if (currentSearchQuery) {
           myLogs = myLogs.filter(log => {
-            const text = (log.parts || '') + ' ' + (log.title || '') + ' ' + (log.memo || '');
+            let partsItemsText = '';
+            if (Array.isArray(log.partsItems)) {
+              partsItemsText = log.partsItems.map(function (p) {
+                if (!p) return '';
+                return String(p.name || p.partName || p.title || p.parts || '').trim();
+              }).filter(Boolean).join(' ');
+            }
+            const text = (log.parts || '') + ' ' + (log.title || '') + ' ' + partsItemsText + ' ' + (log.memo || '');
             return fuzzyScore(currentSearchQuery, text) > 0;
           });
         }
@@ -396,7 +454,8 @@
               まだ整備履歴がありません。<br>
               工場・事業者が入力した整備記録がここに並びます。
             </div>`;
-          hideLoading();
+          if (showOverlay !== false && typeof hideLoading === "function") hideLoading();
+          if (scrollYToRestore != null && typeof ringRestoreScrollY_ === 'function') ringRestoreScrollY_(scrollYToRestore);
           return;
         }
 
@@ -456,7 +515,7 @@
               <div class="log-header">
                 <div class="log-header-left">
                   ${badgeHtml}
-                  <span class="log-date">${escapeHtml(log.date)}</span>
+                  <span class="log-date">${escapeHtml(typeof ringFormatDateLocal_ === 'function' ? ringFormatDateLocal_(log.date, false) : log.date)}</span>
                 </div>
                 <span class="log-mileage">${log.mileage ? escapeHtml(log.mileage) + ' km' : ''}</span>
               </div>
@@ -470,7 +529,8 @@
         });
         
         container.innerHTML = html;
-        hideLoading();
+        if (showOverlay !== false && typeof hideLoading === "function") hideLoading();
+        if (scrollYToRestore != null && typeof ringRestoreScrollY_ === 'function') ringRestoreScrollY_(scrollYToRestore);
       }, 300);
     }
 

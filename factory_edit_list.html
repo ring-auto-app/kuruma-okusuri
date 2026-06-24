@@ -13,7 +13,7 @@
     <title>車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20260622-v28"></script>
+  <script src="app.js?v=20260621-v29"></script>
   <script src="theme.js"></script>
   
   <style>
@@ -56,8 +56,12 @@
       <a id="backToInputBtn" class="back-link">≪戻る</a>
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
         <h1 class="title">入力履歴一覧</h1>
-        <button type="button" id="ringRefreshEditListBtn" style="font-size:13px;font-weight:800;border:none;background:transparent;color:var(--accent);cursor:pointer;padding:0;line-height:34px;white-space:nowrap;">🔄 更新</button>
+        <div style="text-align:right;flex-shrink:0;">
+          <button type="button" id="ringRefreshEditListBtn" style="font-size:13px;font-weight:800;border:none;background:transparent;color:var(--accent);cursor:pointer;padding:0;line-height:34px;white-space:nowrap;">🔄 更新</button>
+          <div id="ringEditListLastSync" style="font-size:11px;color:var(--muted);font-weight:700;line-height:1.2;margin-top:-4px;"></div>
+        </div>
       </div>
+      <div id="ringEditListSyncStatus" style="display:none;"></div>
       <p class="sub-title" id="shopIndicator">読み込み中...</p>
     </div>
 
@@ -67,13 +71,42 @@
 
   <script>
     let currentProfile = null;
-    let lastEditListSignature = '';
+    let editListCacheKey = '';
+
+    function getEditListSignature() {
+      var logs = getMyRecentShopLogs();
+      return (typeof ringMaintenanceLogsFullSignature_ === 'function')
+        ? ringMaintenanceLogsFullSignature_(logs)
+        : (typeof ringMaintenanceLogsSignature_ === 'function' ? ringMaintenanceLogsSignature_(logs) : '');
+    }
+
+    function buildEditListSyncOpts(statusMsg) {
+      return {
+        cacheKey: editListCacheKey,
+        refreshBtn: document.getElementById('ringRefreshEditListBtn'),
+        refreshLabel: '🔄 更新',
+        statusElId: 'ringEditListSyncStatus',
+        lastSyncElId: 'ringEditListLastSync',
+        statusMessage: statusMsg || '最新データ取得中…',
+        preserveScroll: true,
+        getSignatureFn: getEditListSignature,
+        renderFn: renderEditList,
+        syncFn: function () {
+          var shopId = (currentProfile && currentProfile.shopId) || '';
+          return (typeof syncShopMaintenanceLogsForEdit === 'function' && shopId)
+            ? syncShopMaintenanceLogsForEdit(shopId)
+            : Promise.resolve({ ok: false });
+        }
+      };
+    }
 
     window.addEventListener('DOMContentLoaded', () => {
       currentProfile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
       if (!currentProfile) {
         return location.replace("login.html");
       }
+
+      editListCacheKey = 'factory_edit_list:' + ((currentProfile.shopId || '').trim() || 'unknown');
 
       document.getElementById('shopIndicator').innerHTML = 
         `<strong>${currentProfile.shopName}</strong> の直近7日間の記録です。<br>` +
@@ -83,32 +116,53 @@
       document.getElementById('backToInputBtn').onclick = () => goBackSmart(inputPage);
       document.getElementById('ringRefreshEditListBtn').onclick = () => loadAndRenderEditList(true);
 
+      if (typeof ringSetupBackgroundResync_ === 'function') {
+        ringSetupBackgroundResync_({
+          onResume: function () {
+            if (typeof ringIsPageCacheFresh_ === 'function' && ringIsPageCacheFresh_(editListCacheKey, 'factory_edit_list')) return;
+            ringRunPageSync_(buildEditListSyncOpts('最新データ取得中…'));
+          }
+        });
+      }
+
       loadAndRenderEditList(false);
     });
 
     async function loadAndRenderEditList(isManualRefresh) {
-      if (typeof showLoading === 'function') {
-        showLoading(isManualRefresh ? '更新中' : 'データ取得中', 'サーバーから最新履歴を取得しています...');
+      var corrupt = false;
+      if (typeof ringTryReadLogsArray_ === 'function') {
+        var cacheCheck = ringTryReadLogsArray_();
+        corrupt = !cacheCheck.ok && cacheCheck.corrupt;
       }
-      var scrollY = window.scrollY;
-      var shopId = (currentProfile && currentProfile.shopId) || '';
-      var syncOk = false;
-      try {
-        if (typeof syncShopMaintenanceLogsForEdit === 'function' && shopId) {
-          var r = await syncShopMaintenanceLogsForEdit(shopId);
-          syncOk = !!(r && r.ok);
-          if (!lastEditListSignature || (r && r.signature !== lastEditListSignature)) {
-            lastEditListSignature = r ? r.signature : lastEditListSignature;
-            renderEditList();
-          }
-        } else {
-          renderEditList();
+
+      var hasLocal = getMyRecentShopLogs().length > 0;
+      var fresh = (typeof ringIsPageCacheFresh_ === 'function') && ringIsPageCacheFresh_(editListCacheKey, 'factory_edit_list');
+      var hasMeta = !!(typeof ringGetPageSyncMeta_ === 'function' && ringGetPageSyncMeta_(editListCacheKey));
+      var isFirstAccess = corrupt || !hasMeta || (!hasLocal && !fresh);
+
+      if (isManualRefresh) {
+        if (typeof showLoading === 'function') showLoading('更新中', 'サーバーから最新履歴を取得しています...');
+        await ringRunPageSync_(buildEditListSyncOpts('最新データ取得中…'));
+        if (typeof hideLoading === 'function') hideLoading();
+        return;
+      }
+
+      if (isFirstAccess) {
+        if (typeof showLoading === 'function') showLoading('データ取得中', 'サーバーから最新履歴を取得しています...');
+        var syncResult = await ringRunPageSync_(buildEditListSyncOpts('同期中…'));
+        if (!syncResult.rendered) {
+          renderEditList(false);
         }
-      } catch (eLoad) {
-        if (!syncOk) renderEditList();
+        if (typeof hideLoading === 'function') hideLoading();
+        return;
       }
-      window.scrollTo(0, scrollY);
-      if (typeof hideLoading === 'function') hideLoading();
+
+      renderEditList(false);
+      if (typeof ringUpdateLastSyncLabel_ === 'function') ringUpdateLastSyncLabel_('ringEditListLastSync', editListCacheKey);
+
+      if (fresh) return;
+
+      ringRunPageSync_(buildEditListSyncOpts('最新データ取得中…'));
     }
 
     function getMyRecentShopLogs() {
@@ -123,7 +177,11 @@
       });
     }
 
-    function renderEditList() {
+    function renderEditList(showOverlay, scrollYToRestore) {
+      if (showOverlay !== false && typeof showLoading === 'function') {
+        showLoading('読込中', '一覧を表示しています...');
+      }
+
       const myRecentLogs = getMyRecentShopLogs();
       const container = document.getElementById('editListArea');
 
@@ -134,6 +192,8 @@
             <span style="font-size: 12px;">※新しく入力した記録がここに表示されます。</span>
           </div>
         `;
+        if (showOverlay !== false && typeof hideLoading === 'function') hideLoading();
+        if (scrollYToRestore != null && typeof ringRestoreScrollY_ === 'function') ringRestoreScrollY_(scrollYToRestore);
         return;
       }
 
@@ -142,7 +202,7 @@
       let html = "";
       myRecentLogs.forEach((log, index) => {
         const uniqueId = log.log_id || `temp_${new Date(log.createdAt).getTime()}_${index}`;
-        const safeDate  = safeText(log.date || '未設定');
+        const safeDate  = safeText(typeof ringFormatDateLocal_ === 'function' ? ringFormatDateLocal_(log.date, false) : (log.date || '未設定'));
         const safeVin   = safeText(log.vin || '---');
         const safeTitle = safeText(log.title || '一般整備');
         const safeParts = safeText(log.parts || '（詳細なし）');
@@ -168,6 +228,8 @@
       });
 
       container.innerHTML = html;
+      if (showOverlay !== false && typeof hideLoading === 'function') hideLoading();
+      if (scrollYToRestore != null && typeof ringRestoreScrollY_ === 'function') ringRestoreScrollY_(scrollYToRestore);
     }
 
     async function voidLog(targetId) {
@@ -192,11 +254,7 @@
         } else {
           throw new Error('NO_SENDER');
         }
-        if (typeof syncShopMaintenanceLogsForEdit === 'function' && currentProfile && currentProfile.shopId) {
-          var r = await syncShopMaintenanceLogsForEdit(currentProfile.shopId);
-          lastEditListSignature = r ? r.signature : '';
-        }
-        renderEditList();
+        await ringRunPageSync_(buildEditListSyncOpts('同期中…'));
         hideLoading();
         showToast('success', '取消しました');
       } catch (eDel) {

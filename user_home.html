@@ -14,7 +14,7 @@
 
   <link rel="stylesheet" href="common.css">
   <link rel="stylesheet" href="ads/ring-ads.css">
-  <script src="app.js?v=20260528-v26"></script>
+  <script src="app.js?v=20260621-v29"></script>
   <script src="theme.js"></script>
   <script src="ads/ads.js"></script>
 
@@ -216,8 +216,13 @@
         <h1 class="title">ホーム</h1>
         <a href="admin_dashboard.html" id="ringAdminDashLink" class="ring-admin-dash-link" style="display:none;">管理者ダッシュボード</a>
       </div>
-      <div class="header-meta">
+      <div class="header-meta" style="text-align:right;">
         <span id="displayDate" style="font-size:12px; font-weight:800; color:var(--muted);"></span>
+        <div>
+          <button type="button" id="ringRefreshUserHomeBtn" style="font-size:13px;font-weight:800;border:none;background:transparent;color:var(--accent);cursor:pointer;padding:0;line-height:28px;white-space:nowrap;">🔄 更新</button>
+        </div>
+        <div id="ringUserHomeLastSync" style="font-size:11px;color:var(--muted);font-weight:700;line-height:1.2;"></div>
+        <div id="ringUserHomeSyncStatus" style="display:none;"></div>
       </div>
     </div>
 
@@ -269,6 +274,62 @@
   </div>
 
   <script>
+    var userHomeCacheKey = '';
+
+    function getUserHomeSignature() {
+      var vehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
+      return (typeof ringVehiclesFullSignature_ === 'function')
+        ? ringVehiclesFullSignature_(vehicles)
+        : String(vehicles.length);
+    }
+
+    function buildUserHomeSyncOpts(statusMsg) {
+      return {
+        cacheKey: userHomeCacheKey,
+        refreshBtn: document.getElementById('ringRefreshUserHomeBtn'),
+        refreshLabel: '🔄 更新',
+        statusElId: 'ringUserHomeSyncStatus',
+        lastSyncElId: 'ringUserHomeLastSync',
+        statusMessage: statusMsg || '最新データ取得中…',
+        preserveScroll: false,
+        getSignatureFn: getUserHomeSignature,
+        renderFn: function () { /* 表示項目は静的 */ },
+        syncFn: async function () {
+          if (typeof syncVehiclesFromServer !== 'function') return { ok: false };
+          try {
+            await syncVehiclesFromServer();
+            return { ok: true };
+          } catch (e) {
+            return { ok: false };
+          }
+        }
+      };
+    }
+
+    async function loadUserHomeData(isManualRefresh) {
+      var fresh = (typeof ringIsPageCacheFresh_ === 'function') && ringIsPageCacheFresh_(userHomeCacheKey, 'user_home');
+      var hasMeta = !!(typeof ringGetPageSyncMeta_ === 'function' && ringGetPageSyncMeta_(userHomeCacheKey));
+      var isFirstAccess = !hasMeta;
+
+      if (isManualRefresh) {
+        await ringRunPageSync_(buildUserHomeSyncOpts('最新データ取得中…'));
+        return;
+      }
+
+      if (typeof ringUpdateLastSyncLabel_ === 'function') {
+        ringUpdateLastSyncLabel_('ringUserHomeLastSync', userHomeCacheKey);
+      }
+
+      if (isFirstAccess) {
+        await ringRunPageSync_(buildUserHomeSyncOpts('同期中…'));
+        return;
+      }
+
+      if (fresh) return;
+
+      ringRunPageSync_(buildUserHomeSyncOpts('最新データ取得中…'));
+    }
+
     window.addEventListener('DOMContentLoaded', function () {
       if (typeof ringBootAuthForMode === 'function') {
         var boot = ringBootAuthForMode('user');
@@ -302,6 +363,21 @@
       }
       if (idEl)   idEl.textContent   = 'ログインID：' + (profile.loginId || profile.userId || '---');
       if (idInner) idInner.textContent = 'ユーザーID：' + (profile.userId || '---');
+
+      userHomeCacheKey = 'user_home:' + (profile.userId || 'unknown');
+      var refreshBtn = document.getElementById('ringRefreshUserHomeBtn');
+      if (refreshBtn) refreshBtn.onclick = function () { loadUserHomeData(true); };
+
+      if (typeof ringSetupBackgroundResync_ === 'function') {
+        ringSetupBackgroundResync_({
+          onResume: function () {
+            if (typeof ringIsPageCacheFresh_ === 'function' && ringIsPageCacheFresh_(userHomeCacheKey, 'user_home')) return;
+            ringRunPageSync_(buildUserHomeSyncOpts('最新データ取得中…'));
+          }
+        });
+      }
+
+      loadUserHomeData(false);
 
       if (typeof ringDeferAfterPaint_ === 'function') {
         ringDeferAfterPaint_(function () {
