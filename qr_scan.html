@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#4b5563" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="車のお薬手帳" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="manifest" href="manifest.json">
+  <title>QRコード読み取り — 車のお薬手帳</title>
+  <link rel="stylesheet" href="common.css">
+  <script src="app.js?v=20260621-v29"></script>
+  <script src="theme.js"></script>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        linear-gradient(to bottom, var(--page-line, rgba(80, 65, 45, 0.10)) 1px, transparent 1px) 0 0 / 100% 34px,
+        var(--page-bg, #f7f3ea);
+      color: var(--text, #2f2a24);
+      padding: 34px 16px 120px;
+    }
+    .container { max-width: 520px; margin: 0 auto; }
+    .back-link {
+      color: var(--muted, #a16207);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 800;
+      cursor: pointer;
+      border: none;
+      background: none;
+      padding: 0;
+      font-family: inherit;
+    }
+    .header {
+      margin-bottom: 20px;
+      border-bottom: 2px dashed var(--accent, #eab308);
+      padding-bottom: 12px;
+    }
+    .title { font-size: 20px; font-weight: 900; margin: 8px 0 0; }
+    .scan-card {
+      background: var(--paper, #fff);
+      border: 2px solid var(--line, #fde047);
+      border-radius: 16px;
+      padding: 12px;
+      margin-bottom: 20px;
+      overflow: hidden;
+    }
+    #qr-reader { width: 100%; min-height: 280px; }
+    #qr-reader video { border-radius: 12px; }
+    .debug-card {
+      display: none;
+      background: var(--paper, #fff);
+      border: 2px solid var(--line, #e0d8c8);
+      border-radius: 16px;
+      padding: 16px;
+      margin-bottom: 20px;
+    }
+    .debug-pre {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1.65;
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: var(--text, #2f2a24);
+    }
+    .btn-next {
+      display: none;
+      width: 100%;
+      min-height: var(--tap-min, 48px);
+      padding: 14px;
+      border: none;
+      border-radius: 999px;
+      background: var(--accent, #3b82f6);
+      color: #fff;
+      font-size: 16px;
+      font-weight: 900;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .btn-next:active { transform: scale(0.98); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <button type="button" class="back-link" id="btnBack">＜ 戻る</button>
+      <h1 class="title">QRコード読み取り</h1>
+    </div>
+
+    <div class="scan-card" id="scanCard">
+      <div id="qr-reader"></div>
+    </div>
+
+    <div class="debug-card" id="debugArea">
+      <pre class="debug-pre" id="debugPre"></pre>
+    </div>
+
+    <button type="button" class="btn-next" id="btnNext">次へ</button>
+  </div>
+
+  <script>
+    (function () {
+      var html5QrCode = null;
+      var scanLocked = false;
+
+      function qrScanGoBack() {
+        if (history.length > 1) {
+          history.back();
+          return;
+        }
+        var profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+        if (profile && typeof ringGetHomeForProfile === 'function') {
+          location.href = ringGetHomeForProfile(profile);
+          return;
+        }
+        location.href = 'index.html';
+      }
+
+      function showDebug(text) {
+        document.getElementById('debugPre').textContent = text;
+        document.getElementById('debugArea').style.display = 'block';
+        document.getElementById('btnNext').style.display = 'block';
+      }
+
+      function hideScannerView() {
+        var card = document.getElementById('scanCard');
+        if (card) card.style.display = 'none';
+      }
+
+      function parseQrParams(rawText) {
+        var raw = String(rawText || '').trim();
+        var params = new URLSearchParams();
+        try {
+          var u = new URL(raw);
+          u.searchParams.forEach(function (v, k) { params.set(k, v); });
+        } catch (e) {
+          var qIdx = raw.indexOf('?');
+          if (qIdx >= 0) {
+            try {
+              params = new URLSearchParams(raw.slice(qIdx + 1));
+            } catch (e2) { /* ignore */ }
+          }
+        }
+        return { raw: raw, params: params };
+      }
+
+      function buildDebugMessage(rawText) {
+        var parsed = parseQrParams(rawText);
+        var p = parsed.params;
+        var raw = parsed.raw;
+        var action = String(p.get('action') || '').trim().toLowerCase();
+        var uid = String(p.get('uid') || '').trim();
+        var shopId = String(p.get('shop') || '').trim();
+
+        if (action === 'user' && uid) {
+          return '【デバッグ】\n車両共有QR（ユーザー）を検出しました\n\nuid: ' + uid + '\n\nURL:\n' + raw;
+        }
+        if (shopId) {
+          return '【デバッグ】\nかかりつけ登録QR（工場・事業者）を検出しました\n\nshopId: ' + shopId + '\n\nURL:\n' + raw;
+        }
+        return '【デバッグ】\n対応していないQRコードです\n\nURL:\n' + raw;
+      }
+
+      function showCameraFail(err) {
+        console.error(err);
+        hideScannerView();
+        showDebug('【デバッグ】\nカメラを起動できませんでした\n\nブラウザのカメラ権限を確認してください。');
+      }
+
+      function onScanSuccess(decodedText) {
+        if (scanLocked) return;
+        scanLocked = true;
+        if (!html5QrCode) {
+          hideScannerView();
+          showDebug(buildDebugMessage(decodedText));
+          return;
+        }
+        html5QrCode.stop().then(function () {
+          hideScannerView();
+          showDebug(buildDebugMessage(decodedText));
+        }).catch(function (err) {
+          console.error(err);
+          hideScannerView();
+          showDebug(buildDebugMessage(decodedText));
+        });
+      }
+
+      function startScanner() {
+        if (typeof Html5Qrcode !== 'function') {
+          showCameraFail(new Error('html5-qrcode が読み込まれていません'));
+          return;
+        }
+        html5QrCode = new Html5Qrcode('qr-reader');
+        var config = { fps: 10, qrbox: { width: 250, height: 250 } };
+        html5QrCode.start(
+          { facingMode: 'environment' },
+          config,
+          onScanSuccess,
+          function () { /* 未検出フレーム — 無視 */ }
+        ).catch(function (err) {
+          showCameraFail(err);
+        });
+      }
+
+      document.getElementById('btnBack').addEventListener('click', function () {
+        if (html5QrCode && !scanLocked) {
+          html5QrCode.stop().catch(function () { /* ignore */ }).finally(qrScanGoBack);
+          return;
+        }
+        qrScanGoBack();
+      });
+
+      document.getElementById('btnNext').addEventListener('click', function () {
+        alert('通信連携機能は次回アップデートで追加されます。');
+      });
+
+      window.addEventListener('DOMContentLoaded', startScanner);
+    })();
+  </script>
+</body>
+</html>

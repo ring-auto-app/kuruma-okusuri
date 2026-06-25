@@ -4773,11 +4773,9 @@ function createGlobalUI() {
     const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(appBaseUrl)}`;
 
     var qrPanelTitle = profileShopType === 'user' ? '車両共有QR' : 'かかりつけ登録QR';
-    var qrPanelDesc = profileShopType === 'user'
-        ? 'お店にこのQRを読み取ってもらうと、あなたの車両情報を共有できます。'
-        : 'お客様にスマホのカメラで読み取ってもらってください。';
+    var qrPanelDesc = '';
     const qrPanelBlock = `
-          <div id="nappy-qr-panel"><div class="qr-panel-title">${qrPanelTitle}</div><div class="qr-panel-desc">${qrPanelDesc}</div><div class="qr-img-wrap"><img class="qr-img" src="${qrImageUrl}" alt="QR"></div><button type="button" class="qr-read-btn" id="nappy-qr-read-app">アプリでQRを読む</button><button class="qr-close-btn" id="nappy-qr-close">閉じる</button></div>`;
+          <div id="nappy-qr-panel"><div class="qr-panel-title">${qrPanelTitle}</div><div class="qr-panel-desc">${qrPanelDesc}</div><div class="qr-img-wrap"><img class="qr-img" src="${qrImageUrl}" alt="QR"></div><button type="button" class="qr-read-btn" id="nappy-qr-read-app">カメラで読み取る</button><button class="qr-close-btn" id="nappy-qr-close">閉じる</button></div>`;
 
     var userSlotForAdmin = ringReadAuthSlot('user');
     var adminSwitchItem = ringIsAdminProfile(userSlotForAdmin && userSlotForAdmin.profile)
@@ -4950,7 +4948,7 @@ function createGlobalUI() {
     var qrReadApp = document.getElementById('nappy-qr-read-app');
     if (qrReadApp) {
         qrReadApp.addEventListener('click', function () {
-            alert('アプリ内QR読み取り機能は近日追加予定です。現在はスマートフォン標準カメラでQRを読み取れます。');
+            location.href = 'qr_scan.html';
         });
     }
 
