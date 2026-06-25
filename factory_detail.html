@@ -196,7 +196,9 @@
 
         if (log) {
             document.getElementById('outTitle').innerText = log.title || "一般整備";
-            document.getElementById('outDate').innerText = log.date || "---";
+            document.getElementById('outDate').innerText = log.date
+              ? (typeof ringFormatDateLocal_ === 'function' ? ringFormatDateLocal_(log.date, false) : log.date)
+              : "---";
             document.getElementById('outVin').innerText = log.vin.toUpperCase();
             
             if(vehicle) {
@@ -204,14 +206,18 @@
               document.getElementById('outEngine').innerText     = vehicle.engine || log.engine || "---";
               document.getElementById('outClass').innerText      = vehicle.classification || vehicle.category || log.classification || "---";
               document.getElementById('outTypeDesig').innerText  = vehicle.typeDesignation || log.typeDesignation || "---";
-              document.getElementById('outShaken').innerText     = vehicle.nextShaken || log.nextShaken || "---";
+              document.getElementById('outShaken').innerText     = (vehicle.nextShaken || log.nextShaken)
+                ? (typeof ringFormatDateLocal_ === 'function' ? ringFormatDateLocal_(vehicle.nextShaken || log.nextShaken, false) : (vehicle.nextShaken || log.nextShaken))
+                : "---";
             } else {
               // 車両レコードがない場合はログの情報で補完
               document.getElementById('outModel').innerText      = log.vehicleModel   || "---";
               document.getElementById('outEngine').innerText     = log.engine         || "---";
               document.getElementById('outClass').innerText      = log.classification  || "---";
               document.getElementById('outTypeDesig').innerText  = log.typeDesignation || "---";
-              document.getElementById('outShaken').innerText     = log.nextShaken     || "---";
+              document.getElementById('outShaken').innerText     = log.nextShaken
+                ? (typeof ringFormatDateLocal_ === 'function' ? ringFormatDateLocal_(log.nextShaken, false) : log.nextShaken)
+                : "---";
             }
             
             document.getElementById('outMileage').innerText = log.mileage ? `${Number(log.mileage).toLocaleString()} km` : "---";
