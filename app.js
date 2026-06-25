@@ -3424,18 +3424,54 @@ var RING_WORK_TITLE_OPTIONS = [
 function ringAutoGrowTextarea_(el) {
     if (!el || el.tagName !== 'TEXTAREA') return;
     el.style.overflowY = 'hidden';
+    el.style.resize = 'none';
     el.style.height = 'auto';
     el.style.height = el.scrollHeight + 'px';
 }
 
+/** 値をプログラムからセットした直後など、レイアウト確定後に高さを再計算 */
+function ringAutoGrowTextareaSoon_(el) {
+    if (!el || el.tagName !== 'TEXTAREA') return;
+    ringAutoGrowTextarea_(el);
+    requestAnimationFrame(function () {
+        ringAutoGrowTextarea_(el);
+        requestAnimationFrame(function () { ringAutoGrowTextarea_(el); });
+    });
+}
+
 function ringInitAutoGrowTextareas(root) {
     var scope = root && root.querySelectorAll ? root : document;
-    var list = scope.querySelectorAll ? scope.querySelectorAll('textarea.ring-auto-grow') : [];
+    var list = scope.querySelectorAll
+        ? scope.querySelectorAll('textarea.ring-auto-grow, textarea.ring-ocr-review__input')
+        : [];
     list.forEach(function (ta) {
-        ringAutoGrowTextarea_(ta);
+        ringAutoGrowTextareaSoon_(ta);
         if (ta.__ringAutoGrowBound) return;
         ta.__ringAutoGrowBound = true;
         ta.addEventListener('input', function () { ringAutoGrowTextarea_(ta); });
+    });
+}
+
+/** iOS Safari: テキストエリア focus 時の画面ジャンプ軽減（visualViewport 非依存） */
+function ringInitIosTextareaKeyboardFix_(root) {
+    var scope = root && root.querySelectorAll ? root : document;
+    var list = scope.querySelectorAll ? scope.querySelectorAll('textarea') : [];
+    list.forEach(function (ta) {
+        if (ta.__ringIosKbdFixBound) return;
+        ta.__ringIosKbdFixBound = true;
+        ta.addEventListener('focus', function () {
+            document.body.classList.add('ring-ios-kbd-open');
+            setTimeout(function () {
+                try {
+                    ta.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                } catch (e) {
+                    try { ta.scrollIntoView(true); } catch (e2) { /* ignore */ }
+                }
+            }, 320);
+        });
+        ta.addEventListener('blur', function () {
+            document.body.classList.remove('ring-ios-kbd-open');
+        });
     });
 }
 
@@ -4274,6 +4310,7 @@ async function ringHandleInvoiceOcrScan(opts) {
                 vin: 'ZVW50-5012847',
                 documentType: 'invoice',
                 mileage: '124000',
+                contentText: 'エンジンオイル交換\nエンジンオイル（5W-30） 4.5L\nオイルフィルター交換\nオイルフィルター 1個',
                 works: ['エンジンオイル交換', 'オイルフィルター交換'],
                 parts: [
                     { n: 'エンジンオイル', s: '5W-30', q: '4.5L' },
@@ -4285,6 +4322,7 @@ async function ringHandleInvoiceOcrScan(opts) {
             vin: 'ZVW50-5012847',
             documentType: 'invoice',
             mileage: '124000',
+            contentText: 'エンジンオイル交換\nエンジンオイル（5W-30） 4.5L\nオイルフィルター交換\nオイルフィルター 1個',
             works: ['エンジンオイル交換', 'オイルフィルター交換'],
             parts: [
                 { n: 'エンジンオイル', s: '5W-30', q: '4.5L' },
@@ -4310,6 +4348,68 @@ function ringInvoiceDocTypeLabel_(t) {
     return map[String(t || '').toLowerCase()] || String(t || '不明');
 }
 
+/** 整備明細 OCR: contentText 優先。なければ works/parts をブロック分けせず連結 */
+function ringFormatInvoiceOcrUnifiedText_(raw) {
+    if (!raw || typeof raw !== 'object') return '';
+    var ct = String(raw.contentText != null ? raw.contentText : '').trim();
+    if (ct) return ct.replace(/\n{3,}/g, '\n\n');
+    var lines = [];
+    var works = Array.isArray(raw.works) ? raw.works : [];
+    var parts = Array.isArray(raw.parts) ? raw.parts : [];
+    works.forEach(function (w) {
+        var s = String(w || '').trim();
+        if (s) lines.push(s);
+    });
+    parts.forEach(function (p) {
+        if (!p || typeof p !== 'object') return;
+        var n = String(p.n != null ? p.n : '').trim();
+        if (!n) return;
+        var spec = String(p.s != null ? p.s : '').trim();
+        var qty = String(p.q != null ? p.q : '').trim();
+        var line = n + (spec ? '（' + spec + '）' : '') + (qty ? ' ' + qty : '');
+        lines.push(line);
+    });
+    return lines.join('\n');
+}
+
+/**
+ * 整備明細 OCR 結果を factory_input へ反映（parts のみ。memo は干渉しない）
+ */
+function ringApplyInvoiceOcrToFormForFactory_(ocrResult) {
+    var r = typeof ringInvoiceNormalizeResult_ === 'function'
+        ? ringInvoiceNormalizeResult_(ocrResult)
+        : (ocrResult || {});
+    if (ocrResult && ocrResult.contentText != null && String(ocrResult.contentText).trim()) {
+        r.contentText = String(ocrResult.contentText).trim();
+    }
+    var partsEl = document.getElementById('inParts');
+    var contentText = ringFormatInvoiceOcrUnifiedText_(r);
+    if (r.vin) {
+        var vinEl = document.getElementById('inVin');
+        if (vinEl && !vinEl.readOnly) vinEl.value = r.vin;
+    }
+    if (r.mileage) {
+        var mi = document.getElementById('inMileage');
+        if (mi) mi.value = r.mileage;
+    }
+    if (contentText && partsEl) {
+        partsEl.value = contentText;
+        ringAutoGrowTextareaSoon_(partsEl);
+    }
+    if (typeof lookupVehicle === 'function' && r.vin) lookupVehicle(r.vin);
+    if (typeof window !== 'undefined') {
+        window.__ringInvoiceOcrMeta = {
+            documentType: r.documentType,
+            works: Array.isArray(r.works) ? r.works.slice() : [],
+            partsItems: Array.isArray(r.parts) ? r.parts.map(function (p) {
+                return { n: p.n, s: p.s, q: p.q };
+            }) : []
+        };
+        window.__ringOcrAppliedThisSession = true;
+    }
+    if (typeof ringInitAutoGrowTextareas === 'function') ringInitAutoGrowTextareas();
+}
+
 /**
  * 整備明細 OCR 結果の確認モーダル
  * @param {object} ocrResult
@@ -4330,11 +4430,14 @@ function showInvoiceOcrReviewModal(ocrResult, opts) {
     var partsText = typeof ringFormatInvoiceOcrPartsText_ === 'function'
         ? ringFormatInvoiceOcrPartsText_(r.parts)
         : '';
+    var unifiedText = typeof ringFormatInvoiceOcrUnifiedText_ === 'function'
+        ? ringFormatInvoiceOcrUnifiedText_(Object.assign({}, r, { contentText: ocrResult && ocrResult.contentText }))
+        : (worksText + (partsText ? '\n' + partsText : ''));
 
     function fieldRow(key, label, type, val) {
         var inpType = type === 'number' ? 'number' : 'text';
         var tag = type === 'textarea'
-            ? ('<textarea class="ring-ocr-review__input" data-key="' + key + '" rows="4">' + escapeHtml(val || '') + '</textarea>')
+            ? ('<textarea class="ring-ocr-review__input ring-auto-grow" data-key="' + key + '" rows="4">' + escapeHtml(val || '') + '</textarea>')
             : ('<input class="ring-ocr-review__input" data-key="' + key + '" type="' + inpType + '"' + ringVinInputExtraAttrs_(key) + ' value="' + escapeHtml(val || '') + '">');
         return '<div class="ring-ocr-review__row"><label class="ring-ocr-review__lbl">' + escapeHtml(label) + '</label>' + tag + '</div>';
     }
@@ -4346,8 +4449,7 @@ function showInvoiceOcrReviewModal(ocrResult, opts) {
         '<div class="ring-ocr-review__input" style="background:#f8fafc;border:none;padding:8px 0;">' +
         escapeHtml(ringInvoiceDocTypeLabel_(r.documentType)) + ' (' + escapeHtml(r.documentType || 'unknown') + ')' +
         '</div></div>';
-    body += fieldRow('memo', '作業内容', 'textarea', worksText);
-    body += fieldRow('parts', '使用部品', 'textarea', partsText);
+    body += fieldRow('partsContent', '作業内容・交換部品', 'textarea', unifiedText);
 
     var html = '<div class="ring-save-confirm" id="' + id + '">' +
         '<div class="ring-save-confirm__backdrop"></div>' +
@@ -4365,9 +4467,7 @@ function showInvoiceOcrReviewModal(ocrResult, opts) {
     var card = el.querySelector('.ring-save-confirm__card');
     function syncCardMaxHeight() {
         if (!card) return;
-        var vv = window.visualViewport;
-        var h = vv ? vv.height : window.innerHeight;
-        card.style.maxHeight = Math.max(160, Math.min(h * 0.85, h - 48)) + 'px';
+        card.style.maxHeight = 'min(85dvh, calc(100dvh - 48px))';
     }
     var detachVv = ringAttachVisualViewportCard(card, syncCardMaxHeight);
 
@@ -4379,6 +4479,7 @@ function showInvoiceOcrReviewModal(ocrResult, opts) {
     function collectPayload() {
         var out = {
             documentType: r.documentType,
+            contentText: '',
             works: r.works.slice(),
             parts: r.parts.map(function (p) { return { n: p.n, s: p.s, q: p.q }; })
         };
@@ -4387,22 +4488,8 @@ function showInvoiceOcrReviewModal(ocrResult, opts) {
             if (!k) return;
             if (k === 'vin') out.vin = inp.value.trim().toUpperCase();
             else if (k === 'mileage') out.mileage = inp.value.trim().replace(/[^\d]/g, '');
-            else if (k === 'memo') {
-                var lines = inp.value.split(/[\n\r]+/).filter(function (l) { return l.trim(); });
-                out.works = lines.map(function (l) {
-                    return l.replace(/^[\s・\-*]+/, '').trim();
-                }).filter(function (l) { return l && l !== '【作業】'; });
-            } else if (k === 'parts') {
-                var plines = inp.value.split(/[\n\r]+/).filter(function (l) { return l.trim(); });
-                out.parts = plines.map(function (l) {
-                    var t = l.replace(/^[\s・\-*]+/, '').trim();
-                    if (!t || t === '【部品】') return null;
-                    var m = t.match(/^(.+?)（([^）]+)）(?:\s+(.+))?$/);
-                    if (m) return { n: m[1].trim(), s: m[2].trim(), q: (m[3] || '').trim() };
-                    var sp = t.lastIndexOf(' ');
-                    if (sp > 0) return { n: t.slice(0, sp).trim(), s: '', q: t.slice(sp + 1).trim() };
-                    return { n: t, s: '', q: '' };
-                }).filter(Boolean);
+            else if (k === 'partsContent') {
+                out.contentText = inp.value.trim();
             }
         });
         return out;
@@ -4420,11 +4507,14 @@ function showInvoiceOcrReviewModal(ocrResult, opts) {
         var payload = collectPayload();
         close();
         if (typeof resetOcrFailureCount === 'function') resetOcrFailureCount();
-        if (typeof ringApplyInvoiceOcrToForm === 'function') {
-            ringApplyInvoiceOcrToForm('factory', payload);
+        if (typeof ringApplyInvoiceOcrToFormForFactory_ === 'function') {
+            ringApplyInvoiceOcrToFormForFactory_(payload);
         }
         if (typeof opts.onApply === 'function') opts.onApply(payload);
     };
+
+    if (typeof ringInitAutoGrowTextareas === 'function') ringInitAutoGrowTextareas(el);
+    if (typeof ringInitIosTextareaKeyboardFix_ === 'function') ringInitIosTextareaKeyboardFix_(el);
 }
 
 function ringGetPreSaveLeadText() {
