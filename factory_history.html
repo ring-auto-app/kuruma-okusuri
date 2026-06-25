@@ -398,7 +398,7 @@
             <a href="factory_detail.html?vin=${encodeURIComponent(targetVin)}&log_id=${encodeURIComponent(log.log_id)}" class="history-card ${colorClass}">
               <div class="card-header">
                 <div class="header-left">
-                  ${log.date} / ${mileageStr}
+                  ${typeof ringFormatDateLocal_ === 'function' ? ringFormatDateLocal_(log.date, false) : log.date} / ${mileageStr}
                 </div>
                 <div class="header-right">
                   ${editStatusHtml}
