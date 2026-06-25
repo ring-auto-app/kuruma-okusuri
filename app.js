@@ -4764,10 +4764,20 @@ function createGlobalUI() {
     let appBaseUrl = window.location.href.split('?')[0]; 
     if (appBaseUrl.endsWith('.html')) appBaseUrl = appBaseUrl.substring(0, appBaseUrl.lastIndexOf('/')) + '/index.html';
 
-    if (!isUserMode && profile && profile.shopId) {
-        appBaseUrl += `?shop=${profile.shopId}`;
+    var profileShopType = profile ? String(profile.shopType || '') : '';
+    if (profileShopType === 'user' && profile && profile.userId) {
+        appBaseUrl += '?action=user&uid=' + encodeURIComponent(String(profile.userId).trim());
+    } else if (profileShopType !== 'user' && profile && profile.shopId) {
+        appBaseUrl += '?shop=' + encodeURIComponent(String(profile.shopId).trim());
     }
     const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(appBaseUrl)}`;
+
+    var qrPanelTitle = profileShopType === 'user' ? '車両共有QR' : 'かかりつけ登録QR';
+    var qrPanelDesc = profileShopType === 'user'
+        ? 'お店にこのQRを読み取ってもらうと、あなたの車両情報を共有できます。'
+        : 'お客様にスマホのカメラで読み取ってもらってください。';
+    const qrPanelBlock = `
+          <div id="nappy-qr-panel"><div class="qr-panel-title">${qrPanelTitle}</div><div class="qr-panel-desc">${qrPanelDesc}</div><div class="qr-img-wrap"><img class="qr-img" src="${qrImageUrl}" alt="QR"></div><button type="button" class="qr-read-btn" id="nappy-qr-read-app">アプリでQRを読む</button><button class="qr-close-btn" id="nappy-qr-close">閉じる</button></div>`;
 
     var userSlotForAdmin = ringReadAuthSlot('user');
     var adminSwitchItem = ringIsAdminProfile(userSlotForAdmin && userSlotForAdmin.profile)
@@ -4827,7 +4837,7 @@ function createGlobalUI() {
           <div class="nappy-tab" id="nappy-settings-tab" title="設定" style="background: #7a7167;">⚙️</div>
         `;
         panelsHtml = `
-          <div id="nappy-qr-panel"><div class="qr-panel-title">お店に紹介する</div><div class="qr-panel-desc">このQRを読み取ってもらうことで<br>お薬手帳の導入を推奨できます。</div><div class="qr-img-wrap"><img class="qr-img" src="${qrImageUrl}" alt="紹介QR"></div><button class="qr-close-btn" id="nappy-qr-close">閉じる</button></div>
+          ${qrPanelBlock}
           <div id="nappy-settings-panel"><div class="settings-header"><h2>設定</h2><button class="settings-close" id="nappy-settings-close">✖</button></div><div class="settings-body">${menuBodyHtml}</div></div>
         `;
     } else {
@@ -4878,7 +4888,7 @@ function createGlobalUI() {
           <div class="nappy-tab" id="nappy-qr-tab" title="紹介QR" style="background: #d94f4f;">🔖</div>
         `;
         panelsHtml = `
-          <div id="nappy-qr-panel"><div class="qr-panel-title">車のお薬手帳</div><div class="qr-panel-desc">お客様にこのQRを読み取ってもらうことで<br>店舗をお気に入り登録できます。</div><div class="qr-img-wrap"><img class="qr-img" src="${qrImageUrl}" alt="紹介QR"></div><button class="qr-close-btn" id="nappy-qr-close">閉じる</button></div>
+          ${qrPanelBlock}
           <div id="nappy-settings-panel"><div class="settings-header"><h2>設定・管理</h2><button class="settings-close" id="nappy-settings-close">✖</button></div><div class="settings-body">${menuBodyHtml}</div></div>
         `;
     }
@@ -4891,7 +4901,9 @@ function createGlobalUI() {
       .qr-panel-desc { font-size: 14px; color: #7a7167; margin: 0 0 32px; font-weight: 700; line-height: 1.6; text-align: center; }
       .qr-img-wrap { background: #fff; padding: 16px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); }
       .qr-img { width: 180px; height: 180px; display: block; }
-      .qr-close-btn { margin-top: 40px; padding: 14px 32px; background: #fff; border: 2px solid #e0d8c8; border-radius: 999px; font-weight: 800; color: #7a7167; cursor: pointer; }
+      .qr-read-btn { margin-top: 24px; padding: 14px 32px; background: #3b82f6; border: none; border-radius: 999px; font-weight: 800; color: #fff; cursor: pointer; font-size: 15px; font-family: inherit; }
+      .qr-read-btn:active { transform: scale(0.98); }
+      .qr-close-btn { margin-top: 16px; padding: 14px 32px; background: #fff; border: 2px solid #e0d8c8; border-radius: 999px; font-weight: 800; color: #7a7167; cursor: pointer; }
       
       #nappy-settings-panel { position: fixed; top: -100vh; left: 0; width: 100%; height: 100vh; background: rgba(253, 250, 244, 0.97); backdrop-filter: blur(8px); z-index: 9998; transition: top 0.4s cubic-bezier(0.2, 0.8, 0.2, 1); display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
       #nappy-settings-panel.open { top: 0; }
@@ -4935,6 +4947,12 @@ function createGlobalUI() {
         });
     }
     if (qrClose) qrClose.addEventListener('click', () => { qrPanel.classList.remove('open'); });
+    var qrReadApp = document.getElementById('nappy-qr-read-app');
+    if (qrReadApp) {
+        qrReadApp.addEventListener('click', function () {
+            alert('アプリ内QR読み取り機能は近日追加予定です。現在はスマートフォン標準カメラでQRを読み取れます。');
+        });
+    }
 
     ringInitLinePromoSlots();
 }
