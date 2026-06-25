@@ -2282,6 +2282,69 @@ function ringLogClientAccess(surface) {
     } catch (e) { /* ignore */ }
 }
 
+var RING_USER_VEHICLE_MAX = 5;
+
+/** role === "user" の一般ユーザー（shop / business / admin は除外） */
+function ringIsFreePlanUserRole_(profile) {
+    if (!profile) return false;
+    var role = String(profile.role || '').trim().toLowerCase();
+    if (role !== 'user') return false;
+    var shopType = String(profile.shopType || 'user').trim().toLowerCase();
+    return shopType === 'user' || shopType === '';
+}
+
+function ringCountLocalUserVehicles_(profile) {
+    if (!profile) return 0;
+    var uid = String(profile.userId || '').trim();
+    if (!uid) return 0;
+    return loadVehicles().filter(function (v) {
+        return String(v.userId || v.ownerId || '').trim() === uid;
+    }).length;
+}
+
+function ringUserOwnsVinLocal_(profile, vin) {
+    if (!profile || !vin) return false;
+    var uid = String(profile.userId || '').trim();
+    var norm = _normalize(vin);
+    return loadVehicles().some(function (v) {
+        return _normalize(v.vin) === norm && String(v.userId || v.ownerId || '').trim() === uid;
+    });
+}
+
+/** 新規登録のみブロック（同一 VIN の更新は通す） */
+function ringUserVehicleLimitBlocksNew_(profile, vin) {
+    if (!ringIsFreePlanUserRole_(profile)) return false;
+    if (vin && ringUserOwnsVinLocal_(profile, vin)) return false;
+    return ringCountLocalUserVehicles_(profile) >= RING_USER_VEHICLE_MAX;
+}
+
+function ringShowVehicleLimitReachedModal_() {
+    var id = 'ring-vehicle-limit';
+    var old = document.getElementById(id);
+    if (old) old.remove();
+    var html = '<div class="ring-save-confirm" id="' + id + '">' +
+        '<div class="ring-save-confirm__backdrop"></div>' +
+        '<div class="ring-save-confirm__card">' +
+        '<div class="ring-save-confirm__title">登録上限に達しました</div>' +
+        '<p class="ring-save-confirm__lead" style="margin-top:0">無料プランでは最大5台まで登録できます。不要な車両を削除すると新しい車両を登録できます。</p>' +
+        '<div class="ring-save-confirm__actions">' +
+        '<button type="button" class="ring-save-confirm__btn ring-save-confirm__btn--primary" data-ring-action="close">閉じる</button>' +
+        '</div></div></div>';
+    document.body.insertAdjacentHTML('beforeend', html);
+    var el = document.getElementById(id);
+    function close() { if (el && el.parentNode) el.remove(); }
+    el.querySelector('[data-ring-action="close"]').onclick = close;
+    el.querySelector('.ring-save-confirm__backdrop').onclick = close;
+}
+
+/** UI 用：上限時はモーダル表示して false を返す */
+function ringGuardUserVehicleLimitBeforeAdd_(vin) {
+    var profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+    if (!ringUserVehicleLimitBlocksNew_(profile, vin)) return true;
+    ringShowVehicleLimitReachedModal_();
+    return false;
+}
+
 /**
  * 車両の追加・更新
  * @param {object} v
@@ -2289,6 +2352,12 @@ function ringLogClientAccess(surface) {
 async function addVehicle(v) {
     const list = loadVehicles();
     const i = list.findIndex(x => _normalize(x.vin) === _normalize(v.vin));
+    if (i === -1) {
+        var profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+        if (ringUserVehicleLimitBlocksNew_(profile, v.vin)) {
+            return { success: false, error: 'LIMIT_REACHED', localSaved: false, serverSaved: false, queued: false };
+        }
+    }
     const merged = i !== -1 ? { ...list[i], ...v } : { ...v };
     merged.createdAt = merged.createdAt || new Date().toISOString();
     if (merged.vehicleName != null) merged.vehicleName = ringNormalizeVehicleSaveValue_(merged.vehicleName);
@@ -2299,6 +2368,17 @@ async function addVehicle(v) {
         return await sendToGAS_Safe('vehicle', Object.assign({}, merged));
     } catch (err) {
         const msg = String(err.message || '');
+        if (/LIMIT_REACHED/i.test(msg)) {
+            if (i === -1) {
+                const revertList = loadVehicles();
+                const ri = revertList.findIndex(x => _normalize(x.vin) === _normalize(v.vin));
+                if (ri !== -1) {
+                    revertList.splice(ri, 1);
+                    localStorage.setItem(DB_VEHICLES, JSON.stringify(revertList));
+                }
+            }
+            return { success: false, error: 'LIMIT_REACHED', localSaved: false, serverSaved: false, queued: false };
+        }
         if (/VIN_REQUIRED/i.test(msg)) {
             ringLogSystemEvent('SAVE_FAIL', {
                 error_message: msg,
@@ -2435,6 +2515,7 @@ function getMaintenanceLogsByVin(vin) {
  */
 function ringGasErrorToUserMessage_(errMsg, actionType) {
     var msg = String(errMsg || '').trim();
+    if (/LIMIT_REACHED/i.test(msg)) return null;
     if (/API_RATE_LIMIT|GEMINI_HTTP_429|HTTP_429|\b429\b|RATE_LIMIT/i.test(msg)) {
         return 'サーバーが混み合っています。少し待ってから再度お試しください';
     }

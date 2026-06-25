@@ -104,6 +104,7 @@
         </div>
       </div>
       <div id="ringVehiclesSyncStatus" style="display:none;"></div>
+      <p id="userVehicleCountLabel" style="display:none;font-size:13px;font-weight:800;color:var(--muted);margin:8px 0 0;"></p>
     </div>
     <!-- 車両区分タブ（工場・事業者のみ JS で表示） -->
     <div class="cat-tabs" id="categoryTabs" style="display:none;">
@@ -235,8 +236,14 @@
         document.getElementById('categoryTabs').style.display = '';
       }
 
-      // 登録ボタンの飛び先
-      if (addBtn) addBtn.onclick = () => location.href = 'car_add.html';
+      // 登録ボタンの飛び先（一般ユーザーは台数上限を先にチェック）
+      if (addBtn) {
+        addBtn.onclick = function () {
+          if (typeof ringGuardUserVehicleLimitBeforeAdd_ === 'function' && !ringGuardUserVehicleLimitBeforeAdd_('')) return;
+          location.href = 'car_add.html';
+        };
+      }
+      updateUserVehicleCountLabel();
 
       vehiclesCacheKey = 'vehicles:' + ((profile && (profile.userId || profile.shopId)) || 'unknown');
 
@@ -299,6 +306,16 @@
       return Math.ceil((d - today) / 86400000);
     }
 
+    function updateUserVehicleCountLabel() {
+      var el = document.getElementById('userVehicleCountLabel');
+      if (!el || !profile || isBizMode) { if (el) el.style.display = 'none'; return; }
+      if (String(profile.role || '').trim().toLowerCase() !== 'user') { el.style.display = 'none'; return; }
+      var cnt = getFilteredVehicles().length;
+      var max = (typeof RING_USER_VEHICLE_MAX === 'number') ? RING_USER_VEHICLE_MAX : 5;
+      el.textContent = '登録台数：' + cnt + ' / ' + max + '台';
+      el.style.display = '';
+    }
+
     function renderCars(showLoadOverlay, scrollYToRestore) {
       const sortType = document.getElementById('sortSelect').value;
       if (showLoadOverlay !== false && typeof showLoading === "function") {
@@ -335,6 +352,7 @@
             ? '代車の登録がありません。'
             : '登録車両がありません。';
           container.innerHTML = `<div class="empty-msg">${emptyMsg}</div>`;
+          updateUserVehicleCountLabel();
           if (showLoadOverlay !== false && typeof hideLoading === "function") hideLoading();
           if (scrollYToRestore != null && typeof ringRestoreScrollY_ === 'function') ringRestoreScrollY_(scrollYToRestore);
           return;
@@ -397,6 +415,7 @@
             </div>`;
         });
         container.innerHTML = html;
+        updateUserVehicleCountLabel();
         if (showLoadOverlay !== false && typeof hideLoading === "function") hideLoading();
         if (scrollYToRestore != null && typeof ringRestoreScrollY_ === 'function') ringRestoreScrollY_(scrollYToRestore);
       }, 300);

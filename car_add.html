@@ -534,6 +534,10 @@
       const vin    = document.getElementById('inVin').value.trim().toUpperCase();
       const expiry = document.getElementById('inExpiry').value;
       const btn = document.getElementById('saveBtn');
+      if (typeof ringGuardUserVehicleLimitBeforeAdd_ === 'function' && !ringGuardUserVehicleLimitBeforeAdd_(vin)) {
+        if (typeof window !== 'undefined') window.__ringSaving = false;
+        return;
+      }
       btn.disabled = true;
       if (typeof showLoading === 'function') showLoading('登録中', '車両情報を保存しています...');
 
@@ -600,7 +604,10 @@
           if (typeof hideLoading === 'function') hideLoading();
           btn.disabled = false;
           const errStr = String(vehRes.error || '');
-          if (/VIN_REQUIRED/i.test(errStr)) {
+          if (/LIMIT_REACHED/i.test(errStr)) {
+            if (typeof ringShowVehicleLimitReachedModal_ === 'function') ringShowVehicleLimitReachedModal_();
+            else showToast('error', '無料プランでは最大5台まで登録できます');
+          } else if (/VIN_REQUIRED/i.test(errStr)) {
             showToast('error', '車台番号（VIN）がサーバーで受理されませんでした');
           } else {
             showToast('error', errStr || 'サーバーへの保存に失敗しました');
@@ -646,6 +653,8 @@
       if (!firstReg) { showErr('inFirstReg', '初度登録年月は必須です');  valid = false; }
       if (!valid) return;
 
+      if (typeof ringGuardUserVehicleLimitBeforeAdd_ === 'function' && !ringGuardUserVehicleLimitBeforeAdd_(vin)) return;
+
       const vClass = document.getElementById('inClass');
       const vUsage = document.getElementById('inUsage');
       const vOwner = document.getElementById('inOwnerType');
@@ -681,6 +690,10 @@
     document.getElementById('docInput').addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
+      if (typeof ringGuardUserVehicleLimitBeforeAdd_ === 'function' && !ringGuardUserVehicleLimitBeforeAdd_('')) {
+        e.target.value = '';
+        return;
+      }
       let previewUrl = '';
       try {
         previewUrl = await new Promise((resolve, reject) => {
