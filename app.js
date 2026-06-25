@@ -5047,33 +5047,92 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 /**
- * かかりつけ店舗の自動登録処理
+ * かかりつけ店舗の自動登録処理（?shop= / pending）
  */
+var RING_PENDING_FAV_SHOP_KEY = 'ring_pending_fav_shop';
+
+async function ringPromptAndSaveFavShop_(shopId) {
+    shopId = String(shopId || '').trim();
+    if (!shopId) return { ok: false };
+    var fav = loadFavShops();
+    if (fav.some(function (s) { return s.shopId === shopId; })) {
+        if (typeof showToast === 'function') showToast('info', 'かかりつけに登録済みです');
+        return { ok: true, duplicate: true };
+    }
+    var info = {};
+    try {
+        var res = await fetch(GAS_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({ action: 'get_shop_info', shopId: shopId })
+        });
+        var data = await res.json();
+        if (data.success && data.info) info = data.info;
+    } catch (e) { /* ignore */ }
+    var ok = false;
+    if (typeof showRingConfirm === 'function') {
+        ok = await showRingConfirm({
+            title: 'かかりつけ工場の登録',
+            message: 'かかりつけ工場に登録しますか？\n\n店舗ID: ' + shopId +
+                (info.address ? '\n住所: ' + info.address : '') +
+                (info.tel ? '\nTEL: ' + info.tel : ''),
+            okLabel: '登録する',
+            cancelLabel: 'キャンセル'
+        });
+    }
+    if (!ok) return { ok: false, cancelled: true };
+    var row = {
+        shopId: shopId,
+        shopName: '登録されたお店',
+        factoryNumber: '---',
+        address: info.address || '',
+        tel: info.tel || '',
+        email: info.email || '',
+        lineUrl: info.lineUrl || '#'
+    };
+    if (row.lineUrl === '') row.lineUrl = '#';
+    fav = fav.filter(function (s) { return s.shopId !== shopId; });
+    fav.push(row);
+    localStorage.setItem('nappy_fav_shops_v1', JSON.stringify(fav));
+    if (typeof showToast === 'function') showToast('success', 'かかりつけに追加しました');
+    return { ok: true };
+}
+
+async function ringProcessPendingFavShop_() {
+    var shopId = localStorage.getItem(RING_PENDING_FAV_SHOP_KEY);
+    if (!shopId) return;
+    var profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+    if (!profile || String(profile.shopType || '') !== 'user') return;
+    try {
+        var result = await ringPromptAndSaveFavShop_(String(shopId).trim());
+        if (result && result.ok && !result.duplicate && typeof showWelcomePopup === 'function') {
+            showWelcomePopup(false);
+        }
+    } finally {
+        localStorage.removeItem(RING_PENDING_FAV_SHOP_KEY);
+    }
+}
+
 window.addEventListener('DOMContentLoaded', async () => {
     const urlParams = new URLSearchParams(window.location.search);
     const shopId = urlParams.get('shop');
-    
-    if (!shopId || (getCurrentProfile() && !window.location.pathname.includes('user_'))) return;
+    const profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
 
-    let favShops = loadFavShops();
-    let isAlreadyRegistered = favShops.some(s => s.shopId === shopId);
-
-    if (!isAlreadyRegistered) {
-        const dummyShopData = {
-            shopId: shopId,
-            shopName: "登録されたお店",
-            factoryNumber: "---",
-            address: "---",
-            tel: "---",
-            email: "---",
-            lineUrl: ""
-        };
-        favShops.push(dummyShopData);
-        localStorage.setItem('nappy_fav_shops_v1', JSON.stringify(favShops));
+    if (shopId) {
+        window.history.replaceState(null, null, window.location.pathname);
+        if (!profile) {
+            localStorage.setItem(RING_PENDING_FAV_SHOP_KEY, String(shopId).trim());
+            return;
+        }
+        if (String(profile.shopType || '') !== 'user') return;
+        const res = await ringPromptAndSaveFavShop_(shopId);
+        if (res && res.ok && !res.duplicate && typeof showWelcomePopup === 'function') {
+            showWelcomePopup(false);
+        }
+        return;
     }
 
-    window.history.replaceState(null, null, window.location.pathname);
-    showWelcomePopup(isAlreadyRegistered);
+    await ringProcessPendingFavShop_();
 });
 
 function showWelcomePopup(isAlreadyRegistered) {

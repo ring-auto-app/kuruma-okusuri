@@ -53,38 +53,58 @@
     }
     #qr-reader { width: 100%; min-height: 280px; }
     #qr-reader video { border-radius: 12px; }
-    .debug-card {
+    .result-card {
       display: none;
       background: var(--paper, #fff);
       border: 2px solid var(--line, #e0d8c8);
       border-radius: 16px;
       padding: 16px;
-      margin-bottom: 20px;
+      margin-bottom: 16px;
     }
-    .debug-pre {
-      margin: 0;
-      font-size: 14px;
-      font-weight: 700;
-      line-height: 1.65;
-      white-space: pre-wrap;
-      word-break: break-all;
-      color: var(--text, #2f2a24);
+    .result-title { font-size: 16px; font-weight: 900; margin: 0 0 8px; }
+    .result-body { font-size: 14px; font-weight: 700; line-height: 1.65; color: var(--text, #2f2a24); }
+    .result-url { font-size: 12px; color: var(--muted, #7a7167); word-break: break-all; margin-top: 12px; }
+    .veh-card {
+      background: var(--page-bg, #f7f3ea);
+      border: 2px solid var(--line, #e0d8c8);
+      border-radius: 12px;
+      padding: 12px;
+      margin-top: 10px;
     }
-    .btn-next {
-      display: none;
+    .veh-name { font-size: 15px; font-weight: 900; }
+    .veh-meta { font-size: 12px; font-weight: 700; color: var(--muted, #7a7167); margin-top: 4px; }
+    .btn-action {
+      margin-top: 10px;
       width: 100%;
-      min-height: var(--tap-min, 48px);
-      padding: 14px;
+      min-height: var(--tap-min, 44px);
+      padding: 10px;
       border: none;
-      border-radius: 999px;
+      border-radius: 12px;
       background: var(--accent, #3b82f6);
       color: #fff;
-      font-size: 16px;
+      font-size: 14px;
       font-weight: 900;
       cursor: pointer;
       font-family: inherit;
     }
-    .btn-next:active { transform: scale(0.98); }
+    .btn-action:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-action:active { transform: scale(0.98); }
+    .btn-rescan {
+      width: 100%;
+      min-height: var(--tap-min, 48px);
+      padding: 14px;
+      border: 2px solid var(--line, #e0d8c8);
+      border-radius: 999px;
+      background: var(--paper, #fff);
+      color: var(--text, #2f2a24);
+      font-size: 15px;
+      font-weight: 900;
+      cursor: pointer;
+      font-family: inherit;
+      display: none;
+    }
+    .btn-rescan:active { transform: scale(0.98); }
+    .empty-msg { font-size: 14px; font-weight: 700; color: var(--muted); margin-top: 8px; }
   </style>
 </head>
 <body>
@@ -98,40 +118,36 @@
       <div id="qr-reader"></div>
     </div>
 
-    <div class="debug-card" id="debugArea">
-      <pre class="debug-pre" id="debugPre"></pre>
+    <div class="result-card" id="resultArea">
+      <h2 class="result-title" id="resultTitle"></h2>
+      <div class="result-body" id="resultBody"></div>
+      <div class="result-url" id="resultUrl"></div>
     </div>
 
-    <button type="button" class="btn-next" id="btnNext">次へ</button>
+    <button type="button" class="btn-rescan" id="btnRescan">もう一度読む</button>
   </div>
 
   <script>
     (function () {
       var html5QrCode = null;
       var scanLocked = false;
+      var lastRawText = '';
+
+      function getProfile() {
+        return typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+      }
 
       function qrScanGoBack() {
         if (history.length > 1) {
           history.back();
           return;
         }
-        var profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+        var profile = getProfile();
         if (profile && typeof ringGetHomeForProfile === 'function') {
           location.href = ringGetHomeForProfile(profile);
           return;
         }
         location.href = 'index.html';
-      }
-
-      function showDebug(text) {
-        document.getElementById('debugPre').textContent = text;
-        document.getElementById('debugArea').style.display = 'block';
-        document.getElementById('btnNext').style.display = 'block';
-      }
-
-      function hideScannerView() {
-        var card = document.getElementById('scanCard');
-        if (card) card.style.display = 'none';
       }
 
       function parseQrParams(rawText) {
@@ -143,70 +159,198 @@
         } catch (e) {
           var qIdx = raw.indexOf('?');
           if (qIdx >= 0) {
-            try {
-              params = new URLSearchParams(raw.slice(qIdx + 1));
-            } catch (e2) { /* ignore */ }
+            try { params = new URLSearchParams(raw.slice(qIdx + 1)); } catch (e2) { /* ignore */ }
           }
         }
         return { raw: raw, params: params };
       }
 
-      function buildDebugMessage(rawText) {
+      function showResult(title, bodyHtml, rawUrl) {
+        document.getElementById('resultTitle').textContent = title;
+        document.getElementById('resultBody').innerHTML = bodyHtml;
+        document.getElementById('resultUrl').textContent = rawUrl ? ('URL: ' + rawUrl) : '';
+        document.getElementById('resultArea').style.display = 'block';
+        document.getElementById('btnRescan').style.display = 'block';
+      }
+
+      function hideScannerView() {
+        var card = document.getElementById('scanCard');
+        if (card) card.style.display = 'none';
+      }
+
+      function showScannerView() {
+        document.getElementById('scanCard').style.display = 'block';
+        document.getElementById('resultArea').style.display = 'none';
+        document.getElementById('btnRescan').style.display = 'none';
+        document.getElementById('resultBody').innerHTML = '';
+      }
+
+      function esc(s) {
+        if (s == null) return '';
+        return String(s).replace(/[&<>"']/g, function (c) {
+          return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+        });
+      }
+
+      async function handleUserShareQr(uid, raw) {
+        showResult('車両共有QR', '<p>ユーザーID: ' + esc(uid) + '</p><p class="empty-msg">車両を読み込み中…</p>', raw);
+        try {
+          var json = await sendToGAS_Safe('get_user_vehicles_for_qr', { uid: uid });
+          var vehicles = (json && Array.isArray(json.vehicles)) ? json.vehicles : [];
+          if (!vehicles.length) {
+            showResult('車両共有QR', '<p>ユーザーID: ' + esc(uid) + '</p><p class="empty-msg">共有できる車両がありません。</p>', raw);
+            return;
+          }
+          var html = '<p>ユーザーID: ' + esc(uid) + '</p>';
+          vehicles.forEach(function (v, idx) {
+            var label = v.carName || v.vehicleName || v.vin || '車両';
+            var sub = [v.vehicleName, v.vin].filter(Boolean).join(' / ');
+            html += '<div class="veh-card">' +
+              '<div class="veh-name">' + esc(label) + '</div>' +
+              '<div class="veh-meta">' + esc(sub) + '</div>' +
+              '<button type="button" class="btn-action" data-vin="' + esc(v.vin) + '" data-idx="' + idx + '">管理車両に追加</button></div>';
+          });
+          showResult('車両共有QR', html, raw);
+          document.querySelectorAll('.btn-action[data-vin]').forEach(function (btn) {
+            btn.addEventListener('click', function () { onAddManagedVehicle(btn, vehicles[Number(btn.getAttribute('data-idx'))]); });
+          });
+        } catch (e) {
+          showResult('車両共有QR', '<p class="empty-msg">車両の取得に失敗しました。</p>', raw);
+        }
+      }
+
+      async function onAddManagedVehicle(btn, vehicle) {
+        if (!vehicle || !vehicle.vin) return;
+        var profile = getProfile();
+        if (!profile || String(profile.shopType || '') === 'user') return;
+        btn.disabled = true;
+        if (typeof showLoading === 'function') showLoading('登録中', '管理車両に追加しています…');
+        try {
+          var res = await addVehicle({
+            vin: vehicle.vin,
+            model: vehicle.carName || vehicle.vehicleName || '名称未設定',
+            vehicleName: vehicle.vehicleName || '',
+            vehicleCategory: 'managed',
+            shopId: profile.shopId || '',
+            shopName: profile.shopName || '',
+            shopType: profile.shopType || '',
+            createdAt: new Date().toISOString()
+          });
+          if (typeof hideLoading === 'function') hideLoading();
+          if (res && res.success === false && !res.queued) {
+            if (typeof showToast === 'function') showToast('error', res.error || '追加に失敗しました');
+            btn.disabled = false;
+            return;
+          }
+          if (typeof showToast === 'function') {
+            showToast(res && res.queued ? 'info' : 'success', res && res.queued ? '端末に保存しました（同期待ち）' : '管理車両に追加しました');
+          }
+          btn.textContent = '追加済み';
+        } catch (err) {
+          if (typeof hideLoading === 'function') hideLoading();
+          btn.disabled = false;
+          if (typeof showToast === 'function') showToast('error', '追加に失敗しました');
+        }
+      }
+
+      async function handleShopQr(shopId, raw) {
+        var profile = getProfile();
+        if (!profile) {
+          localStorage.setItem('ring_pending_fav_shop', String(shopId).trim());
+          showResult('かかりつけ登録QR', '<p class="empty-msg">ログイン後にかかりつけ登録できます。店舗IDを一時保存しました。</p>', raw);
+          return;
+        }
+        if (String(profile.shopType || '') !== 'user') {
+          showResult('かかりつけ登録QR', '<p class="empty-msg">一般ユーザーアカウントで読み取ってください。</p>', raw);
+          return;
+        }
+        showResult('かかりつけ登録QR', '<p>店舗ID: ' + esc(shopId) + '</p>', raw);
+        if (typeof ringPromptAndSaveFavShop_ === 'function') {
+          var favRes = await ringPromptAndSaveFavShop_(shopId);
+          if (favRes && favRes.ok && !favRes.duplicate) {
+            showResult('かかりつけ登録QR', '<p>店舗ID: ' + esc(shopId) + '</p><p class="empty-msg">かかりつけに登録しました。</p>', raw);
+          } else if (favRes && favRes.duplicate) {
+            showResult('かかりつけ登録QR', '<p>店舗ID: ' + esc(shopId) + '</p><p class="empty-msg">登録済みです。</p>', raw);
+          }
+        }
+      }
+
+      async function processQrResult(rawText) {
+        lastRawText = rawText;
         var parsed = parseQrParams(rawText);
         var p = parsed.params;
         var raw = parsed.raw;
         var action = String(p.get('action') || '').trim().toLowerCase();
         var uid = String(p.get('uid') || '').trim();
         var shopId = String(p.get('shop') || '').trim();
+        var profile = getProfile();
+        var shopType = profile ? String(profile.shopType || '') : '';
 
         if (action === 'user' && uid) {
-          return '【デバッグ】\n車両共有QR（ユーザー）を検出しました\n\nuid: ' + uid + '\n\nURL:\n' + raw;
+          if (shopType !== 'user') {
+            await handleUserShareQr(uid, raw);
+          } else {
+            showResult('QRコード', '<p class="empty-msg">このQRは工場・事業者向けです。お店のスタッフに読み取ってもらってください。</p>', raw);
+          }
+          return;
         }
         if (shopId) {
-          return '【デバッグ】\nかかりつけ登録QR（工場・事業者）を検出しました\n\nshopId: ' + shopId + '\n\nURL:\n' + raw;
+          await handleShopQr(shopId, raw);
+          return;
         }
-        return '【デバッグ】\n対応していないQRコードです\n\nURL:\n' + raw;
+        showResult('QRコード', '<p class="empty-msg">対応していないQRコードです。</p>', raw);
       }
 
       function showCameraFail(err) {
         console.error(err);
         hideScannerView();
-        showDebug('【デバッグ】\nカメラを起動できませんでした\n\nブラウザのカメラ権限を確認してください。');
+        showResult('カメラエラー', '<p class="empty-msg">カメラを起動できませんでした。ブラウザのカメラ権限を確認してください。</p>', '');
       }
 
       function onScanSuccess(decodedText) {
         if (scanLocked) return;
         scanLocked = true;
-        if (!html5QrCode) {
+        var done = function () {
           hideScannerView();
-          showDebug(buildDebugMessage(decodedText));
+          processQrResult(decodedText);
+        };
+        if (!html5QrCode) {
+          done();
           return;
         }
-        html5QrCode.stop().then(function () {
-          hideScannerView();
-          showDebug(buildDebugMessage(decodedText));
-        }).catch(function (err) {
+        html5QrCode.stop().then(done).catch(function (err) {
           console.error(err);
-          hideScannerView();
-          showDebug(buildDebugMessage(decodedText));
+          done();
         });
       }
 
       function startScanner() {
+        scanLocked = false;
+        showScannerView();
         if (typeof Html5Qrcode !== 'function') {
           showCameraFail(new Error('html5-qrcode が読み込まれていません'));
           return;
         }
-        html5QrCode = new Html5Qrcode('qr-reader');
+        if (!html5QrCode) html5QrCode = new Html5Qrcode('qr-reader');
         var config = { fps: 10, qrbox: { width: 250, height: 250 } };
         html5QrCode.start(
           { facingMode: 'environment' },
           config,
           onScanSuccess,
-          function () { /* 未検出フレーム — 無視 */ }
+          function () { /* 未検出 — 無視 */ }
         ).catch(function (err) {
           showCameraFail(err);
         });
+      }
+
+      function resetAndRescan() {
+        if (html5QrCode) {
+          html5QrCode.stop().catch(function () { /* ignore */ }).finally(function () {
+            html5QrCode.clear().catch(function () { /* ignore */ }).finally(startScanner);
+          });
+          return;
+        }
+        startScanner();
       }
 
       document.getElementById('btnBack').addEventListener('click', function () {
@@ -217,11 +361,17 @@
         qrScanGoBack();
       });
 
-      document.getElementById('btnNext').addEventListener('click', function () {
-        alert('通信連携機能は次回アップデートで追加されます。');
-      });
+      document.getElementById('btnRescan').addEventListener('click', resetAndRescan);
 
-      window.addEventListener('DOMContentLoaded', startScanner);
+      window.addEventListener('DOMContentLoaded', function () {
+        var profile = getProfile();
+        if (profile && typeof applyRingPalette === 'function') {
+          var persona = String(profile.shopType || '') === 'user' ? 'user'
+            : (String(profile.shopType || '') === 'dealer' ? 'dealer' : 'factory');
+          applyRingPalette(persona);
+        }
+        startScanner();
+      });
     })();
   </script>
 </body>
