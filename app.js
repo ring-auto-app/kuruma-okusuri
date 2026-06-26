@@ -2052,6 +2052,9 @@ function mergeVehiclesLocalAndServer(localList, serverList) {
         const merged = {
             ...prev,
             ...loc,
+            model: loc.model && String(loc.model).trim()
+                ? loc.model
+                : prev.model,
             inspectMonths: prev.inspectMonths || 12,
             lastMaint: prev.lastMaint,
             nickname: prev.nickname,
@@ -5067,15 +5070,22 @@ async function ringPromptAndSaveFavShop_(shopId) {
             body: JSON.stringify({ action: 'get_shop_info', shopId: shopId })
         });
         var data = await res.json();
-        if (data.success && data.info) info = data.info;
-    } catch (e) { /* ignore */ }
+        if (!data || data.success !== true || !data.info) {
+            return { ok: false, shopInfoFailed: true };
+        }
+        info = data.info;
+        if (!String(info.shopName || '').trim()) {
+            return { ok: false, shopInfoFailed: true };
+        }
+    } catch (e) {
+        return { ok: false, commError: true };
+    }
     var ok = false;
     if (typeof showRingConfirm === 'function') {
+        var confirmMsg = String(info.shopName).trim() + 'をかかりつけ工場に登録しますか？';
         ok = await showRingConfirm({
             title: 'かかりつけ工場の登録',
-            message: 'かかりつけ工場に登録しますか？\n\n店舗ID: ' + shopId +
-                (info.address ? '\n住所: ' + info.address : '') +
-                (info.tel ? '\nTEL: ' + info.tel : ''),
+            message: confirmMsg,
             okLabel: '登録する',
             cancelLabel: 'キャンセル'
         });
@@ -5083,8 +5093,8 @@ async function ringPromptAndSaveFavShop_(shopId) {
     if (!ok) return { ok: false, cancelled: true };
     var row = {
         shopId: shopId,
-        shopName: '登録されたお店',
-        factoryNumber: '---',
+        shopName: (info.shopName && String(info.shopName).trim()) ? String(info.shopName).trim() : '登録されたお店',
+        factoryNumber: (info.factoryNumber && String(info.factoryNumber).trim()) ? String(info.factoryNumber).trim() : '---',
         address: info.address || '',
         tel: info.tel || '',
         email: info.email || '',

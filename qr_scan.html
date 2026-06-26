@@ -63,7 +63,14 @@
     }
     .result-title { font-size: 16px; font-weight: 900; margin: 0 0 8px; }
     .result-body { font-size: 14px; font-weight: 700; line-height: 1.65; color: var(--text, #2f2a24); }
-    .result-url { font-size: 12px; color: var(--muted, #7a7167); word-break: break-all; margin-top: 12px; }
+    .status-msg {
+      font-size: 15px;
+      font-weight: 900;
+      text-align: center;
+      padding: 16px 8px;
+      color: var(--text, #2f2a24);
+    }
+    .status-msg.success { color: var(--accent, #15803d); }
     .veh-card {
       background: var(--page-bg, #f7f3ea);
       border: 2px solid var(--line, #e0d8c8);
@@ -104,7 +111,7 @@
       display: none;
     }
     .btn-rescan:active { transform: scale(0.98); }
-    .empty-msg { font-size: 14px; font-weight: 700; color: var(--muted); margin-top: 8px; }
+    .empty-msg { font-size: 14px; font-weight: 700; color: var(--muted); margin-top: 8px; text-align: center; }
   </style>
 </head>
 <body>
@@ -121,7 +128,6 @@
     <div class="result-card" id="resultArea">
       <h2 class="result-title" id="resultTitle"></h2>
       <div class="result-body" id="resultBody"></div>
-      <div class="result-url" id="resultUrl"></div>
     </div>
 
     <button type="button" class="btn-rescan" id="btnRescan">もう一度読む</button>
@@ -131,7 +137,6 @@
     (function () {
       var html5QrCode = null;
       var scanLocked = false;
-      var lastRawText = '';
 
       function getProfile() {
         return typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
@@ -165,10 +170,9 @@
         return { raw: raw, params: params };
       }
 
-      function showResult(title, bodyHtml, rawUrl) {
-        document.getElementById('resultTitle').textContent = title;
-        document.getElementById('resultBody').innerHTML = bodyHtml;
-        document.getElementById('resultUrl').textContent = rawUrl ? ('URL: ' + rawUrl) : '';
+      function showResult(title, bodyHtml) {
+        document.getElementById('resultTitle').textContent = title || '';
+        document.getElementById('resultBody').innerHTML = bodyHtml || '';
         document.getElementById('resultArea').style.display = 'block';
         document.getElementById('btnRescan').style.display = 'block';
       }
@@ -183,6 +187,7 @@
         document.getElementById('resultArea').style.display = 'none';
         document.getElementById('btnRescan').style.display = 'none';
         document.getElementById('resultBody').innerHTML = '';
+        document.getElementById('resultTitle').textContent = '';
       }
 
       function esc(s) {
@@ -192,30 +197,63 @@
         });
       }
 
-      async function handleUserShareQr(uid, raw) {
-        showResult('車両共有QR', '<p>ユーザーID: ' + esc(uid) + '</p><p class="empty-msg">車両を読み込み中…</p>', raw);
+      function showCommError(title) {
+        showResult(title || '', '<p class="empty-msg">通信エラーが発生しました</p>');
+      }
+
+      function isVinAlreadyManagedLocally(vin, profile) {
+        if (!vin || !profile || typeof loadVehicles !== 'function' || typeof _normalize !== 'function') return false;
+        var shopId = String(profile.shopId || '').trim();
+        var norm = _normalize(vin);
+        return loadVehicles().some(function (v) {
+          return _normalize(v.vin) === norm && String(v.shopId || '').trim() === shopId;
+        });
+      }
+
+      async function fetchUserVehiclesForQr(uid) {
+        var payload = { action: 'get_user_vehicles_for_qr', uid: uid };
+        if (typeof ringResolveActiveAuthToken === 'function') {
+          var authToken = ringResolveActiveAuthToken();
+          if (authToken) payload.authToken = authToken;
+        }
+        var res = await fetch(GAS_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify(payload)
+        });
+        return res.json();
+      }
+
+      async function handleUserShareQr(uid) {
+        showResult('車両一覧', '<p class="status-msg">読み込み中...</p>');
         try {
-          var json = await sendToGAS_Safe('get_user_vehicles_for_qr', { uid: uid });
-          var vehicles = (json && Array.isArray(json.vehicles)) ? json.vehicles : [];
-          if (!vehicles.length) {
-            showResult('車両共有QR', '<p>ユーザーID: ' + esc(uid) + '</p><p class="empty-msg">共有できる車両がありません。</p>', raw);
+          var json = await fetchUserVehiclesForQr(uid);
+          var vehicles = (json && json.success === true && Array.isArray(json.vehicles)) ? json.vehicles : [];
+          if (!json || json.success === false || !vehicles.length) {
+            showResult('車両一覧', '<p class="empty-msg">車両情報が見つかりませんでした</p>');
             return;
           }
-          var html = '<p>ユーザーID: ' + esc(uid) + '</p>';
+          var profile = getProfile();
+          var html = '';
           vehicles.forEach(function (v, idx) {
             var label = v.carName || v.vehicleName || v.vin || '車両';
             var sub = [v.vehicleName, v.vin].filter(Boolean).join(' / ');
             html += '<div class="veh-card">' +
               '<div class="veh-name">' + esc(label) + '</div>' +
-              '<div class="veh-meta">' + esc(sub) + '</div>' +
-              '<button type="button" class="btn-action" data-vin="' + esc(v.vin) + '" data-idx="' + idx + '">管理車両に追加</button></div>';
+              '<div class="veh-meta">' + esc(sub) + '</div>';
+            if (isVinAlreadyManagedLocally(v.vin, profile)) {
+              html += '<p class="empty-msg">すでに管理車両に登録されています</p>';
+            } else {
+              html += '<button type="button" class="btn-action" data-vin="' + esc(v.vin) + '" data-idx="' + idx + '">管理車両に追加</button>';
+            }
+            html += '</div>';
           });
-          showResult('車両共有QR', html, raw);
+          showResult('車両一覧', html);
           document.querySelectorAll('.btn-action[data-vin]').forEach(function (btn) {
             btn.addEventListener('click', function () { onAddManagedVehicle(btn, vehicles[Number(btn.getAttribute('data-idx'))]); });
           });
         } catch (e) {
-          showResult('車両共有QR', '<p class="empty-msg">車両の取得に失敗しました。</p>', raw);
+          showCommError('車両一覧');
         }
       }
 
@@ -223,8 +261,19 @@
         if (!vehicle || !vehicle.vin) return;
         var profile = getProfile();
         if (!profile || String(profile.shopType || '') === 'user') return;
+        if (isVinAlreadyManagedLocally(vehicle.vin, profile)) {
+          btn.style.display = 'none';
+          var cardDup = btn.closest('.veh-card');
+          if (cardDup && !cardDup.querySelector('.dup-msg')) {
+            var dupNote = document.createElement('p');
+            dupNote.className = 'empty-msg dup-msg';
+            dupNote.textContent = 'すでに管理車両に登録されています';
+            cardDup.appendChild(dupNote);
+          }
+          return;
+        }
         btn.disabled = true;
-        if (typeof showLoading === 'function') showLoading('登録中', '管理車両に追加しています…');
+        if (typeof showLoading === 'function') showLoading('登録中', '読み込み中...');
         try {
           var res = await addVehicle({
             vin: vehicle.vin,
@@ -238,73 +287,103 @@
           });
           if (typeof hideLoading === 'function') hideLoading();
           if (res && res.success === false && !res.queued) {
-            if (typeof showToast === 'function') showToast('error', res.error || '追加に失敗しました');
             btn.disabled = false;
+            var cardErr = btn.closest('.veh-card');
+            if (cardErr && !cardErr.querySelector('.comm-err-msg')) {
+              var errNote = document.createElement('p');
+              errNote.className = 'empty-msg comm-err-msg';
+              errNote.textContent = '通信エラーが発生しました';
+              cardErr.appendChild(errNote);
+            }
             return;
           }
-          if (typeof showToast === 'function') {
-            showToast(res && res.queued ? 'info' : 'success', res && res.queued ? '端末に保存しました（同期待ち）' : '管理車両に追加しました');
-          }
           btn.textContent = '追加済み';
+          var card = btn.closest('.veh-card');
+          if (card) {
+            var note = card.querySelector('.add-done-msg');
+            if (!note) {
+              note = document.createElement('p');
+              note.className = 'status-msg success add-done-msg';
+              note.textContent = '管理車両へ追加しました';
+              card.appendChild(note);
+            }
+          }
+          if (typeof showToast === 'function' && res && res.queued) {
+            showToast('info', '端末に保存しました（同期待ち）');
+          }
         } catch (err) {
           if (typeof hideLoading === 'function') hideLoading();
           btn.disabled = false;
-          if (typeof showToast === 'function') showToast('error', '追加に失敗しました');
+          var cardCatch = btn.closest('.veh-card');
+          if (cardCatch && !cardCatch.querySelector('.comm-err-msg')) {
+            var catchNote = document.createElement('p');
+            catchNote.className = 'empty-msg comm-err-msg';
+            catchNote.textContent = '通信エラーが発生しました';
+            cardCatch.appendChild(catchNote);
+          }
         }
       }
 
-      async function handleShopQr(shopId, raw) {
+      async function handleShopQr(shopId) {
         var profile = getProfile();
         if (!profile) {
           localStorage.setItem('ring_pending_fav_shop', String(shopId).trim());
-          showResult('かかりつけ登録QR', '<p class="empty-msg">ログイン後にかかりつけ登録できます。店舗IDを一時保存しました。</p>', raw);
+          showResult('かかりつけ登録', '<p class="empty-msg">ログイン後にかかりつけ登録できます。</p>');
           return;
         }
         if (String(profile.shopType || '') !== 'user') {
-          showResult('かかりつけ登録QR', '<p class="empty-msg">一般ユーザーアカウントで読み取ってください。</p>', raw);
+          showResult('かかりつけ登録', '<p class="empty-msg">一般ユーザーアカウントで読み取ってください。</p>');
           return;
         }
-        showResult('かかりつけ登録QR', '<p>店舗ID: ' + esc(shopId) + '</p>', raw);
+        showResult('かかりつけ登録', '<p class="status-msg">読み込み中...</p>');
         if (typeof ringPromptAndSaveFavShop_ === 'function') {
           var favRes = await ringPromptAndSaveFavShop_(shopId);
-          if (favRes && favRes.ok && !favRes.duplicate) {
-            showResult('かかりつけ登録QR', '<p>店舗ID: ' + esc(shopId) + '</p><p class="empty-msg">かかりつけに登録しました。</p>', raw);
+          if (favRes && favRes.commError) {
+            showCommError('かかりつけ登録');
+          } else if (favRes && favRes.shopInfoFailed) {
+            showResult('かかりつけ登録', '<p class="empty-msg">店舗情報を取得できませんでした</p>');
+          } else if (favRes && favRes.ok && !favRes.duplicate) {
+            showResult('かかりつけ登録', '<p class="status-msg success">登録が完了しました</p>');
           } else if (favRes && favRes.duplicate) {
-            showResult('かかりつけ登録QR', '<p>店舗ID: ' + esc(shopId) + '</p><p class="empty-msg">登録済みです。</p>', raw);
+            showResult('かかりつけ登録', '<p class="empty-msg">すでにかかりつけ工場に登録されています</p>');
+          } else if (favRes && favRes.cancelled) {
+            showResult('かかりつけ登録', '<p class="empty-msg">登録をキャンセルしました。</p>');
           }
         }
       }
 
       async function processQrResult(rawText) {
-        lastRawText = rawText;
-        var parsed = parseQrParams(rawText);
-        var p = parsed.params;
-        var raw = parsed.raw;
-        var action = String(p.get('action') || '').trim().toLowerCase();
-        var uid = String(p.get('uid') || '').trim();
-        var shopId = String(p.get('shop') || '').trim();
-        var profile = getProfile();
-        var shopType = profile ? String(profile.shopType || '') : '';
+        try {
+          var parsed = parseQrParams(rawText);
+          var p = parsed.params;
+          var action = String(p.get('action') || '').trim().toLowerCase();
+          var uid = String(p.get('uid') || '').trim();
+          var shopId = String(p.get('shop') || '').trim();
+          var profile = getProfile();
+          var shopType = profile ? String(profile.shopType || '') : '';
 
-        if (action === 'user' && uid) {
-          if (shopType !== 'user') {
-            await handleUserShareQr(uid, raw);
-          } else {
-            showResult('QRコード', '<p class="empty-msg">このQRは工場・事業者向けです。お店のスタッフに読み取ってもらってください。</p>', raw);
+          if (action === 'user' && uid) {
+            if (shopType !== 'user') {
+              await handleUserShareQr(uid);
+            } else {
+              showResult('', '<p class="empty-msg">このQRは工場・事業者向けです。お店のスタッフに読み取ってもらってください。</p>');
+            }
+            return;
           }
-          return;
+          if (shopId) {
+            await handleShopQr(shopId);
+            return;
+          }
+          showResult('', '<p class="empty-msg">対応していないQRコードです。</p>');
+        } catch (e) {
+          showCommError('');
         }
-        if (shopId) {
-          await handleShopQr(shopId, raw);
-          return;
-        }
-        showResult('QRコード', '<p class="empty-msg">対応していないQRコードです。</p>', raw);
       }
 
       function showCameraFail(err) {
         console.error(err);
         hideScannerView();
-        showResult('カメラエラー', '<p class="empty-msg">カメラを起動できませんでした。ブラウザのカメラ権限を確認してください。</p>', '');
+        showResult('カメラエラー', '<p class="empty-msg">カメラを起動できませんでした。ブラウザのカメラ権限を確認してください。</p>');
       }
 
       function onScanSuccess(decodedText) {
@@ -344,6 +423,11 @@
       }
 
       function resetAndRescan() {
+        scanLocked = false;
+        document.getElementById('resultTitle').textContent = '';
+        document.getElementById('resultBody').innerHTML = '';
+        document.getElementById('resultArea').style.display = 'none';
+        document.getElementById('btnRescan').style.display = 'none';
         if (html5QrCode) {
           html5QrCode.stop().catch(function () { /* ignore */ }).finally(function () {
             html5QrCode.clear().catch(function () { /* ignore */ }).finally(startScanner);
