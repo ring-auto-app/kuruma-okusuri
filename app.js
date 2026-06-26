@@ -4833,8 +4833,7 @@ function createGlobalUI() {
         </div>
         `;
         tabsHtml = `
-          <div class="nappy-tab" id="nappy-fav-tab" title="かかりつけ" style="background: #10b981;" onclick="location.href='user_fav_shops.html'">🏥</div>
-          <div class="nappy-tab" id="nappy-qr-tab" title="紹介QR" style="background: #3b82f6;">🔖</div>
+          <div class="nappy-tab" id="nappy-qr-tab" title="紹介QR" style="background: #3b82f6;">QR</div>
           <div class="nappy-tab" id="nappy-settings-tab" title="設定" style="background: #7a7167;">⚙️</div>
         `;
         panelsHtml = `
@@ -4885,8 +4884,8 @@ function createGlobalUI() {
         </div>
         `;
         tabsHtml = `
+          <div class="nappy-tab" id="nappy-qr-tab" title="紹介QR" style="background: #d94f4f;">QR</div>
           <div class="nappy-tab" id="nappy-settings-tab" title="設定" style="background: #7a7167;">⚙️</div>
-          <div class="nappy-tab" id="nappy-qr-tab" title="紹介QR" style="background: #d94f4f;">🔖</div>
         `;
         panelsHtml = `
           ${qrPanelBlock}
