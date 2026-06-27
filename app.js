@@ -4833,8 +4833,8 @@ function createGlobalUI() {
         </div>
         `;
         tabsHtml = `
-          <div class="nappy-tab" id="nappy-qr-tab" title="紹介QR" style="background: #3b82f6;">QR</div>
-          <div class="nappy-tab" id="nappy-settings-tab" title="設定" style="background: #7a7167;">⚙️</div>
+          <div class="nappy-tab" id="nappy-qr-tab" title="紹介QR">QR</div>
+          <div class="nappy-tab" id="nappy-settings-tab" title="設定">⚙️</div>
         `;
         panelsHtml = `
           ${qrPanelBlock}
@@ -4884,8 +4884,8 @@ function createGlobalUI() {
         </div>
         `;
         tabsHtml = `
-          <div class="nappy-tab" id="nappy-qr-tab" title="紹介QR" style="background: #d94f4f;">QR</div>
-          <div class="nappy-tab" id="nappy-settings-tab" title="設定" style="background: #7a7167;">⚙️</div>
+          <div class="nappy-tab" id="nappy-qr-tab" title="紹介QR">QR</div>
+          <div class="nappy-tab" id="nappy-settings-tab" title="設定">⚙️</div>
         `;
         panelsHtml = `
           ${qrPanelBlock}
@@ -4918,8 +4918,11 @@ function createGlobalUI() {
       .settings-list a { display: block; padding: 16px 0; color: #2f2a24; text-decoration: none; font-size: 15px; font-weight: 700; }
       
       #nappy-top-nav { position: fixed; top: 0; right: 20px; z-index: 9999; display: flex; gap: 6px; }
-      .nappy-tab { width: 38px; height: 50px; border-radius: 0 0 6px 6px; display: flex; align-items: center; justify-content: center; font-size: 20px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.15); transition: height 0.2s, background 0.3s; color: white; }
+      .nappy-tab { width: 38px; height: 50px; padding: 0 0 6px; line-height: 1; border-radius: 0; display: flex; align-items: center; justify-content: center; font-size: 20px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.15); transition: height 0.2s, background 0.3s; color: white; clip-path: polygon(0 0, 100% 0, 100% 85%, 50% 100%, 0 85%); }
       .nappy-tab:hover { height: 58px; }
+      #nappy-qr-tab { background-color: #C7DCC5; color: #4F6650; font-weight: bold; font-size: 11px; }
+      #nappy-settings-tab { background: #7a7167; color: #fff; }
+      #displayDate { margin-top: 52px; }
     </style>
     
     ${panelsHtml}
