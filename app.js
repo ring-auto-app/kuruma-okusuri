@@ -4918,11 +4918,11 @@ function createGlobalUI() {
       .settings-list a { display: block; padding: 16px 0; color: #2f2a24; text-decoration: none; font-size: 15px; font-weight: 700; }
       
       #nappy-top-nav { position: fixed; top: 0; right: 20px; z-index: 9999; display: flex; gap: 6px; }
-      .nappy-tab { width: 38px; height: 50px; padding: 0 0 6px; line-height: 1; border-radius: 0; display: flex; align-items: center; justify-content: center; font-size: 20px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.15); transition: height 0.2s, background 0.3s; color: white; clip-path: polygon(0 0, 100% 0, 100% 85%, 50% 100%, 0 85%); }
+      .nappy-tab { width: 38px; height: 50px; padding: 0 0 6px; line-height: 1; border-radius: 0; display: flex; align-items: center; justify-content: center; font-size: 20px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.15); transition: height 0.2s, background 0.3s; color: white; clip-path: polygon(0 0, 100% 0, 100% 85%, 50% 100%, 0 85%); filter: drop-shadow(0px 4px 6px rgba(0,0,0,0.18)); transform: translateY(-1px); }
       .nappy-tab:hover { height: 58px; }
       #nappy-qr-tab { background-color: #C7DCC5; color: #4F6650; font-weight: bold; font-size: 11px; }
       #nappy-settings-tab { background: #7a7167; color: #fff; }
-      #displayDate { margin-top: 52px; }
+      #displayDate { position: fixed; top: 6px; left: 50%; right: auto; transform: translateX(-50%); text-align: center; margin-top: 0; z-index: 10000; width: max-content; }
     </style>
     
     ${panelsHtml}
