@@ -4432,11 +4432,15 @@ function ringInvoiceDocTypeLabel_(t) {
     return map[String(t || '').toLowerCase()] || String(t || '不明');
 }
 
-/** 整備明細 OCR: contentText 優先。なければ works/parts をブロック分けせず連結 */
+/** 整備明細 OCR: contentText / lines 優先。なければ works/parts をブロック分けせず連結 */
 function ringFormatInvoiceOcrUnifiedText_(raw) {
     if (!raw || typeof raw !== 'object') return '';
     var ct = String(raw.contentText != null ? raw.contentText : '').trim();
     if (ct) return ct.replace(/\n{3,}/g, '\n\n');
+    var lineArr = Array.isArray(raw.lines) ? raw.lines : [];
+    if (lineArr.length) {
+        return lineArr.map(function (x) { return String(x || '').trim(); }).filter(Boolean).join('\n');
+    }
     var lines = [];
     var works = Array.isArray(raw.works) ? raw.works : [];
     var parts = Array.isArray(raw.parts) ? raw.parts : [];

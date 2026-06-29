@@ -128,6 +128,8 @@
             vin: '',
             documentType: 'unknown',
             mileage: '',
+            contentText: '',
+            lines: [],
             works: [],
             parts: []
         };
@@ -140,6 +142,15 @@
         }
         if (raw.mileage != null && String(raw.mileage).trim() !== '') {
             out.mileage = String(raw.mileage).replace(/[^\d]/g, '');
+        }
+        if (raw.contentText != null && String(raw.contentText).trim() !== '') {
+            out.contentText = String(raw.contentText).trim();
+        }
+        if (Array.isArray(raw.lines)) {
+            out.lines = raw.lines.map(function (x) { return String(x || '').trim(); }).filter(Boolean);
+            if (!out.contentText && out.lines.length) {
+                out.contentText = out.lines.join('\n');
+            }
         }
         if (Array.isArray(raw.works)) {
             out.works = raw.works.map(function (w) { return String(w || '').trim(); }).filter(Boolean);
