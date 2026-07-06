@@ -404,20 +404,8 @@
         const result = await saveLog(logData);
         hideLoading();
         const dest = `factory_edit_list.html?vin=${encodeURIComponent(vin)}&log_id=${result.logId || ''}`;
-        const queued = !!(result && result.queued);
-        const variant = queued ? 'queued' : 'success';
-        if (typeof ringMarkPageSaved === 'function') ringMarkPageSaved();
-        if (typeof showRingSavedSplash === 'function') {
-          showRingSavedSplash({ variant, onDone: () => location.replace(dest) });
-        } else {
-          if (result.serverSaved) {
-            showToast('success', '正常に登録されました');
-          } else if (result.queued) {
-            showToast('info', '端末に保存しました。回線が復旧すると自動でサーバーへ送信します');
-          } else {
-            showToast('info', '端末に保存しました（サーバー未送信）');
-          }
-          setTimeout(() => location.replace(dest), 1200);
+        if (typeof ringAfterMaintenanceSaveComplete_ === 'function') {
+          await ringAfterMaintenanceSaveComplete_(vin, result, dest);
         }
       } finally {
         if (typeof window !== 'undefined') window.__ringSaving = false;

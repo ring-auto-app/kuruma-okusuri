@@ -504,48 +504,11 @@
         logResult = { logId: logData.log_id, localSaved: true, serverSaved: false };
       }
 
-      let vehicleResult = null;
-      if (typeof addVehicle === "function") {
-        vehicleResult = await addVehicle({
-          vin: vin,
-          vehicleModel:    document.getElementById('inModel').value,
-          engine:          document.getElementById('inEngine').value,
-          classification:  document.getElementById('inClass').value,
-          typeDesignation: document.getElementById('inTypeDesig').value,
-          nextShaken: shaken,
-          lastMaint: date
-        });
-      }
-
       hideLoading();
 
-      const vehQueued = vehicleResult && vehicleResult.queued;
-      const vehVinFail = vehicleResult && vehicleResult.success === false && !vehicleResult.queued
-        && /VIN_REQUIRED/i.test(String(vehicleResult.error || ''));
-
       const dest = `factory_history.html?vin=${encodeURIComponent(vin)}`;
-
-      if (vehVinFail && !logResult.serverSaved) {
-        showToast('error', '車両台帳がサーバーで受理されませんでした（車台番号を確認してください）');
-        return;
-      }
-      if (vehVinFail && logResult.serverSaved) {
-        showToast('info', '整備記録は登録済みです。車両台帳は車台番号の確認が必要です（サーバー未反映）');
-        setTimeout(() => location.replace(dest), 1200);
-        return;
-      }
-
-      const queued = !!(logResult.queued || vehQueued);
-      const variant = queued ? 'queued' : 'success';
-      if (typeof ringMarkPageSaved === 'function') ringMarkPageSaved();
-      if (typeof showRingSavedSplash === 'function') {
-        showRingSavedSplash({
-          variant,
-          onDone: () => location.replace(dest),
-        });
-      } else {
-        showToast(queued ? 'info' : 'success', queued ? '端末に保存しました。オンライン復帰時に自動送信します。' : '正常に登録されました');
-        setTimeout(() => location.replace(dest), 1200);
+      if (typeof ringAfterMaintenanceSaveComplete_ === 'function') {
+        await ringAfterMaintenanceSaveComplete_(vin, logResult, dest);
       }
       } finally {
         if (typeof window !== 'undefined') window.__ringSaving = false;

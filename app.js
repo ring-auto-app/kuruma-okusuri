@@ -2,6 +2,79 @@
  * 車のお薬手帳 - 統合コアスクリプト (app.js)
  */
 
+/**
+ * 公開デモ（index → demo_boot）: localStorage を触らず sessionStorage の demo_ls_* に退避するシム
+ * フラグは demo_boot 到達前に sessionStorage.ring_public_demo = '1' をセットすること
+ */
+(function installRingPublicDemoStorageShim_() {
+    if (typeof window === 'undefined' || typeof sessionStorage === 'undefined') return;
+    var DEMO_FLAG = 'ring_public_demo';
+    var DEMO_LS_PREFIX = 'demo_ls_';
+    try {
+        if (sessionStorage.getItem(DEMO_FLAG) !== '1') return;
+    } catch (e) {
+        return;
+    }
+
+    var nativeSession = sessionStorage;
+
+    function toDemoKey(key) {
+        return DEMO_LS_PREFIX + String(key);
+    }
+
+    function collectDemoLogicalKeys_() {
+        var keys = [];
+        for (var i = 0; i < nativeSession.length; i++) {
+            var sk = nativeSession.key(i);
+            if (sk && sk.indexOf(DEMO_LS_PREFIX) === 0) {
+                keys.push(sk.slice(DEMO_LS_PREFIX.length));
+            }
+        }
+        return keys;
+    }
+
+    var demoStorageShim = {
+        get length() {
+            return collectDemoLogicalKeys_().length;
+        },
+        key: function (index) {
+            var keys = collectDemoLogicalKeys_();
+            return keys[index] != null ? keys[index] : null;
+        },
+        getItem: function (key) {
+            return nativeSession.getItem(toDemoKey(key));
+        },
+        setItem: function (key, value) {
+            nativeSession.setItem(toDemoKey(key), String(value));
+        },
+        removeItem: function (key) {
+            nativeSession.removeItem(toDemoKey(key));
+        },
+        clear: function () {
+            var toRemove = [];
+            for (var i = 0; i < nativeSession.length; i++) {
+                var sk = nativeSession.key(i);
+                if (sk && sk.indexOf(DEMO_LS_PREFIX) === 0) {
+                    toRemove.push(sk);
+                }
+            }
+            toRemove.forEach(function (sk) {
+                nativeSession.removeItem(sk);
+            });
+        }
+    };
+
+    try {
+        Object.defineProperty(window, 'localStorage', {
+            configurable: true,
+            enumerable: true,
+            value: demoStorageShim
+        });
+    } catch (e2) {
+        window.localStorage = demoStorageShim;
+    }
+})();
+
 const RING_DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxG14jv9GXf4f9lFt5n7lAKqGmnqqnzW_S74H3ixePc3f21HJ8F7C49qFIBISQzAg63/exec';
 /** `app.js` より先に `window.__RING_GAS_URL_OVERRIDE__` をセットすると本番 URL を差し替え可能 */
 const GAS_URL = (typeof window !== 'undefined' && window.__RING_GAS_URL_OVERRIDE__)
@@ -2492,6 +2565,74 @@ async function saveLog(d) {
         enqueueRetry('log', newEntry);
         return { logId: newLogId, localSaved: true, serverSaved: false, error: err.message, queued: true };
     }
+}
+
+/** 整備履歴 saveLog のバリデーション失敗（再送キューなし） */
+function ringIsMaintenanceLogSaveHardFail_(logResult) {
+    if (!logResult) return true;
+    var err = String(logResult.error || '');
+    if (!err || logResult.queued) return false;
+    return /VIN_REQUIRED|LOG_DATE_REQUIRED/i.test(err);
+}
+
+/**
+ * 整備履歴保存成功後: 管理車両未登録なら確認モーダル → 完了遷移（saveLog 本体は触らない）
+ * @param {string} vin
+ * @param {object} logResult saveLog の戻り値
+ * @param {string} dest location.replace 先
+ */
+async function ringAfterMaintenanceSaveComplete_(vin, logResult, dest) {
+    if (ringIsMaintenanceLogSaveHardFail_(logResult)) {
+        if (typeof showToast === 'function') {
+            var errMsg = String(logResult && logResult.error || '');
+            if (/LOG_DATE_REQUIRED/i.test(errMsg)) {
+                showToast('error', '作業日がサーバーで受理されませんでした');
+            } else {
+                showToast('error', '車台番号（VIN）がサーバーで受理されませんでした');
+            }
+        }
+        return;
+    }
+
+    var doComplete = function () {
+        var queued = !!(logResult && logResult.queued);
+        var variant = queued ? 'queued' : 'success';
+        if (typeof ringMarkPageSaved === 'function') ringMarkPageSaved();
+        if (typeof showRingSavedSplash === 'function') {
+            showRingSavedSplash({
+                variant: variant,
+                onDone: function () { location.replace(dest); }
+            });
+        } else if (typeof showToast === 'function') {
+            showToast(
+                queued ? 'info' : 'success',
+                queued ? '端末に保存しました。オンライン復帰時に自動送信します。' : '正常に登録されました'
+            );
+            setTimeout(function () { location.replace(dest); }, 1200);
+        } else {
+            location.replace(dest);
+        }
+    };
+
+    var profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+    if (typeof isVinRegisteredForInspection === 'function' && isVinRegisteredForInspection(vin, profile)) {
+        doComplete();
+        return;
+    }
+
+    if (typeof showRingConfirm === 'function') {
+        var goRegister = await showRingConfirm({
+            title: '管理車両へ登録',
+            message: 'この車両を管理車両に登録しますか？\n\n登録すると、\n車両一覧からいつでも検索・管理できます。',
+            okLabel: '登録する',
+            cancelLabel: 'あとで'
+        });
+        if (goRegister) {
+            location.replace('car_add.html');
+            return;
+        }
+    }
+    doComplete();
 }
 
 /**
