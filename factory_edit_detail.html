@@ -15,6 +15,7 @@
   <link rel="stylesheet" href="common.css">
   <script src="app.js?v=20260622-v28"></script>
   <script src="theme.js"></script>
+  <script src="car-add-date.js"></script>
   
   <style>
     /* ページ固有のデザイン：オーナーの設計数値を1px単位で維持 */
@@ -51,6 +52,17 @@
     }
     
     .field .label { color: #dc2626; } /* 絶対赤の掟を適用 */
+
+    select.era-date-box {
+      width: 100%; padding: 8px 10px; border: 2px solid var(--line); border-radius: 12px;
+      background: var(--page-bg); font-size: 16px; font-weight: 700; color: var(--text);
+      box-sizing: border-box; font-family: inherit; -webkit-appearance: none;
+    }
+    .era-date-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+    .era-date-unit { font-size: 14px; font-weight: 800; color: var(--muted); }
+    .era-date-unit.era-date-fixed { min-width: 2.5em; }
+    select.era-date-box:focus { outline: none; border-color: var(--accent); background: #fff; }
+    .seireki-preview { font-size: 12px; font-weight: 700; color: var(--muted); margin-top: 6px; }
   </style>
 </head>
 <body>
@@ -86,6 +98,20 @@
         <select id="inTitle" required></select>
         <div id="errTitle" style="display:none; color:#dc2626; font-size:12px; font-weight:800; margin-top:4px;">⚠ 整備区分を選択してください</div>
       </div>
+      <div class="field" id="shakenExpiryBlock" style="display:none;">
+        <span class="label shaken-expiry-label">車検満了日</span>
+        <div class="era-date-row">
+          <span class="era-date-unit era-date-fixed" aria-label="車検満了日元号">令和</span>
+          <select id="expiryYear" class="era-date-box" aria-label="車検満了和暦年"></select>
+          <span class="era-date-unit">年</span>
+          <select id="expiryMonth" class="era-date-box" aria-label="車検満了月"></select>
+          <span class="era-date-unit">月</span>
+          <select id="expiryDay" class="era-date-box" aria-label="車検満了日"></select>
+          <span class="era-date-unit">日</span>
+        </div>
+        <input type="hidden" id="inExpiry">
+        <div class="seireki-preview" id="expirySeirekiPreview" aria-live="polite"></div>
+      </div>
       <div class="field">
         <span class="label">交換部品</span>
         <textarea id="inParts" class="ring-auto-grow" rows="3"></textarea>
@@ -113,6 +139,12 @@
     const vin = params.get("vin");
     const logId = params.get("log_id");
     let originalCreatedAt = null;
+
+    function ringEditGetShakenValue_() {
+      if (typeof ringCarAddSyncAllDateHidden === 'function') ringCarAddSyncAllDateHidden();
+      var el = document.getElementById('inExpiry');
+      return el ? String(el.value || '').trim() : '';
+    }
 
     window.addEventListener('DOMContentLoaded', () => {
       showLoading("データ取得中", "対象の記録を読み込んでいます...");
@@ -160,6 +192,15 @@
       document.getElementById("inParts").value = targetLog.parts || "";
       document.getElementById("inMemo").value = targetLog.memo || "";
       if (typeof ringInitAutoGrowTextareas === 'function') ringInitAutoGrowTextareas();
+
+      if (typeof ringCarAddInitDateFields === 'function') ringCarAddInitDateFields();
+      if (String(targetLog.title || '').trim() === '車検') {
+        var shakenBlock = document.getElementById('shakenExpiryBlock');
+        if (shakenBlock) shakenBlock.style.display = '';
+        if (targetLog.nextShaken && typeof ringCarAddSetExpiryFromIso === 'function') {
+          ringCarAddSetExpiryFromIso(targetLog.nextShaken);
+        }
+      }
 
       if (targetLog.partsPhoto) {
         document.getElementById("partsPhotoPreview").src = targetLog.partsPhoto;
@@ -220,6 +261,9 @@
           memo: memoVal,
           quantity: qty
         };
+        if (String(document.getElementById('inTitle').value || '').trim() === '車検') {
+          updatePayload.nextShaken = ringEditGetShakenValue_();
+        }
 
         const correctionPayload = {
           originalLogId: logId,

@@ -1928,7 +1928,8 @@ function mapGasMaintenanceLogToLocal(row) {
         staffName: String(row.staffName || ""),
         documentType: String(row.documentType || row.document_type || ""),
         works: Array.isArray(row.works) ? row.works : [],
-        partsItems: Array.isArray(row.partsItems) ? row.partsItems : []
+        partsItems: Array.isArray(row.partsItems) ? row.partsItems : [],
+        nextShaken: String(row.nextShaken || "")
     };
 }
 
