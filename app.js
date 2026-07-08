@@ -3894,12 +3894,14 @@ function ringNormalizeOcrResultPayload_(res) {
 function ringBuildOcrConfirmBodyHtml_(payload) {
     var html = '';
     var conf = payload._confidence || {};
+    var vinNotice = '<p class="ring-vin-input-notice" style="font-size:11px;color:var(--muted,#64748b);font-weight:700;margin:4px 0 10px;line-height:1.55;">※車台番号（VIN）は車検証・記録事項の「車台番号」を入力してください。<br>左下の「車両ID」ではありません。</p>';
     function row(label, key) {
         if (payload[key] == null || String(payload[key]).trim() === '') return;
         html += ringConfirmRow(label, payload[key], conf[key]);
     }
     row('車名', 'vehicleName');
-    row('車体番号', 'vin');
+    row('車台番号 (VIN)', 'vin');
+    html += vinNotice;
     row('車検満了日', 'shaken');
     row('初度登録年月', 'firstRegistration');
     row('走行距離(km)', 'mileage');
@@ -4014,7 +4016,7 @@ function handleOcrVinResultForForm(res, applyFn, ocrFieldDescriptors) {
         title: payload.partial ? '読み取り結果の確認（一部）' : '読み取り結果の確認',
         lead: payload.vin
             ? 'OCRで読み取った内容です。お車の表示と一致するかご確認のうえ反映してください。'
-            : '車体番号は読み取れませんでしたが、他の項目を検出しました。内容をご確認のうえ反映してください。',
+            : '車台番号は読み取れませんでしたが、他の項目を検出しました。内容をご確認のうえ反映してください。',
         bodyHtml: ringBuildOcrConfirmBodyHtml_(payload),
         confirmLabel: '入力欄に反映する',
         onConfirm: function () {
@@ -4429,7 +4431,8 @@ function showOcrBatchReviewModal(merged, opts) {
     var vinConf = merged.vin && merged.vin.confidence;
     body += '<div class="ring-ocr-review__row"><label class="ring-ocr-review__lbl">車台番号 (VIN)' +
         (ringOcrConfIsLow_(vinConf) ? ' <span class="ring-ocr-review__conf">要確認</span>' : '') + '</label>' + vinRadio +
-        '<input class="ring-ocr-review__input' + confClass(vinConf) + '" data-key="vin" type="text"' + ringVinInputExtraAttrs_('vin') + ' value="' + escapeHtml(flat.vin || '') + '"></div>';
+        '<input class="ring-ocr-review__input' + confClass(vinConf) + '" data-key="vin" type="text"' + ringVinInputExtraAttrs_('vin') + ' value="' + escapeHtml(flat.vin || '') + '"></div>' +
+        '<p class="ring-vin-input-notice" style="font-size:11px;color:var(--muted,#64748b);font-weight:700;margin:0 0 10px;line-height:1.55;">※車台番号（VIN）は車検証・記録事項の「車台番号」を入力してください。<br>左下の「車両ID」ではありません。</p>';
     if (mode === 'factory') {
         body += fieldRow('shaken', '車検満了日', 'date', flat.shaken, merged.shaken && merged.shaken.source, merged.shaken && merged.shaken.confidence);
         body += fieldRow('mileage', '走行距離 (km)', 'number', flat.mileage, merged.mileage && merged.mileage.source, merged.mileage && merged.mileage.confidence);
@@ -4674,6 +4677,7 @@ function showInvoiceOcrReviewModal(ocrResult, opts) {
 
     var body = '';
     body += fieldRow('vin', '車台番号 (VIN)', 'text', r.vin || '');
+    body += '<p class="ring-vin-input-notice" style="font-size:11px;color:var(--muted,#64748b);font-weight:700;margin:0 0 10px;line-height:1.55;">※車台番号（VIN）は車検証・記録事項の「車台番号」を入力してください。<br>左下の「車両ID」ではありません。</p>';
     body += fieldRow('mileage', '走行距離 (km)', 'number', r.mileage || '');
     body += '<div class="ring-ocr-review__row"><label class="ring-ocr-review__lbl">書類種別</label>' +
         '<div class="ring-ocr-review__input" style="background:#f8fafc;border:none;padding:8px 0;">' +

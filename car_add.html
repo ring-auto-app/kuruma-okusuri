@@ -233,6 +233,7 @@
                style="text-transform: uppercase;"
                oninput="clearErr('inVin')">
         <div class="err-msg" id="errVin">⚠ 車台番号は必須です</div>
+        <p class="scan-hint" style="margin-top:6px;line-height:1.55;">※車台番号（VIN）は車検証・記録事項の「車台番号」を入力してください。<br>左下の「車両ID」ではありません。</p>
       </div>
 
       <div class="field">
@@ -664,7 +665,8 @@
         (isBiz ? ringConfirmRow('車両区分', catLabel) : '') +
         ringConfirmRow('表示名 / ニックネーム', document.getElementById('inName').value.trim() || '名称未設定') +
         ringConfirmRow('車名', document.getElementById('inVehicleName').value) +
-        ringConfirmRow('車台番号(VIN)', vin) +
+        ringConfirmRow('車台番号 (VIN)', vin) +
+        '<p style="font-size:11px;color:var(--muted);font-weight:700;margin:4px 0 8px;line-height:1.55;">※車台番号（VIN）は車検証・記録事項の「車台番号」を入力してください。<br>左下の「車両ID」ではありません。</p>' +
         ringConfirmRow('車検満了日', expiry) +
         ringConfirmRow('初度登録年月', firstReg) +
         ringConfirmRow('型式', document.getElementById('inModel').value) +

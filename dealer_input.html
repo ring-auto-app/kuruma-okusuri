@@ -125,7 +125,8 @@
       <div class="field">
         <span class="label">車台番号 (VIN) ※必須</span>
         <input id="inVin" type="text" inputmode="text" autocapitalize="characters" autocomplete="off" style="text-transform: uppercase;" placeholder="車台番号を入力" onblur="lookupVehicle(this.value)">
-        <div id="errVin" style="display:none; color:#dc2626; font-size:12px; font-weight:800; margin-top:4px;">⚠ 車体番号を入力してください</div>
+        <div id="errVin" style="display:none; color:#dc2626; font-size:12px; font-weight:800; margin-top:4px;">⚠ 車台番号を入力してください</div>
+        <p style="font-size:11px;color:var(--muted);font-weight:700;margin:6px 0 0;line-height:1.55;">※車台番号（VIN）は車検証・記録事項の「車台番号」を入力してください。<br>左下の「車両ID」ではありません。</p>
       </div>
       <div class="row">
         <div class="field">
@@ -335,8 +336,9 @@
 
     function ringDealerBuildVinConfirmBody_(vin) {
       var safeVin = typeof escapeHtml === 'function' ? escapeHtml(vin) : vin;
-      return '<p style="font-size:13px;font-weight:800;color:var(--muted);margin:0;">入力された車台番号</p>' +
+      return '<p style="font-size:13px;font-weight:800;color:var(--muted);margin:0;">入力された車台番号 (VIN)</p>' +
         '<div class="dealer-vin-confirm-box">' + safeVin + '</div>' +
+        '<p style="font-size:11px;color:var(--muted);font-weight:700;margin:8px 0 0;line-height:1.55;">※車台番号（VIN）は車検証・記録事項の「車台番号」を入力してください。<br>左下の「車両ID」ではありません。</p>' +
         '<p class="dealer-vin-confirm-note">間違いはありませんか？</p>';
     }
 
