@@ -2223,6 +2223,60 @@ async function syncVehiclesFromServer() {
 }
 
 /**
+ * プロフィールに紐づく自車両レコードか（vehicles.html の getMyVehiclesFilter と同等）
+ */
+function ringIsMyVehicleRecord_(v, profile) {
+    if (!v || !profile) return false;
+    var myShopId = String(profile.shopId || '');
+    var myUserId = String(profile.userId || '');
+    return (myShopId && String(v.shopId || '') === myShopId) ||
+        String(v.shopId || '') === myUserId ||
+        String(v.userId || '') === myUserId ||
+        String(v.ownerId || '') === myUserId;
+}
+
+/**
+ * localStorage のマイカー一覧から VIN 一致行のみ除去（サーバー通信なし）
+ */
+function ringRemoveLocalVehicleFromList_(rawVin, profile) {
+    var vinNorm = _normalize(rawVin);
+    if (!vinNorm) return { removed: false, reason: 'VIN_EMPTY' };
+    var list = loadVehicles();
+    var updated = list.filter(function (v) {
+        if (_normalize(v.vin) !== vinNorm) return true;
+        if (!profile || !ringIsMyVehicleRecord_(v, profile)) return true;
+        return false;
+    });
+    if (updated.length === list.length) return { removed: false, reason: 'NOT_IN_LOCAL' };
+    localStorage.setItem(DB_VEHICLES, JSON.stringify(updated));
+    return { removed: true };
+}
+
+/**
+ * delete_vehicle が NOT_FOUND のとき、サーバー本人一覧に無い場合のみ local から除去
+ */
+async function ringTryRemoveLocalVehicleAfterDeleteNotFound_(rawVin) {
+    var profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+    var vinNorm = _normalize(rawVin);
+    if (!vinNorm) return { removed: false, reason: 'VIN_EMPTY' };
+    try {
+        var json = await sendToGAS_Safe('get_vehicles', {}, { silentToast: true });
+        if (!json || json.success !== true || !Array.isArray(json.vehicles)) {
+            return { removed: false, reason: 'GET_VEHICLES_FAILED' };
+        }
+        var onServer = json.vehicles.some(function (row) {
+            return _normalize(row.vin) === vinNorm;
+        });
+        if (onServer) {
+            return { removed: false, reason: 'STILL_ON_SERVER' };
+        }
+        return ringRemoveLocalVehicleFromList_(rawVin, profile);
+    } catch (e) {
+        return { removed: false, reason: 'ERROR' };
+    }
+}
+
+/**
  * 整備履歴（History_Events 系）のみ。日常点検タイプは除外（C-04 / factory_history 用）
  */
 function isMaintenanceLogType(log) {
@@ -5238,6 +5292,8 @@ window.ringInitVinInputAttrs_ = ringInitVinInputAttrs_;
 window.ringVehicleDisplayName_ = ringVehicleDisplayName_;
 window.ringResolveLocalVehicleNickname_ = ringResolveLocalVehicleNickname_;
 window.ringIsBizProfile_ = ringIsBizProfile_;
+window.ringRemoveLocalVehicleFromList_ = ringRemoveLocalVehicleFromList_;
+window.ringTryRemoveLocalVehicleAfterDeleteNotFound_ = ringTryRemoveLocalVehicleAfterDeleteNotFound_;
 
 document.addEventListener('blur', function (e) {
     if (ringIsVinInputEl_(e.target)) ringApplyVinInputFormat_(e.target);

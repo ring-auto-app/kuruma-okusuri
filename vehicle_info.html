@@ -630,16 +630,46 @@
         : confirm(`「${document.getElementById('inName').value || targetVin}」を一覧から削除しますか？\n※整備履歴は残ります`);
       if (!ok) return;
 
+      const profile = (typeof getCurrentProfile === 'function')
+        ? getCurrentProfile()
+        : safeJsonParse(localStorage.getItem('nappy_current_user') || localStorage.getItem('nappy_profile_v1'), null);
+
+      function finishRemoveSuccess() {
+        if (typeof hideLoading === 'function') hideLoading();
+        if (typeof showToast === 'function') showToast('success', '削除しました');
+        setTimeout(function () { location.replace('vehicles.html'); }, 800);
+      }
+
       try {
         if (typeof showLoading === 'function') showLoading('削除中', 'サーバーから削除しています...');
         const response = await sendToGAS_Safe('delete_vehicle', { vin: targetVin }, { silentToast: true });
         if (response && response.ok === true) {
-          const vehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
-          const updated = vehicles.filter(v => v.vin !== targetVin);
-          localStorage.setItem('nappy_vehicles_v1', JSON.stringify(updated));
-          if (typeof hideLoading === 'function') hideLoading();
-          if (typeof showToast === 'function') showToast('success', '削除しました');
-          setTimeout(() => location.replace('vehicles.html'), 800);
+          if (typeof ringRemoveLocalVehicleFromList_ === 'function') {
+            ringRemoveLocalVehicleFromList_(targetVin, profile);
+          } else {
+            const vehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
+            const updated = vehicles.filter(function (v) {
+              if (typeof _normalize === 'function' ? _normalize(v.vin) !== _normalize(targetVin) : v.vin !== targetVin) return true;
+              if (typeof ringIsMyVehicleRecord_ === 'function' && profile && ringIsMyVehicleRecord_(v, profile)) return false;
+              return true;
+            });
+            localStorage.setItem('nappy_vehicles_v1', JSON.stringify(updated));
+          }
+          finishRemoveSuccess();
+        } else if (
+          response &&
+          response.success === true &&
+          response.ok === false &&
+          String(response.error || '') === 'NOT_FOUND' &&
+          typeof ringTryRemoveLocalVehicleAfterDeleteNotFound_ === 'function'
+        ) {
+          const localOnly = await ringTryRemoveLocalVehicleAfterDeleteNotFound_(targetVin);
+          if (localOnly && localOnly.removed) {
+            finishRemoveSuccess();
+          } else {
+            if (typeof hideLoading === 'function') hideLoading();
+            if (typeof showToast === 'function') showToast('error', '削除に失敗しました');
+          }
         } else {
           if (typeof hideLoading === 'function') hideLoading();
           if (typeof showToast === 'function') showToast('error', '削除に失敗しました');
