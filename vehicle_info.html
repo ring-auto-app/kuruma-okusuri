@@ -386,7 +386,13 @@
       document.getElementById('vinDisplay').textContent = targetVin;
 
       // 各フィールドを現在の値で埋める
-      document.getElementById('inName').value      = car.model || car.nickname || '';
+      var displayNick = car.nickname || '';
+      if (!displayNick && typeof ringResolveLocalVehicleNickname_ === 'function') {
+        displayNick = ringResolveLocalVehicleNickname_(car, prof && prof.userId ? prof.userId : '');
+      } else if (!displayNick && isBizInfo) {
+        displayNick = car.model || '';
+      }
+      document.getElementById('inName').value = displayNick;
       document.getElementById('inVehicleName').value = car.vehicleName || '';
       document.getElementById('inModel').value     = car.vehicleModel || '';
       document.getElementById('inEngine').value    = car.engine || '';
@@ -535,12 +541,17 @@
         const vehicleName = typeof ringNormalizeVehicleSaveValue_ === 'function'
           ? ringNormalizeVehicleSaveValue_(document.getElementById('inVehicleName').value)
           : document.getElementById('inVehicleName').value.trim();
+        const nickVal = document.getElementById('inName').value.trim() || '名称未設定';
+        const profSave = (typeof getCurrentProfile === 'function')
+          ? getCurrentProfile()
+          : safeJsonParse(localStorage.getItem('nappy_current_user') || localStorage.getItem('nappy_profile_v1'), null);
+        const roleSave = profSave ? (profSave.shopType || profSave.role) : 'user';
+        const isBizSave = (roleSave === 'factory' || roleSave === 'dealer');
 
         const updatePayload = {
           ...vehicles[idx],
           vin: targetVin,
-          model:            document.getElementById('inName').value.trim() || '名称未設定',
-          nickname:         document.getElementById('inName').value.trim() || '名称未設定',
+          nickname:         nickVal,
           vehicleName:      vehicleName,
           vehicleModel:     document.getElementById('inModel').value.trim(),
           engine:           document.getElementById('inEngine').value.trim(),
@@ -555,6 +566,11 @@
           inspectMonths:    months,
           vehicleCategory:  newCategory
         };
+        if (isBizSave) {
+          updatePayload.model = nickVal;
+        } else {
+          updatePayload.model = vehicles[idx].model || '';
+        }
 
         let res;
         if (typeof updateVehicle === 'function') {

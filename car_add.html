@@ -555,10 +555,10 @@
       const vehicleName = typeof ringNormalizeVehicleSaveValue_ === 'function'
         ? ringNormalizeVehicleSaveValue_(document.getElementById('inVehicleName').value)
         : document.getElementById('inVehicleName').value.trim();
+      const nickVal = document.getElementById('inName').value.trim() || '名称未設定';
 
       const newVehicle = {
         vin:               vin,
-        model:             document.getElementById('inName').value.trim() || '名称未設定',
         vehicleName:       vehicleName,
         vehicleModel:      document.getElementById('inModel').value.trim(),
         engine:            document.getElementById('inEngine').value.trim(),
@@ -576,6 +576,12 @@
         createdAt:         new Date().toISOString(),
         lastMaint:         '---'
       };
+      if (isBiz) {
+        newVehicle.model = nickVal;
+        newVehicle.nickname = nickVal;
+      } else {
+        newVehicle.nickname = nickVal;
+      }
 
       if (profile) {
         if (isBiz) {

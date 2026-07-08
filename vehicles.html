@@ -393,7 +393,7 @@
           html += `
             <div class="car-card">
               <div class="car-header">
-                <h2 class="car-model">${escapeHtml(car.model || car.nickname || '未設定')}</h2>
+                <h2 class="car-model">${escapeHtml(typeof ringVehicleDisplayName_ === 'function' ? ringVehicleDisplayName_(car) : (car.nickname || car.model || '未設定'))}</h2>
                 <a href="vehicle_info.html?vin=${encodeURIComponent(car.vin)}" class="car-info-btn">📋 車両情報</a>
               </div>
               <div class="car-info-grid">

@@ -2082,6 +2082,58 @@ function mergeInspectionHistoryLocalAndServer(localList, serverList) {
 }
 
 /**
+ * 工場・事業者プロフィールか
+ */
+function ringIsBizProfile_(profile) {
+    if (!profile) return false;
+    var role = String(profile.shopType || profile.role || '');
+    return role === 'factory' || role === 'dealer';
+}
+
+/**
+ * 一般ユーザーのローカル専用ニックネーム（レガシー: model に保存されていた値を1回だけ引き継ぐ）
+ */
+function ringResolveLocalVehicleNickname_(prev, myUserId) {
+    prev = prev || {};
+    var nick = String(prev.nickname || '').trim();
+    if (nick) return nick;
+    var uid = String(myUserId || '').trim();
+    if (!uid) return '';
+    var owner = String(prev.userId || prev.ownerId || '').trim();
+    if (owner !== uid) return '';
+    return String(prev.model || '').trim();
+}
+
+/**
+ * マイカー一覧などの表示名（nickname 優先、なければ共有 model）
+ */
+function ringVehicleDisplayName_(car) {
+    if (!car) return '未設定';
+    var nick = String(car.nickname || '').trim();
+    if (nick) return nick;
+    return String(car.model || '').trim() || '未設定';
+}
+
+/**
+ * GAS 送信用ペイロード（一般ユーザーのニックネームは model へ送らない）
+ */
+function ringBuildVehicleGasPayload_(merged, profile) {
+    var payload = Object.assign({}, merged);
+    delete payload.lastMaint;
+    delete payload.inspectMonths;
+    delete payload.shopName;
+    delete payload.shopType;
+    delete payload.ownerId;
+    delete payload.bodyShape;
+    delete payload.updatedAt;
+    if (!ringIsBizProfile_(profile)) {
+        delete payload.nickname;
+        delete payload.model;
+    }
+    return payload;
+}
+
+/**
  * get_vehicles 応答1件をローカル車両オブジェクト形へ（kannsa: サーバ取得の配線）
  */
 function mapGasVehicleRowToLocal(row) {
@@ -2111,7 +2163,10 @@ function mapGasVehicleRowToLocal(row) {
 /**
  * ローカル nappy_vehicles_v1 とサーバ一覧を VIN 単位でマージ
  */
-function mergeVehiclesLocalAndServer(localList, serverList) {
+function mergeVehiclesLocalAndServer(localList, serverList, opts) {
+    opts = opts || {};
+    const myUserId = String(opts.userId || '').trim();
+    const isBiz = !!opts.isBiz;
     const map = new Map();
     (localList || []).forEach((car) => {
         const k = _normalize(car.vin);
@@ -2123,15 +2178,14 @@ function mergeVehiclesLocalAndServer(localList, serverList) {
         if (!loc) return;
         const k = _normalize(loc.vin);
         const prev = map.get(k) || {};
+        const sharedModel = loc.model && String(loc.model).trim() ? loc.model : '';
         const merged = {
             ...prev,
             ...loc,
-            model: loc.model && String(loc.model).trim()
-                ? loc.model
-                : prev.model,
+            model: sharedModel || (isBiz ? (prev.model || '') : ''),
             inspectMonths: prev.inspectMonths || 12,
             lastMaint: prev.lastMaint,
-            nickname: prev.nickname,
+            nickname: ringResolveLocalVehicleNickname_(prev, myUserId),
             shopName: prev.shopName,
             shopType: prev.shopType
         };
@@ -2156,7 +2210,11 @@ async function syncVehiclesFromServer() {
         if (!json || json.success === false || !Array.isArray(json.vehicles)) {
             return loadVehicles();
         }
-        const merged = mergeVehiclesLocalAndServer(loadVehicles(), json.vehicles);
+        const profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+        const merged = mergeVehiclesLocalAndServer(loadVehicles(), json.vehicles, {
+            userId: profile && profile.userId ? String(profile.userId) : '',
+            isBiz: ringIsBizProfile_(profile)
+        });
         localStorage.setItem(DB_VEHICLES, JSON.stringify(merged));
         return merged;
     } catch (e) {
@@ -2441,8 +2499,10 @@ async function addVehicle(v) {
     if (merged.firstRegistration != null) merged.firstRegistration = ringNormalizeVehicleSaveValue_(merged.firstRegistration);
     if (i !== -1) list[i] = merged; else list.push(merged);
     localStorage.setItem(DB_VEHICLES, JSON.stringify(list));
+    var profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+    var gasPayload = ringBuildVehicleGasPayload_(merged, profile);
     try {
-        return await sendToGAS_Safe('vehicle', Object.assign({}, merged));
+        return await sendToGAS_Safe('vehicle', gasPayload);
     } catch (err) {
         const msg = String(err.message || '');
         if (/LIMIT_REACHED/i.test(msg)) {
@@ -2463,7 +2523,7 @@ async function addVehicle(v) {
             });
             return { success: false, error: msg, localSaved: true, serverSaved: false, queued: false };
         }
-        enqueueRetry('vehicle', merged);
+        enqueueRetry('vehicle', gasPayload);
         return { success: false, error: err.message, queued: true, localSaved: true, serverSaved: false };
     }
 }
@@ -2490,26 +2550,8 @@ async function updateVehicle(v) {
     list[i] = merged;
     localStorage.setItem(DB_VEHICLES, JSON.stringify(list));
 
-    var gasPayload = {
-        vin: merged.vin,
-        model: merged.model,
-        nickname: merged.nickname,
-        vehicleName: merged.vehicleName,
-        vehicleModel: merged.vehicleModel,
-        engine: merged.engine,
-        classification: merged.classification || merged.category,
-        category: merged.category || merged.classification,
-        typeDesignation: merged.typeDesignation,
-        nextShaken: merged.nextShaken,
-        firstRegistration: merged.firstRegistration,
-        vClass: merged.vClass,
-        usage: merged.usage,
-        ownerType: merged.ownerType,
-        vehicleCategory: merged.vehicleCategory,
-        createdAt: merged.createdAt,
-        userId: merged.userId,
-        shopId: merged.shopId
-    };
+    var profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+    var gasPayload = ringBuildVehicleGasPayload_(merged, profile);
 
     try {
         return await sendToGAS_Safe('update_vehicle', gasPayload);
@@ -5193,6 +5235,9 @@ function ringVinInputExtraAttrs_(key) {
 window.ringFormatVinDisplayValue_ = ringFormatVinDisplayValue_;
 window.ringApplyVinInputFormat_ = ringApplyVinInputFormat_;
 window.ringInitVinInputAttrs_ = ringInitVinInputAttrs_;
+window.ringVehicleDisplayName_ = ringVehicleDisplayName_;
+window.ringResolveLocalVehicleNickname_ = ringResolveLocalVehicleNickname_;
+window.ringIsBizProfile_ = ringIsBizProfile_;
 
 document.addEventListener('blur', function (e) {
     if (ringIsVinInputEl_(e.target)) ringApplyVinInputFormat_(e.target);
