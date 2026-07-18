@@ -75,7 +75,7 @@
     }
 })();
 
-const RING_DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxG14jv9GXf4f9lFt5n7lAKqGmnqqnzW_S74H3ixePc3f21HJ8F7C49qFIBISQzAg63/exec';
+const RING_DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbzK0OlpTb0ofOsbDk1BAYFPOnj9OuK3g-J-U2XnRTabKZsL3UoIn7iPvfk05pdJCYJu/exec';
 /** `app.js` より先に `window.__RING_GAS_URL_OVERRIDE__` をセットすると本番 URL を差し替え可能 */
 const GAS_URL = (typeof window !== 'undefined' && window.__RING_GAS_URL_OVERRIDE__)
     ? String(window.__RING_GAS_URL_OVERRIDE__).trim()
