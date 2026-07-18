@@ -2001,6 +2001,100 @@ async function syncMaintenanceHistoryForVin(vin) {
     };
 }
 
+/** 工場 VIN 履歴検索: 最終同期メタ（将来の課金カウント用フック含む） */
+var RING_FACTORY_VIN_SYNC_META_KEY = "ring_factory_vin_sync_meta_v1";
+var RING_FACTORY_VIN_SEARCH_FLASH_KEY = "ring_factory_vin_search_flash_v1";
+
+function ringFactoryVinSearchCacheKey_(vin) {
+    var n = _normalize(vin);
+    return n ? "factory_history:" + n : "";
+}
+
+/** 整備履歴キャッシュ有無（日常点検 type は除外） */
+function ringFactoryVinHasLocalMaintenanceCache_(vin) {
+    if (!vin) return false;
+    if (typeof getMaintenanceLogsByVin === "function") {
+        return getMaintenanceLogsByVin(vin).length > 0;
+    }
+    var vinNorm = _normalize(vin);
+    return readLogsArray().some(function (l) {
+        return _normalize(l.vin) === vinNorm && isMaintenanceLogType(l);
+    });
+}
+
+/**
+ * 検索モード判定（将来: shouldCountAsBillableFetch で新規取得のみ課金カウント可能）
+ * @returns {{ mode: 'cache_hit'|'cold_fetch', hadMaintenanceCache: boolean, shouldCountAsBillableFetch: boolean, vinNorm: string }}
+ */
+function ringFactoryVinSearchClassifyFetch_(vin) {
+    var vinNorm = _normalize(vin);
+    var hadCache = ringFactoryVinHasLocalMaintenanceCache_(vin);
+    return {
+        mode: hadCache ? "cache_hit" : "cold_fetch",
+        hadMaintenanceCache: hadCache,
+        shouldCountAsBillableFetch: !hadCache,
+        vinNorm: vinNorm
+    };
+}
+
+function ringFactoryVinSearchGetSyncMeta_(vin) {
+    var n = _normalize(vin);
+    if (!n) return null;
+    var all = safeJsonParse(localStorage.getItem(RING_FACTORY_VIN_SYNC_META_KEY), {});
+    return all[n] || null;
+}
+
+function ringFactoryVinSearchSetSyncMeta_(vin, ok) {
+    var n = _normalize(vin);
+    if (!n) return;
+    var all = safeJsonParse(localStorage.getItem(RING_FACTORY_VIN_SYNC_META_KEY), {});
+    all[n] = { syncedAt: Date.now(), ok: !!ok };
+    try {
+        localStorage.setItem(RING_FACTORY_VIN_SYNC_META_KEY, JSON.stringify(all));
+    } catch (e) { /* ignore */ }
+}
+
+/** 最終同期表示（例: 2026-07-18 10:42） */
+function ringFactoryVinSearchFormatSyncedAt_(ms) {
+    if (!ms) return "";
+    var d = new Date(ms);
+    if (isNaN(d.getTime())) return "";
+    var y = d.getFullYear();
+    var mo = ("0" + (d.getMonth() + 1)).slice(-2);
+    var da = ("0" + d.getDate()).slice(-2);
+    var hh = ("0" + d.getHours()).slice(-2);
+    var mm = ("0" + d.getMinutes()).slice(-2);
+    return y + "-" + mo + "-" + da + " " + hh + ":" + mm;
+}
+
+function ringFactoryVinSearchSetFlash_(vin, type) {
+    var n = _normalize(vin);
+    if (!n || !type) return;
+    try {
+        sessionStorage.setItem(RING_FACTORY_VIN_SEARCH_FLASH_KEY, JSON.stringify({
+            vinNorm: n,
+            type: String(type),
+            at: Date.now()
+        }));
+    } catch (e) { /* ignore */ }
+}
+
+/** 履歴画面表示時に一度だけ消費するフラッシュ（success / empty） */
+function ringFactoryVinSearchConsumeFlash_(vin) {
+    var n = _normalize(vin);
+    if (!n) return null;
+    try {
+        var raw = sessionStorage.getItem(RING_FACTORY_VIN_SEARCH_FLASH_KEY);
+        if (!raw) return null;
+        var flash = safeJsonParse(raw, null);
+        if (!flash || flash.vinNorm !== n) return null;
+        sessionStorage.removeItem(RING_FACTORY_VIN_SEARCH_FLASH_KEY);
+        return flash;
+    } catch (e) {
+        return null;
+    }
+}
+
 /**
  * 工場・事業者: 自店7日以内ログを SSOT 同期
  * @returns {Promise<{ ok: boolean, signature: string }>}
@@ -5294,6 +5388,20 @@ window.ringResolveLocalVehicleNickname_ = ringResolveLocalVehicleNickname_;
 window.ringIsBizProfile_ = ringIsBizProfile_;
 window.ringRemoveLocalVehicleFromList_ = ringRemoveLocalVehicleFromList_;
 window.ringTryRemoveLocalVehicleAfterDeleteNotFound_ = ringTryRemoveLocalVehicleAfterDeleteNotFound_;
+window.syncMaintenanceHistoryForVin = syncMaintenanceHistoryForVin;
+window.ringRunPageSync_ = ringRunPageSync_;
+window.ringSetPageSyncMeta_ = ringSetPageSyncMeta_;
+window.ringGetPageSyncMeta_ = ringGetPageSyncMeta_;
+window.ringMaintenanceLogsSignature_ = ringMaintenanceLogsSignature_;
+window.ringShowSyncStatus_ = ringShowSyncStatus_;
+window.ringFactoryVinSearchCacheKey_ = ringFactoryVinSearchCacheKey_;
+window.ringFactoryVinHasLocalMaintenanceCache_ = ringFactoryVinHasLocalMaintenanceCache_;
+window.ringFactoryVinSearchClassifyFetch_ = ringFactoryVinSearchClassifyFetch_;
+window.ringFactoryVinSearchSetSyncMeta_ = ringFactoryVinSearchSetSyncMeta_;
+window.ringFactoryVinSearchGetSyncMeta_ = ringFactoryVinSearchGetSyncMeta_;
+window.ringFactoryVinSearchFormatSyncedAt_ = ringFactoryVinSearchFormatSyncedAt_;
+window.ringFactoryVinSearchSetFlash_ = ringFactoryVinSearchSetFlash_;
+window.ringFactoryVinSearchConsumeFlash_ = ringFactoryVinSearchConsumeFlash_;
 
 document.addEventListener('blur', function (e) {
     if (ringIsVinInputEl_(e.target)) ringApplyVinInputFormat_(e.target);

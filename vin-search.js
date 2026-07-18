@@ -230,11 +230,176 @@ function ringVinSearchFocusManual_(opts) {
 
 /**
  * 検索成功時に履歴画面へ遷移
- * @param {{ foundVin: string }} result
+ * @param {string|{ foundVin: string }} vinOrResult
+ * @param {{ cached?: boolean }} [opts]
  */
-function ringVinSearchNavigateToHistory_(result) {
-    if (!result || !result.foundVin) return;
+function ringVinSearchNavigateToHistory_(vinOrResult, opts) {
+    opts = opts || {};
+    var vin = (vinOrResult && typeof vinOrResult === 'object')
+        ? vinOrResult.foundVin
+        : vinOrResult;
+    if (!vin) return;
     var errEl = document.getElementById('errorMsg');
     if (errEl) errEl.style.display = 'none';
-    location.href = 'factory_history.html?vin=' + encodeURIComponent(result.foundVin);
+    var params = new URLSearchParams();
+    params.set('vin', String(vin).trim());
+    if (opts.cached) params.set('from', 'cache');
+    location.href = 'factory_history.html?' + params.toString();
+}
+
+var ringFactoryVinSearchInFlight_ = false;
+
+/** 工場検索ボタンの busy / 通常状態 */
+function ringFactoryVinSearchSetButtonBusy_(busy) {
+    var btn = document.getElementById('searchBtn');
+    if (!btn) return;
+    var defaultLabel = btn.getAttribute('data-default-label') || '🔍 検索する';
+    if (!btn.getAttribute('data-default-label')) {
+        btn.setAttribute('data-default-label', defaultLabel);
+    }
+    ringFactoryVinSearchInFlight_ = !!busy;
+    btn.disabled = !!busy;
+    btn.classList.toggle('search-btn--busy', !!busy);
+    btn.style.opacity = busy ? '0.72' : '1';
+    btn.style.transform = busy ? 'scale(0.97)' : '';
+    btn.textContent = busy ? '🔄 検索中...' : defaultLabel;
+}
+
+function ringFactoryVinSearchShowStatus_(message, isError) {
+    var el = document.getElementById('searchStatusMsg');
+    if (!el) return;
+    if (!message) {
+        el.style.display = 'none';
+        el.textContent = '';
+        return;
+    }
+    el.style.display = 'block';
+    el.textContent = message;
+    el.style.color = isError ? 'var(--accent)' : 'var(--muted)';
+}
+
+function ringFactoryVinSearchResolveDisplayVin_(rawInput) {
+    var s = String(rawInput || '').trim();
+    if (!s) return '';
+    if (typeof ringFormatVinDisplayValue_ === 'function') {
+        return ringFormatVinDisplayValue_(s) || s.toUpperCase();
+    }
+    return s.toUpperCase();
+}
+
+function ringFactoryVinSearchIsValidInput_(rawInput) {
+    var norm = typeof _normalize === 'function' ? _normalize(rawInput) : normalizeVin(rawInput);
+    return !!(norm && norm.length >= 8);
+}
+
+/**
+ * 工場・販売店: VIN 履歴検索（キャッシュ優先 / 未キャッシュ時は GAS 同期後に遷移）
+ * @returns {Promise<'invalid'|'navigated_cache'|'success'|'empty'|'error'|'busy'>}
+ */
+async function runFactoryVinHistorySearch(rawInput) {
+    if (ringFactoryVinSearchInFlight_) return 'busy';
+
+    var errorMsg = document.getElementById('errorMsg');
+    if (errorMsg) errorMsg.style.display = 'none';
+    ringFactoryVinSearchShowStatus_('', false);
+
+    var displayVin = ringFactoryVinSearchResolveDisplayVin_(rawInput);
+    if (!displayVin) {
+        if (errorMsg) {
+            errorMsg.innerText = '車台番号を入力してください。';
+            errorMsg.style.display = 'block';
+        }
+        return 'invalid';
+    }
+    if (!ringFactoryVinSearchIsValidInput_(displayVin)) {
+        if (errorMsg) {
+            errorMsg.innerHTML = '車台番号を正しく入力してください。<br>（8文字以上）';
+            errorMsg.style.display = 'block';
+        }
+        return 'invalid';
+    }
+
+    var classify = typeof ringFactoryVinSearchClassifyFetch_ === 'function'
+        ? ringFactoryVinSearchClassifyFetch_(displayVin)
+        : { mode: 'cold_fetch', hadMaintenanceCache: false, shouldCountAsBillableFetch: true };
+
+    if (classify.mode === 'cache_hit') {
+        ringVinSearchNavigateToHistory_(displayVin, { cached: true });
+        return 'navigated_cache';
+    }
+
+    ringFactoryVinSearchSetButtonBusy_(true);
+    ringFactoryVinSearchShowStatus_('整備履歴を取得しています…', false);
+
+    try {
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+            if (errorMsg) {
+                errorMsg.innerText = '通信できませんでした。ネットワークを確認してください';
+                errorMsg.style.display = 'block';
+            }
+            return 'error';
+        }
+
+        var syncFn = typeof syncMaintenanceHistoryForVin === 'function'
+            ? syncMaintenanceHistoryForVin
+            : null;
+        if (!syncFn) {
+            if (errorMsg) {
+                errorMsg.innerText = '通信できませんでした。ネットワークを確認してください';
+                errorMsg.style.display = 'block';
+            }
+            return 'error';
+        }
+
+        var syncResult = await syncFn(displayVin);
+        if (!syncResult || syncResult.ok !== true) {
+            if (errorMsg) {
+                errorMsg.innerText = '通信できませんでした。ネットワークを確認してください';
+                errorMsg.style.display = 'block';
+            }
+            return 'error';
+        }
+
+        var cacheKey = typeof ringFactoryVinSearchCacheKey_ === 'function'
+            ? ringFactoryVinSearchCacheKey_(displayVin)
+            : '';
+        if (cacheKey && typeof ringSetPageSyncMeta_ === 'function') {
+            ringSetPageSyncMeta_(cacheKey);
+        }
+        if (typeof ringFactoryVinSearchSetSyncMeta_ === 'function') {
+            ringFactoryVinSearchSetSyncMeta_(displayVin, true);
+        }
+
+        var maintCount = typeof getMaintenanceLogsByVin === 'function'
+            ? getMaintenanceLogsByVin(displayVin).length
+            : 0;
+
+        if (maintCount > 0) {
+            if (typeof ringFactoryVinSearchSetFlash_ === 'function') {
+                ringFactoryVinSearchSetFlash_(displayVin, 'success');
+            }
+            if (typeof showToast === 'function') {
+                showToast('success', '整備履歴を取得しました');
+            }
+            ringFactoryVinSearchShowStatus_('', false);
+            ringVinSearchNavigateToHistory_(displayVin, { synced: true });
+            return 'success';
+        }
+
+        if (typeof ringFactoryVinSearchSetFlash_ === 'function') {
+            ringFactoryVinSearchSetFlash_(displayVin, 'empty');
+        }
+        ringFactoryVinSearchShowStatus_('', false);
+        ringVinSearchNavigateToHistory_(displayVin, { synced: true });
+        return 'empty';
+    } catch (eSearch) {
+        if (errorMsg) {
+            errorMsg.innerText = '通信できませんでした。ネットワークを確認してください';
+            errorMsg.style.display = 'block';
+        }
+        return 'error';
+    } finally {
+        ringFactoryVinSearchSetButtonBusy_(false);
+        ringFactoryVinSearchShowStatus_('', false);
+    }
 }

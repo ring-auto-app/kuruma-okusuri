@@ -156,6 +156,8 @@
     
     <div class="vin-container">
       <div class="vin-display-top" id="vinDisplay">読込中...</div>
+      <div id="factoryHistoryLastSync" style="font-size:11px;font-weight:700;color:var(--muted);margin-top:6px;text-align:center;"></div>
+      <div id="factoryHistorySyncStatus" style="display:none;" aria-live="polite"></div>
       <div style="margin-top:12px;">
         <a id="vehicleInfoBtn" href="#" class="btn btn-secondary" style="border-color:var(--accent); color:var(--accent); border-radius:999px; padding:0 18px;">📋 車両情報を見る・編集</a>
       </div>
@@ -191,6 +193,127 @@
     let allLogs = [];    // ページ内で保持するログデータ
     let targetVin = '';
     let myShopId  = '';
+    let factoryHistorySyncDone_ = false;
+
+    function loadLogsFromCache_() {
+      allLogs = (typeof getMaintenanceLogsByVin === "function")
+        ? getMaintenanceLogsByVin(targetVin)
+        : ((typeof getLogsByVin === "function") ? getLogsByVin(targetVin).filter(function (log) {
+            var t = log.type; return t !== 'inspection' && t !== 'inspection_user';
+          }) : []);
+      return allLogs;
+    }
+
+    function updateFactoryLastSyncLabel_() {
+      var el = document.getElementById('factoryHistoryLastSync');
+      if (!el) return;
+      var meta = typeof ringFactoryVinSearchGetSyncMeta_ === 'function'
+        ? ringFactoryVinSearchGetSyncMeta_(targetVin)
+        : null;
+      if (!meta || !meta.syncedAt) {
+        var pageMeta = typeof ringGetPageSyncMeta_ === 'function' && typeof ringFactoryVinSearchCacheKey_ === 'function'
+          ? ringGetPageSyncMeta_(ringFactoryVinSearchCacheKey_(targetVin))
+          : null;
+        if (pageMeta && pageMeta.syncedAt) meta = pageMeta;
+      }
+      if (!meta || !meta.syncedAt) {
+        el.textContent = '';
+        return;
+      }
+      var formatted = typeof ringFactoryVinSearchFormatSyncedAt_ === 'function'
+        ? ringFactoryVinSearchFormatSyncedAt_(meta.syncedAt)
+        : String(meta.syncedAt);
+      el.textContent = '最終同期：' + formatted;
+    }
+
+    function renderFactoryEmptyState_(kind) {
+      var listContainer = document.getElementById('historyList');
+      if (!listContainer) return;
+      var msgs = {
+        fetching: '整備履歴を取得しています…',
+        empty: 'この車両の整備履歴はまだ登録されていません',
+        error: '通信できませんでした。ネットワークを確認してください'
+      };
+      listContainer.innerHTML = '<div class="empty-msg">' + (msgs[kind] || msgs.fetching) + '</div>';
+    }
+
+    function renderFactoryHistoryFromCache_() {
+      loadLogsFromCache_();
+      updateFactoryLastSyncLabel_();
+      if (allLogs.length === 0) {
+        renderFactoryEmptyState_('fetching');
+        return;
+      }
+      buildYearSelect(allLogs);
+      applyFilter();
+    }
+
+    function consumeFactorySearchFlash_() {
+      if (typeof ringFactoryVinSearchConsumeFlash_ !== 'function') return;
+      var flash = ringFactoryVinSearchConsumeFlash_(targetVin);
+      if (!flash) return;
+      if (flash.type === 'success' && typeof showToast === 'function') {
+        showToast('success', '整備履歴を取得しました');
+      }
+      if (flash.type === 'empty') {
+        renderFactoryEmptyState_('empty');
+      }
+    }
+
+    async function runFactoryHistoryBackgroundSync_() {
+      if (typeof syncMaintenanceHistoryForVin !== 'function') {
+        factoryHistorySyncDone_ = true;
+        if (allLogs.length === 0) renderFactoryEmptyState_('error');
+        return;
+      }
+
+      var prevSig = typeof ringMaintenanceLogsSignature_ === 'function'
+        ? ringMaintenanceLogsSignature_(allLogs)
+        : '';
+      var cacheKey = typeof ringFactoryVinSearchCacheKey_ === 'function'
+        ? ringFactoryVinSearchCacheKey_(targetVin)
+        : ('factory_history:' + targetVin);
+
+      if (allLogs.length === 0 && typeof ringShowSyncStatus_ === 'function') {
+        ringShowSyncStatus_('factoryHistorySyncStatus', '整備履歴を取得しています…', false);
+      }
+
+      var syncResult;
+      try {
+        syncResult = await syncMaintenanceHistoryForVin(targetVin);
+      } catch (eSync) {
+        syncResult = { ok: false };
+      }
+
+      if (typeof ringShowSyncStatus_ === 'function') {
+        ringShowSyncStatus_('factoryHistorySyncStatus', '', false);
+      }
+
+      factoryHistorySyncDone_ = true;
+
+      if (syncResult && syncResult.ok) {
+        if (typeof ringSetPageSyncMeta_ === 'function') ringSetPageSyncMeta_(cacheKey);
+        if (typeof ringFactoryVinSearchSetSyncMeta_ === 'function') {
+          ringFactoryVinSearchSetSyncMeta_(targetVin, true);
+        }
+        updateFactoryLastSyncLabel_();
+        loadLogsFromCache_();
+        var newSig = typeof ringMaintenanceLogsSignature_ === 'function'
+          ? ringMaintenanceLogsSignature_(allLogs)
+          : prevSig;
+        if (allLogs.length === 0) {
+          renderFactoryEmptyState_('empty');
+        } else if (newSig !== prevSig) {
+          buildYearSelect(allLogs);
+          applyFilter();
+        } else if (allLogs.length > 0) {
+          buildYearSelect(allLogs);
+          applyFilter();
+        }
+      } else if (allLogs.length === 0) {
+        renderFactoryEmptyState_('error');
+      }
+    }
 
     /* ── 検索関連 ── */
     let currentSearchQuery = '';
@@ -253,43 +376,34 @@
       applyFilter();
     }
 
-    window.addEventListener('DOMContentLoaded', () => {
-      showLoading("データ取得中", "車両の履歴を検索しています...");
+    window.addEventListener('DOMContentLoaded', async () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      targetVin = urlParams.get('vin') || '';
 
-      setTimeout(() => {
-        const urlParams = new URLSearchParams(window.location.search);
-        targetVin = urlParams.get('vin') || '';
+      if (!targetVin) {
+        return location.replace("factory_search.html");
+      }
 
-        if (!targetVin) {
-          hideLoading();
-          return location.replace("factory_search.html");
-        }
+      document.getElementById('vinDisplay').innerText = targetVin;
+      document.getElementById('vehicleInfoBtn').href = `vehicle_info.html?vin=${encodeURIComponent(targetVin)}&from=factory_history`;
 
-        document.getElementById('vinDisplay').innerText = targetVin;
-        document.getElementById('vehicleInfoBtn').href = `vehicle_info.html?vin=${encodeURIComponent(targetVin)}&from=factory_history`;
+      const currentProfile = (typeof getCurrentProfile === "function") ? getCurrentProfile() : null;
+      myShopId = currentProfile ? (currentProfile.shopId || '') : '';
 
-        allLogs = (typeof getMaintenanceLogsByVin === "function")
-          ? getMaintenanceLogsByVin(targetVin)
-          : ((typeof getLogsByVin === "function") ? getLogsByVin(targetVin).filter(function (log) {
-              var t = log.type; return t !== 'inspection' && t !== 'inspection_user';
-            }) : []);
-        const listContainer = document.getElementById('historyList');
+      const hadCache = typeof ringFactoryVinHasLocalMaintenanceCache_ === 'function'
+        ? ringFactoryVinHasLocalMaintenanceCache_(targetVin)
+        : loadLogsFromCache_().length > 0;
 
-        if (allLogs.length === 0) {
-          listContainer.innerHTML = `<div class="empty-msg">履歴がありません。</div>`;
-          hideLoading();
-          return;
-        }
+      if (!hadCache && typeof showLoading === 'function') {
+        showLoading("データ取得中", "整備履歴を取得しています…");
+      }
 
-        // ログイン中の工場情報を取得
-        const currentProfile = (typeof getCurrentProfile === "function") ? getCurrentProfile() : null;
-        myShopId = currentProfile ? (currentProfile.shopId || '') : '';
+      renderFactoryHistoryFromCache_();
+      consumeFactorySearchFlash_();
 
-        // 年セレクタを構築
-        buildYearSelect(allLogs);
-        applyFilter();
-        hideLoading();
-      }, 300);
+      await runFactoryHistoryBackgroundSync_();
+
+      if (typeof hideLoading === 'function') hideLoading();
     });
 
     // 年セレクタを構築

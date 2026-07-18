@@ -45,6 +45,18 @@
       display: none; color: var(--accent); font-size: 12.5px; font-weight: 900;
       margin-top: 16px; text-align: center; line-height: 1.5;
     }
+    .search-status-msg {
+      display: none; font-size: 12.5px; font-weight: 800;
+      margin-top: 12px; text-align: center; line-height: 1.5;
+      color: var(--muted);
+    }
+    #searchBtn.search-btn--busy {
+      filter: brightness(0.92);
+      box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.12);
+    }
+    #searchBtn:disabled {
+      cursor: not-allowed;
+    }
   </style>
 </head>
 <body>
@@ -62,35 +74,22 @@
       <input type="text" id="vinInput" class="unified-box search-input" inputmode="text" autocapitalize="characters" style="text-transform: uppercase;" placeholder="例：ZVW50-123456" autocomplete="off">
       
       <div style="display: flex; justify-content: center; width: 100%; margin-top: 24px;">
-        <button class="save-btn" id="searchBtn" style="padding: 14px 68px;">検索する</button>
+        <button class="save-btn" id="searchBtn" style="padding: 14px 68px;" data-default-label="🔍 検索する">🔍 検索する</button>
       </div>
+      <div class="search-status-msg" id="searchStatusMsg" aria-live="polite"></div>
       <div class="error-msg" id="errorMsg">該当する車両が見つかりません。<br>車台番号を最後まで入力してください。</div>
     </div>
 
   </div>
 
   <script>
-    function runVinHistorySearch(rawInput) {
-      var errorMsg = document.getElementById('errorMsg');
-      if (!String(rawInput || '').trim()) {
-        errorMsg.innerText = '車台番号を入力してください。';
-        errorMsg.style.display = 'block';
-        return;
-      }
-      var hit = searchByVinCandidates([rawInput]);
-      if (hit) {
-        ringVinSearchNavigateToHistory_(hit);
-      } else {
-        errorMsg.innerHTML = '該当する車両が見つかりません。<br>車台番号を最後まで入力してください。';
-        errorMsg.style.display = 'block';
-      }
-    }
-
-    document.getElementById('searchBtn').addEventListener('click', function () {
+    document.getElementById('searchBtn').addEventListener('click', async function () {
       document.getElementById('errorMsg').style.display = 'none';
       var inputEl = document.getElementById('vinInput');
       if (inputEl && typeof ringApplyVinInputFormat_ === 'function') ringApplyVinInputFormat_(inputEl);
-      runVinHistorySearch(inputEl ? inputEl.value : '');
+      if (typeof runFactoryVinHistorySearch === 'function') {
+        await runFactoryVinHistorySearch(inputEl ? inputEl.value : '');
+      }
     });
   </script>
 </body>
