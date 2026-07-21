@@ -38,8 +38,8 @@
     .history-card {
       display: block; position: relative; text-decoration: none; color: inherit;
       padding: 10px 14px 10px; border-radius: 12px 12px 0 12px; margin-bottom: 34px;
-      height: calc(34px * 3 - 20px); /* 約82px：上下padding込みで3線分 */
-      overflow: hidden;
+      min-height: calc(34px * 3 - 20px);
+      overflow: visible;
       box-sizing: border-box;
       box-shadow: 4px 6px 15px rgba(0,0,0,0.06); border: 1px solid rgba(0,0,0,0.03); transition: transform 0.1s;
     }
@@ -78,13 +78,40 @@
     }
     .edit-status.editable   { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
     .edit-status.locked     { background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; }
-    .edit-status.other-shop { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+    .edit-status.other-shop { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe;     }
 
-    .work-title { font-size: 16px; font-weight: 900; color: var(--text); margin: 4px 0 2px; line-height: 1.3; }
-    .parts-area {
-      font-size: 12px; font-weight: 700; color: var(--text); line-height: 1.3;
-      display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical;
-      overflow: hidden; opacity: 0.6;
+
+    /* 整備履歴本文：作業・内容・メモ＝濃いブルー / 部品＝黒・インデント */
+    .fh-body { margin-top: 4px; }
+    .fh-work {
+      font-size: 16px; font-weight: 900; color: #1e3a8a;
+      margin: 4px 0 2px; line-height: 1.3;
+    }
+    .fh-work:first-child { margin-top: 0; }
+    .fh-memo {
+      font-size: 12px; font-weight: 700; color: #1e3a8a;
+      margin: 2px 0 0; line-height: 1.3;
+    }
+    .fh-part {
+      font-size: 12px; font-weight: 700; color: #000;
+      line-height: 1.3; padding-left: 1em;
+    }
+    .fh-empty {
+      font-size: 12px; font-weight: 700; color: #64748b;
+      line-height: 1.3; opacity: 0.6;
+    }
+
+    @media print {
+      .fh-work, .fh-memo {
+        color: #1e3a8a !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .fh-part {
+        color: #000 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
     }
 
     .empty-msg { text-align: center; padding: 68px 20px; color: var(--muted); font-weight: 800; border: 2px dashed var(--line); border-radius: 18px; }
@@ -461,24 +488,35 @@
       renderList(logs);
     }
 
+    const INSPECT_ITEM_NAMES = {
+      e1: 'エンジンオイル量', e2: '冷却水量', e3: 'エンジン始動状態', e4: '異音確認', e5: '排気の色',
+      ba1: 'バッテリー液量', ba2: '端子状態',
+      be1: 'ベルト張り', be2: 'ベルト損傷',
+      t1: 'タイヤ空気圧', t2: 'タイヤ亀裂・損傷', t3: 'タイヤ摩耗状態', t4: 'タイヤ溝深さ',
+      b1: 'ブレーキ液量', b2: 'ブレーキペダル踏みしろ', b3: '駐車ブレーキ引きしろ',
+      l1: '前照灯', l2: '制動灯', l3: '方向指示器', l4: '尾灯/車幅灯',
+      w1: 'ワイパー状態', w2: 'ウォッシャー液',
+      o1: 'エアタンク', o2: '異臭確認', o3: 'その他異常'
+    };
+
+    function renderFactoryInspectionBodyHtml_(log) {
+      const ngItems = Object.entries(log.checks)
+        .filter(([, v]) => v !== '良' && v !== '無')
+        .map(([k, v]) => `${INSPECT_ITEM_NAMES[k] || k}：${v}`);
+      if (ngItems.length > 0) {
+        return ngItems.map(function (item) {
+          return '<div class="fh-work">' + escapeHtml(item) + '</div>';
+        }).join('');
+      }
+      return '<div class="fh-work">全項目良好</div>';
+    }
+
     function renderList(logs) {
       const listContainer = document.getElementById('historyList');
       if (logs.length === 0) {
         listContainer.innerHTML = `<div class="empty-msg">該当する履歴がありません。</div>`;
         return;
       }
-
-        // 日常点検の項目ID→名前マップ
-        const INSPECT_ITEM_NAMES = {
-          e1: 'エンジンオイル量', e2: '冷却水量', e3: 'エンジン始動状態', e4: '異音確認', e5: '排気の色',
-          ba1: 'バッテリー液量', ba2: '端子状態',
-          be1: 'ベルト張り', be2: 'ベルト損傷',
-          t1: 'タイヤ空気圧', t2: 'タイヤ亀裂・損傷', t3: 'タイヤ摩耗状態', t4: 'タイヤ溝深さ',
-          b1: 'ブレーキ液量', b2: 'ブレーキペダル踏みしろ', b3: '駐車ブレーキ引きしろ',
-          l1: '前照灯', l2: '制動灯', l3: '方向指示器', l4: '尾灯/車幅灯',
-          w1: 'ワイパー状態', w2: 'ウォッシャー液',
-          o1: 'エアタンク', o2: '異臭確認', o3: 'その他異常'
-        };
 
         let html = "";
         logs.forEach((log, index) => {
@@ -508,6 +546,16 @@
             editStatusHtml = `<span class="edit-status other-shop">🏢 他社記録</span>`;
           }
 
+          let bodyHtml = '';
+          if (log.type === 'inspection' && log.checks && typeof log.checks === 'object') {
+            bodyHtml = renderFactoryInspectionBodyHtml_(log);
+          } else if (typeof ringFormatFactoryHistoryCardBodyHtml_ === 'function') {
+            bodyHtml = ringFormatFactoryHistoryCardBodyHtml_(log);
+          } else {
+            bodyHtml = '<div class="fh-work">' + escapeHtml(log.title || '一般整備') + '</div>'
+              + (log.parts ? '<div class="fh-part">' + escapeHtml('・' + log.parts) + '</div>' : '');
+          }
+
           html += `
             <a href="factory_detail.html?vin=${encodeURIComponent(targetVin)}&log_id=${encodeURIComponent(log.log_id)}" class="history-card ${colorClass}">
               <div class="card-header">
@@ -519,21 +567,7 @@
                   <span class="badge ${bClass}">${bLabel}</span>
                 </div>
               </div>
-              <div class="work-title">${log.title || "一般整備"}</div>
-              <div class="parts-area">
-                ${(() => {
-                  // 日常点検ログ（checksあり）は指摘項目を名前で表示
-                  if (log.type === 'inspection' && log.checks && typeof log.checks === 'object') {
-                    const ngItems = Object.entries(log.checks)
-                      .filter(([, v]) => v !== '良' && v !== '無')
-                      .map(([k, v]) => `${INSPECT_ITEM_NAMES[k] || k}：${v}`);
-                    return ngItems.length > 0
-                      ? `<span style="color:#b45309;font-weight:900;">⚠ ${ngItems.join(' / ')}</span>`
-                      : '<span style="color:#16a34a;font-weight:900;">✅ 全項目良好</span>';
-                  }
-                  return log.parts ? log.parts : '<span style="opacity:0.3;">交換部品なし</span>';
-                })()}
-              </div>
+              ${bodyHtml}
             </a>
           `;
         });

@@ -301,7 +301,8 @@
       const password = document.getElementById('inPassword').value.trim();
       
       let factoryType = "";
-      let fullFactoryNumber = "";
+      let transportBureau = "";
+      let factoryNumberPart = "";
 
       if (!shopName || !password) {
         if (typeof showToast === 'function') showToast('error', '会社名とパスワードは必須です');
@@ -322,60 +323,40 @@
 
       if (accountKind === 'factory') {
         factoryType = document.getElementById('inFactoryType').value;
-        const bureau = document.getElementById('inTransportBureau').value;
-        const fNum = document.getElementById('inFactoryNumber').value.trim();
+        transportBureau = document.getElementById('inTransportBureau').value;
+        factoryNumberPart = document.getElementById('inFactoryNumber').value.trim();
         
-        if (!bureau || !fNum) {
+        if (!transportBureau || !factoryNumberPart) {
           if (typeof showToast === 'function') showToast('error', '管轄の運輸局と番号を入力してください');
           return;
         }
-        
-        fullFactoryNumber = bureau + " " + fNum; 
       }
 
-      const randomStr = Math.random().toString(36).substr(2, 4).toUpperCase();
-      const shopIdPrefix = accountKind === 'dealer' ? 'DLR' : 'FAC';
-      const shopId = shopIdPrefix + "-" + randomStr;
-      const masterLoginId = shopId + "-0000";
-
-      const profile = { 
-        shopId: shopId, 
-        shopName: shopName, 
-        shopType: accountKind, 
-        businessType: businessType,
-        factoryType: factoryType, 
-        factoryNumber: fullFactoryNumber,
-        staffId: "0000", 
-        staffName: masterLoginId, 
-        displayName: "マスター", 
-        role: "master" 
-      };
-      
       showLoading("登録処理中", "サーバーと通信しています...");
 
       try {
-        const res = await fetch(GAS_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain' },
-          body: JSON.stringify({
-            action:        'register_shop',
-            shopId:        shopId,
-            shopName:      shopName,
-            loginEmail:    loginEmail,
-            representativeName: representativeName,
-            shopType:      accountKind,
-            businessType:  businessType,
-            factoryType:   factoryType,
-            factoryNumber: fullFactoryNumber,
-            password:      password
-          })
-        });
-        const result = await res.json();
+        if (typeof ringSubmitShopRegister_ !== 'function') {
+          hideLoading();
+          showToast('error', '登録機能の読み込みに失敗しました。ページを再読み込みしてください。');
+          return;
+        }
 
-        if (result.success) {
-          // GAS が発行した正式な shopId と masterLoginId を使う
-          const finalShopId    = result.shopId        || shopId;
-          const finalMasterId  = result.masterLoginId || (finalShopId + '-0000');
+        const reg = await ringSubmitShopRegister_({
+          shopName: shopName,
+          loginEmail: loginEmail,
+          representativeName: representativeName,
+          shopType: accountKind,
+          businessType: businessType,
+          factoryType: factoryType,
+          transportBureau: transportBureau,
+          factoryNumberPart: factoryNumberPart,
+          password: password
+        });
+
+        if (reg.ok && reg.data) {
+          const result = reg.data;
+          const finalShopId    = result.shopId        || '';
+          const finalMasterId  = result.masterLoginId || (finalShopId ? finalShopId + '-0000' : '');
           const savedEmail = loginEmail;
           const loginTab = accountKind === 'factory' ? 'factory' : 'business';
 
@@ -405,11 +386,15 @@
             </div>`;
         } else {
           hideLoading();
-          showToast('error', '登録エラー: ' + result.error);
+          var errMsg = (reg && reg.error) ? reg.error : '登録に失敗しました。';
+          showToast('error', errMsg);
         }
       } catch (e) {
         hideLoading();
-        showToast('error', 'サーバーへの接続に失敗しました。GAS URLを確認してください。');
+        var fallback = (typeof ringParseShopRegisterErrorMessage_ === 'function')
+          ? ringParseShopRegisterErrorMessage_(e && e.message)
+          : 'サーバーへの接続に失敗しました。';
+        showToast('error', fallback);
         console.error(e);
       }
     }

@@ -1933,6 +1933,137 @@ function mapGasMaintenanceLogToLocal(row) {
     };
 }
 
+/** 整備履歴一覧: partsItems 1件の表示文字列（名称・数量は既存データのまま） */
+function ringFormatFactoryHistoryPartLine_(item) {
+    if (!item) return "";
+    var name = String(item.n != null ? item.n : (item.name || item.partName || "")).trim();
+    if (!name) return "";
+    var spec = String(item.s != null ? item.s : (item.spec || "")).trim();
+    var qty = String(item.q != null ? item.q : (item.quantity || "")).trim();
+    var line = name;
+    if (spec) line += "\uFF08" + spec + "\uFF09";
+    if (qty) line += "\u3000" + qty;
+    return line;
+}
+
+/** 【作業】/【部品】ブロックを行配列で抽出（表示専用） */
+function ringParseFactoryHistoryMarkedSection_(text, marker) {
+    var src = String(text || "");
+    if (!src) return [];
+    var tag = "\u3010" + marker + "\u3011";
+    var idx = src.indexOf(tag);
+    if (idx < 0) return [];
+    var rest = src.slice(idx + tag.length);
+    var next = rest.search(/\n\s*\u3010/);
+    var block = next >= 0 ? rest.slice(0, next) : rest;
+    return block.split("\n").map(function (line) {
+        return String(line || "").replace(/^[\s\u30FB\u2022\-]+/, "").trim();
+    }).filter(Boolean);
+}
+
+function ringStripFactoryHistoryMarkedSections_(text) {
+    return String(text || "")
+        .replace(/\u3010\u4F5C\u696D\u3011[\s\S]*?(?=\n\s*\u3010|$)/g, "")
+        .replace(/\u3010\u90E8\u54C1\u3011[\s\S]*?(?=\n\s*\u3010|$)/g, "")
+        .trim();
+}
+
+function ringPushUniqueFactoryHistoryLine_(arr, line) {
+    var s = String(line || "").trim();
+    if (!s) return;
+    for (var i = 0; i < arr.length; i++) {
+        if (arr[i] === s) return;
+    }
+    arr.push(s);
+}
+
+function ringSplitFactoryHistoryPartTokens_(text) {
+    return String(text || "").split(/[\n\u30FB\u3001]/).map(function (seg) {
+        return String(seg || "").replace(/^[\s\u30FB\u2022\-]+/, "").trim();
+    }).filter(Boolean);
+}
+
+/**
+ * 工場・整備履歴一覧カード本文 HTML（表示専用・データは変更しない）
+ * @param {object} log
+ * @returns {string}
+ */
+function ringFormatFactoryHistoryCardBodyHtml_(log) {
+    log = log || {};
+    var works = [];
+    var parts = [];
+    var memos = [];
+    var partsText = String(log.parts || "").trim();
+    var memoText = String(log.memo || "").trim();
+
+    if (Array.isArray(log.works)) {
+        log.works.forEach(function (w) {
+            ringPushUniqueFactoryHistoryLine_(works, w);
+        });
+    }
+    if (Array.isArray(log.partsItems) && log.partsItems.length) {
+        log.partsItems.forEach(function (p) {
+            var line = ringFormatFactoryHistoryPartLine_(p);
+            if (line) ringPushUniqueFactoryHistoryLine_(parts, line);
+        });
+    }
+
+    ringParseFactoryHistoryMarkedSection_(partsText, "\u4F5C\u696D").forEach(function (w) {
+        ringPushUniqueFactoryHistoryLine_(works, w);
+    });
+    ringParseFactoryHistoryMarkedSection_(memoText, "\u4F5C\u696D").forEach(function (w) {
+        ringPushUniqueFactoryHistoryLine_(works, w);
+    });
+    if (!parts.length) {
+        ringParseFactoryHistoryMarkedSection_(partsText, "\u90E8\u54C1").forEach(function (p) {
+            ringPushUniqueFactoryHistoryLine_(parts, p);
+        });
+        ringParseFactoryHistoryMarkedSection_(memoText, "\u90E8\u54C1").forEach(function (p) {
+            ringPushUniqueFactoryHistoryLine_(parts, p);
+        });
+    }
+
+    var plainPartsRemain = ringStripFactoryHistoryMarkedSections_(partsText);
+    if (!parts.length && plainPartsRemain) {
+        if (/[\n\u30FB\u3001]/.test(plainPartsRemain)) {
+            ringSplitFactoryHistoryPartTokens_(plainPartsRemain).forEach(function (p) {
+                ringPushUniqueFactoryHistoryLine_(parts, p);
+            });
+        } else {
+            ringPushUniqueFactoryHistoryLine_(works, plainPartsRemain);
+        }
+    }
+
+    var plainMemoRemain = ringStripFactoryHistoryMarkedSections_(memoText);
+    if (plainMemoRemain && plainMemoRemain.indexOf("\u3010") < 0) {
+        ringPushUniqueFactoryHistoryLine_(memos, plainMemoRemain);
+    }
+
+    var titleLine = String(log.title || "").trim();
+    if (titleLine && titleLine !== "\u4E00\u822C\u6574\u5099") {
+        var dupTitle = works.some(function (w) { return w === titleLine; });
+        if (!dupTitle) works.unshift(titleLine);
+    }
+
+    if (!works.length && !parts.length && !memos.length) {
+        return '<div class="fh-empty">\u4EA4\u63DB\u90E8\u54C1\u306A\u3057</div>';
+    }
+
+    var html = '<div class="fh-body">';
+    works.forEach(function (w) {
+        html += '<div class="fh-work">' + escapeHtml(w) + "</div>";
+    });
+    parts.forEach(function (p) {
+        var bullet = p.charAt(0) === "\u30FB" ? p : "\u30FB" + p;
+        html += '<div class="fh-part">' + escapeHtml(bullet) + "</div>";
+    });
+    memos.forEach(function (m) {
+        html += '<div class="fh-memo">' + escapeHtml(m) + "</div>";
+    });
+    html += "</div>";
+    return html;
+}
+
 /**
  * GAS から整備履歴（History_Events）を取得
  * @returns {Promise<{ logs: object[], ok: boolean }>}
@@ -2093,6 +2224,97 @@ function ringFactoryVinSearchConsumeFlash_(vin) {
     } catch (e) {
         return null;
     }
+}
+
+/** 工場・事業者登録: 重複エラー文言（GAS とフロント共通） */
+var RING_SHOP_REGISTER_ERR_EMAIL = 'このメールアドレスは既に登録されています。';
+var RING_SHOP_REGISTER_ERR_CERT = 'この認証番号（または指定番号）は既に登録されています。';
+
+function ringParseShopRegisterErrorMessage_(err) {
+    var msg = String(err || '').trim();
+    if (!msg) return '登録に失敗しました。';
+    if (/メールアドレス.*既に登録/.test(msg)) return RING_SHOP_REGISTER_ERR_EMAIL;
+    if (/認証番号.*指定番号.*既に登録/.test(msg)) return RING_SHOP_REGISTER_ERR_CERT;
+    if (msg === 'このメールアドレスは既に登録されています') return RING_SHOP_REGISTER_ERR_EMAIL;
+    return msg;
+}
+
+/**
+ * 工場・事業者登録（GAS register_shop — 重複判定はサーバー側が正本）
+ * @returns {Promise<{ ok: boolean, data?: object, error?: string }>}
+ */
+async function ringRegisterShop_(payload) {
+    try {
+        var json = await sendToGAS_Safe('register_shop', payload || {}, { silentToast: true });
+        if (json && json.success === true) {
+            return { ok: true, data: json };
+        }
+        return {
+            ok: false,
+            error: ringParseShopRegisterErrorMessage_(json && json.error)
+        };
+    } catch (eReg) {
+        return {
+            ok: false,
+            error: ringParseShopRegisterErrorMessage_(eReg && eReg.message)
+        };
+    }
+}
+
+/**
+ * 将来の課金用: 登録前に GAS へ送る payload を組み立て（shopId はサーバー発行のため送らない）
+ */
+function ringBuildShopRegisterPayload_(fields) {
+    fields = fields || {};
+    return {
+        shopName: String(fields.shopName || '').trim(),
+        loginEmail: String(fields.loginEmail || '').trim(),
+        representativeName: String(fields.representativeName || '').trim(),
+        shopType: fields.shopType === 'factory' ? 'factory' : 'dealer',
+        businessType: String(fields.businessType || '').trim(),
+        factoryType: String(fields.factoryType || '').trim(),
+        factoryNumber: String(fields.factoryNumber || '').trim(),
+        transportBureau: String(fields.transportBureau || '').trim(),
+        password: String(fields.password || '')
+    };
+}
+
+/**
+ * 工場登録時の陸運支局＋番号を入力整形（重複判定は GAS register_shop が正本）
+ */
+function ringNormalizeShopRegisterCertFields_(opts) {
+    opts = opts || {};
+    var bureau = String(opts.transportBureau || '').trim();
+    var num = String(opts.factoryNumberPart || opts.factoryNumber || '').trim();
+    if (!bureau || !num) return { factoryNumber: '', transportBureau: bureau };
+    return {
+        transportBureau: bureau,
+        factoryNumber: bureau + ' ' + num
+    };
+}
+
+/**
+ * 工場・事業者登録フォームから GAS register_shop を呼ぶ
+ * @returns {Promise<{ ok: boolean, data?: object, error?: string }>}
+ */
+async function ringSubmitShopRegister_(fields) {
+    fields = fields || {};
+    var cert = ringNormalizeShopRegisterCertFields_({
+        transportBureau: fields.transportBureau,
+        factoryNumberPart: fields.factoryNumberPart
+    });
+    var payload = ringBuildShopRegisterPayload_({
+        shopName: fields.shopName,
+        loginEmail: fields.loginEmail,
+        representativeName: fields.representativeName,
+        shopType: fields.shopType,
+        businessType: fields.businessType,
+        factoryType: fields.factoryType,
+        factoryNumber: fields.shopType === 'factory' ? cert.factoryNumber : '',
+        transportBureau: fields.shopType === 'factory' ? cert.transportBureau : '',
+        password: fields.password
+    });
+    return ringRegisterShop_(payload);
 }
 
 /**
@@ -5402,6 +5624,9 @@ window.ringFactoryVinSearchGetSyncMeta_ = ringFactoryVinSearchGetSyncMeta_;
 window.ringFactoryVinSearchFormatSyncedAt_ = ringFactoryVinSearchFormatSyncedAt_;
 window.ringFactoryVinSearchSetFlash_ = ringFactoryVinSearchSetFlash_;
 window.ringFactoryVinSearchConsumeFlash_ = ringFactoryVinSearchConsumeFlash_;
+window.ringSubmitShopRegister_ = ringSubmitShopRegister_;
+window.ringParseShopRegisterErrorMessage_ = ringParseShopRegisterErrorMessage_;
+window.ringFormatFactoryHistoryCardBodyHtml_ = ringFormatFactoryHistoryCardBodyHtml_;
 
 document.addEventListener('blur', function (e) {
     if (ringIsVinInputEl_(e.target)) ringApplyVinInputFormat_(e.target);
