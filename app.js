@@ -2317,6 +2317,73 @@ async function ringSubmitShopRegister_(fields) {
     return ringRegisterShop_(payload);
 }
 
+/** 会社区分ラベル（販売店 / 認証工場 / 指定工場） */
+function ringGetShopDivisionLabel_(profile) {
+    profile = profile || {};
+    if (String(profile.shopType || '') === 'dealer') return '販売店';
+    var ft = String(profile.factoryType || '').trim();
+    if (ft === '認証') return '認証工場';
+    if (ft === '指定') return '指定工場';
+    if (String(profile.shopType || '') === 'factory') return '整備工場';
+    return '—';
+}
+
+/** targetDivision: dealer | 認証 | 指定 */
+function ringParseShopTypeChangeErrorMessage_(err) {
+    var msg = String(err || '').trim();
+    if (!msg) return '会社区分の変更に失敗しました。';
+    if (/認証番号.*指定番号.*既に登録/.test(msg)) return 'この認証番号（または指定番号）は既に登録されています。';
+    return msg;
+}
+
+/**
+ * 会社区分変更（GAS update_shop_type）
+ * @returns {Promise<{ ok: boolean, data?: object, error?: string }>}
+ */
+async function ringUpdateShopType_(payload) {
+    try {
+        var json = await sendToGAS_Safe('update_shop_type', payload || {}, { silentToast: true });
+        if (json && json.success === true) {
+            return { ok: true, data: json };
+        }
+        return {
+            ok: false,
+            error: ringParseShopTypeChangeErrorMessage_(json && json.error)
+        };
+    } catch (eUp) {
+        return {
+            ok: false,
+            error: ringParseShopTypeChangeErrorMessage_(eUp && eUp.message)
+        };
+    }
+}
+
+/**
+ * 会社区分変更後: 認証スロットを shop/business 間で移行（shop_id・token は維持）
+ */
+function ringApplyShopTypeChangeSession_(oldProfile, newProfile, authToken) {
+    oldProfile = oldProfile || {};
+    newProfile = newProfile || {};
+    var token = String(authToken || ringResolveActiveAuthToken() || '').trim();
+    var oldMode = ringClassifyProfile(oldProfile);
+    var newMode = ringClassifyProfile(newProfile);
+    var merged = Object.assign({}, oldProfile, newProfile);
+    merged.shopId = merged.shopId || oldProfile.shopId || newProfile.shopId;
+    if (oldMode !== newMode && token) {
+        var oldSlot = ringReadAuthSlot(oldMode);
+        if (!token && oldSlot && oldSlot.token) token = oldSlot.token;
+        try {
+            localStorage.removeItem(ringModeTokenKey(oldMode));
+            localStorage.removeItem(ringModeMetaKey(oldMode));
+        } catch (eClr) { /* ignore */ }
+    }
+    ringSaveAuthSlot(merged, token, { verifiedAt: new Date().toISOString() });
+    if (typeof window !== 'undefined') {
+        window.__ringSessionVerified = true;
+    }
+    return merged;
+}
+
 /**
  * 工場・事業者: 自店7日以内ログを SSOT 同期
  * @returns {Promise<{ ok: boolean, signature: string }>}
@@ -5417,7 +5484,7 @@ function createGlobalUI() {
         <div class="settings-group">
           <div class="settings-group-title">${bizMenuLabel}</div>
           <ul class="settings-list">
-            <li><a href="factory_info.html">🏢 会社・工場情報</a></li>
+            <li><a href="factory_info.html">🏢 会社情報</a></li>
             <li><a href="ads/ad_recruit.html">📢 広告掲載のお申し込み</a></li>
             ${staffMenuItem}
             ${pwMenuItem}
@@ -5627,6 +5694,9 @@ window.ringFactoryVinSearchConsumeFlash_ = ringFactoryVinSearchConsumeFlash_;
 window.ringSubmitShopRegister_ = ringSubmitShopRegister_;
 window.ringParseShopRegisterErrorMessage_ = ringParseShopRegisterErrorMessage_;
 window.ringFormatFactoryHistoryCardBodyHtml_ = ringFormatFactoryHistoryCardBodyHtml_;
+window.ringGetShopDivisionLabel_ = ringGetShopDivisionLabel_;
+window.ringUpdateShopType_ = ringUpdateShopType_;
+window.ringApplyShopTypeChangeSession_ = ringApplyShopTypeChangeSession_;
 
 document.addEventListener('blur', function (e) {
     if (ringIsVinInputEl_(e.target)) ringApplyVinInputFormat_(e.target);

@@ -10,14 +10,11 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
   <link rel="manifest" href="manifest.json">
-    <title>車のお薬手帳</title>
-  
+  <title>会社情報 — 車のお薬手帳</title>
   <link rel="stylesheet" href="common.css">
   <script src="app.js?v=20260528-v26"></script>
   <script src="theme.js"></script>
-  
   <style>
-    /* 34pxグリッド同期設計および店舗情報固有のデザインを完全維持 */
     .section-desc {
       font-size: 12px; font-weight: 800; color: var(--muted);
       margin: 0 0 17px 0; line-height: 1.5;
@@ -27,15 +24,204 @@
       height: 34px; line-height: 34px; margin: 0;
     }
     .note { font-size: 11.5px; font-weight: 800; color: var(--muted); margin-top: 4px; }
+
+    .division-row {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px;
+      padding: 14px 16px; margin-bottom: 20px;
+      background: var(--paper); border: 2px solid var(--line); border-radius: 14px;
+      box-shadow: var(--shadow);
+    }
+    .division-label { font-size: 13px; font-weight: 800; color: var(--muted); }
+    .division-value { font-size: 17px; font-weight: 900; color: var(--text); }
+    .division-change-btn {
+      margin-left: auto; min-height: var(--tap-min); padding: 0 16px;
+      border: 2px solid var(--accent); border-radius: 999px;
+      background: var(--paper); color: var(--accent);
+      font-size: 13px; font-weight: 900; cursor: pointer;
+    }
+    .division-change-btn:disabled { opacity: 0.45; pointer-events: none; }
+
+    .division-panel {
+      display: none; margin-bottom: 24px; padding: 18px 16px;
+      background: var(--paper); border: 2px solid var(--accent); border-radius: 16px;
+      box-shadow: var(--shadow);
+    }
+    .division-panel.open { display: block; }
+    .division-panel-title {
+      font-size: 15px; font-weight: 900; color: var(--text); margin: 0 0 14px;
+    }
+    .division-options { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+    .division-option {
+      display: flex; align-items: center; gap: 10px; padding: 12px 14px;
+      border: 2px solid var(--line); border-radius: 12px; cursor: pointer;
+      font-size: 14px; font-weight: 800; color: var(--text);
+    }
+    .division-option.selected { border-color: var(--accent); background: rgba(59,130,246,0.06); }
+    .division-option input { width: 18px; height: 18px; flex-shrink: 0; }
+
+    .factory-fields { display: none; margin-top: 4px; }
+    .factory-fields.show { display: block; }
+
+    .division-actions { margin-top: 16px; }
+    .division-preview-btn {
+      width: 100%; min-height: var(--tap-min); padding: 14px;
+      border: none; border-radius: 12px; background: var(--accent); color: #fff;
+      font-size: 15px; font-weight: 900; cursor: pointer;
+    }
+
+    .division-modal-overlay {
+      display: none; position: fixed; inset: 0; z-index: 9000;
+      background: rgba(15,23,42,0.45); padding: 20px 16px;
+      align-items: center; justify-content: center; box-sizing: border-box;
+    }
+    .division-modal-overlay.open { display: flex; }
+    .division-modal {
+      width: 100%; max-width: 400px; max-height: 90vh; overflow-y: auto;
+      background: var(--paper); border-radius: 18px; padding: 22px 18px;
+      box-shadow: 0 16px 48px rgba(0,0,0,0.18);
+    }
+    .division-modal h2 {
+      font-size: 17px; font-weight: 900; margin: 0 0 16px; color: var(--text);
+    }
+    .confirm-table { width: 100%; border-collapse: collapse; margin-bottom: 18px; }
+    .confirm-table th, .confirm-table td {
+      padding: 10px 8px; font-size: 13px; font-weight: 700; text-align: left;
+      border-bottom: 1px dashed var(--line); vertical-align: top;
+    }
+    .confirm-table th { color: var(--muted); width: 38%; font-weight: 800; }
+    .confirm-warn {
+      font-size: 12px; font-weight: 800; color: #92400e;
+      background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px;
+      padding: 10px 12px; margin-bottom: 16px; line-height: 1.55;
+    }
+    .modal-btn-row { display: flex; flex-direction: column; gap: 10px; }
+    .modal-btn-primary {
+      width: 100%; min-height: var(--tap-min); padding: 14px;
+      border: none; border-radius: 12px; background: var(--accent); color: #fff;
+      font-size: 15px; font-weight: 900; cursor: pointer;
+    }
+    .modal-btn-secondary {
+      width: 100%; min-height: var(--tap-min); padding: 14px;
+      border: 2px solid var(--line); border-radius: 12px; background: var(--paper);
+      font-size: 14px; font-weight: 900; cursor: pointer; color: var(--muted);
+    }
   </style>
 </head>
 <body>
   <div class="container">
-    
     <div class="header">
       <a id="backBtn" class="back-link">◁ ホームへ戻る</a>
-      <h1 class="title">会社・工場情報</h1>
+      <h1 class="title">会社情報</h1>
       <p class="shop-id-display" id="dispShopId">店舗ID: 読込中...</p>
+    </div>
+
+    <div class="division-row" id="divisionRow">
+      <span class="division-label">会社区分：</span>
+      <span class="division-value" id="divisionCurrent">—</span>
+      <button type="button" class="division-change-btn" id="btnChangeDivision" style="display:none;">会社区分を変更</button>
+    </div>
+
+    <div class="division-panel" id="divisionPanel" aria-hidden="true">
+      <p class="division-panel-title">変更後の会社区分を選択</p>
+      <div class="division-options" id="divisionOptions">
+        <label class="division-option" data-division="dealer">
+          <input type="radio" name="targetDivision" value="dealer"> 販売店
+        </label>
+        <label class="division-option" data-division="認証">
+          <input type="radio" name="targetDivision" value="認証"> 認証工場
+        </label>
+        <label class="division-option" data-division="指定">
+          <input type="radio" name="targetDivision" value="指定"> 指定工場
+        </label>
+      </div>
+      <div class="factory-fields" id="factoryFields">
+        <div class="field">
+          <span class="label">管轄の運輸局・支局 <span style="color:#ef4444;font-size:11px;">必須</span></span>
+          <select id="divTransportBureau">
+            <option value="" disabled selected hidden>選択してください</option>
+            <optgroup label="北海道運輸局">
+              <option value="北海道運輸局 札幌">札幌</option>
+              <option value="北海道運輸局 函館">函館</option>
+              <option value="北海道運輸局 旭川">旭川</option>
+              <option value="北海道運輸局 室蘭">室蘭</option>
+              <option value="北海道運輸局 釧路">釧路</option>
+              <option value="北海道運輸局 帯広">帯広</option>
+              <option value="北海道運輸局 北見">北見</option>
+            </optgroup>
+            <optgroup label="東北運輸局">
+              <option value="東北運輸局 青森">青森</option>
+              <option value="東北運輸局 岩手">岩手</option>
+              <option value="東北運輸局 宮城">宮城</option>
+              <option value="東北運輸局 秋田">秋田</option>
+              <option value="東北運輸局 山形">山形</option>
+              <option value="東北運輸局 福島">福島</option>
+            </optgroup>
+            <optgroup label="関東運輸局">
+              <option value="関東運輸局 茨城">茨城</option>
+              <option value="関東運輸局 栃木">栃木</option>
+              <option value="関東運輸局 群馬">群馬</option>
+              <option value="関東運輸局 埼玉">埼玉</option>
+              <option value="関東運輸局 千葉">千葉</option>
+              <option value="関東運輸局 東京">東京</option>
+              <option value="関東運輸局 神奈川">神奈川</option>
+              <option value="関東運輸局 山梨">山梨</option>
+            </optgroup>
+            <optgroup label="北陸信越運輸局">
+              <option value="北陸信越運輸局 新潟">新潟</option>
+              <option value="北陸信越運輸局 長野">長野</option>
+              <option value="北陸信越運輸局 富山">富山</option>
+              <option value="北陸信越運輸局 石川">石川</option>
+            </optgroup>
+            <optgroup label="中部運輸局">
+              <option value="中部運輸局 福井">福井</option>
+              <option value="中部運輸局 岐阜">岐阜</option>
+              <option value="中部運輸局 静岡">静岡</option>
+              <option value="中部運輸局 愛知">愛知</option>
+              <option value="中部運輸局 三重">三重</option>
+            </optgroup>
+            <optgroup label="近畿運輸局">
+              <option value="近畿運輸局 滋賀">滋賀</option>
+              <option value="近畿運輸局 京都">京都</option>
+              <option value="近畿運輸局 大阪">大阪</option>
+              <option value="近畿運輸局 兵庫">兵庫</option>
+              <option value="近畿運輸局 奈良">奈良</option>
+              <option value="近畿運輸局 和歌山">和歌山</option>
+            </optgroup>
+            <optgroup label="中国運輸局">
+              <option value="中国運輸局 鳥取">鳥取</option>
+              <option value="中国運輸局 島根">島根</option>
+              <option value="中国運輸局 岡山">岡山</option>
+              <option value="中国運輸局 広島">広島</option>
+              <option value="中国運輸局 山口">山口</option>
+            </optgroup>
+            <optgroup label="四国運輸局">
+              <option value="四国運輸局 徳島">徳島</option>
+              <option value="四国運輸局 香川">香川</option>
+              <option value="四国運輸局 愛媛">愛媛</option>
+              <option value="四国運輸局 高知">高知</option>
+            </optgroup>
+            <optgroup label="九州運輸局">
+              <option value="九州運輸局 福岡">福岡</option>
+              <option value="九州運輸局 佐賀">佐賀</option>
+              <option value="九州運輸局 長崎">長崎</option>
+              <option value="九州運輸局 熊本">熊本</option>
+              <option value="九州運輸局 大分">大分</option>
+              <option value="九州運輸局 宮崎">宮崎</option>
+              <option value="九州運輸局 鹿児島">鹿児島</option>
+            </optgroup>
+            <optgroup label="沖縄総合事務局">
+              <option value="沖縄総合事務局 沖縄">沖縄</option>
+            </optgroup>
+          </select>
+        </div>
+        <div class="field">
+          <span class="label" id="divCertLabel">認証・指定番号 <span style="color:#ef4444;font-size:11px;">必須</span></span>
+          <input type="text" id="divFactoryNumber" placeholder="例：第12345号">
+        </div>
+      </div>
+      <div class="division-actions">
+        <button type="button" class="division-preview-btn" id="btnPreviewDivision">入力内容を確認する</button>
+      </div>
     </div>
 
     <p class="section-desc">※ここに登録した情報が、お客様の「かかりつけ画面」に表示されます。</p>
@@ -49,164 +235,287 @@
       <div class="field">
         <span class="label">工場種別 / 認証・指定番号</span>
         <input type="text" id="inFactoryNumber" readonly>
-        <div class="note">※番号の変更はマスター権限でサポートにお問い合わせください</div>
       </div>
     </div>
 
     <div class="field">
       <span class="label">代表者名・ご担当者名</span>
-      <input type="text" id="inRepresentativeName" placeholder="例：山田 太郎（スタッフ未登録時の日常点検入力者名に使います）" autocomplete="name">
+      <input type="text" id="inRepresentativeName" placeholder="例：山田 太郎" autocomplete="name">
       <div class="note">※スタッフがいない店舗では、日常点検の「入力スタッフ名」に表示されます</div>
     </div>
 
     <div class="field">
-      <span class="label">住所 📍</span>
+      <span class="label">住所</span>
       <input type="text" id="inAddress" placeholder="例：東京都〇〇区1-2-3">
-      <div class="note">※お客様がGoogleマップで道案内を出せるようになります</div>
     </div>
 
     <div class="field" style="margin-top: 34px;">
-      <span class="label">電話番号 📞</span>
+      <span class="label">電話番号</span>
       <input type="tel" id="inTel" placeholder="例：03-1234-5678">
-      <div class="note">※お客様のスマホからワンタップで電話がかけられます</div>
     </div>
-    
+
     <div class="field">
-      <span class="label">メールアドレス ✉️</span>
+      <span class="label">メールアドレス</span>
       <input type="email" id="inEmail" placeholder="例：info@example.com">
     </div>
-    
+
     <div class="field">
-      <span class="label">LINE公式URL 💬</span>
+      <span class="label">LINE公式URL</span>
       <input type="url" id="inLineUrl" placeholder="例：https://line.me/R/ti/p/...">
-      <div class="note">※お客様がLINEアプリを直接起動して予約できるようになります</div>
     </div>
 
     <button class="save-btn" onclick="saveShopInfo()" id="saveBtn" style="margin-top: 34px;">この内容で公開・保存する</button>
 
     <div class="ring-line-promo-slot" data-ring-line-promo style="margin-top: 24px;"></div>
+  </div>
 
-    <p class="section-desc" style="margin-top: 28px; text-align: center; line-height: 1.65;">
-      <a href="ads/ad_recruit.html" style="font-weight: 900; color: var(--accent);">📢 広告掲載のお申し込み</a><br>
-      <span style="font-size: 11px; font-weight: 800; color: var(--muted);">掲載内容は運営確認後に公開されます（フォームは準備中）</span>
-    </p>
-
+  <div class="division-modal-overlay" id="divisionModal" aria-hidden="true">
+    <div class="division-modal" role="dialog" aria-labelledby="divisionModalTitle">
+      <h2 id="divisionModalTitle">会社区分の変更内容確認</h2>
+      <p class="confirm-warn">変更後は、新しい会社区分に合ったホーム画面へ移動します。店舗ID・整備履歴・管理車両などはそのまま引き継がれます。</p>
+      <table class="confirm-table" id="confirmTable"></table>
+      <div class="modal-btn-row">
+        <button type="button" class="modal-btn-primary" id="btnConfirmDivision">この内容で変更を確定する</button>
+        <button type="button" class="modal-btn-secondary" id="btnCancelDivision">戻る</button>
+      </div>
+    </div>
   </div>
 
   <script>
     let currentProfile = null;
+    let pendingDivisionChange = null;
 
-    window.addEventListener('DOMContentLoaded', () => {
-      showLoading("データ取得中", "店舗情報を読み込んでいます...");
+    function divisionLabelFromCode(code) {
+      if (code === 'dealer') return '販売店';
+      if (code === '認証') return '認証工場';
+      if (code === '指定') return '指定工場';
+      return '—';
+    }
 
-      setTimeout(async () => {
-        currentProfile = typeof getCurrentProfile === "function" ? getCurrentProfile() : null;
-        
-        if (!currentProfile) {
-          hideLoading();
-          alert("ログイン情報の有効期限が切れました。再度ログインしてください。");
-          location.replace("login.html");
-          return;
-        }
-
-        // 戻るボタンの動的設定
-        const backBtn = document.getElementById('backBtn');
-        let backUrl = "dealer_home.html";
-        if (currentProfile.shopType === 'factory') {
-          backUrl = "factory_home.html";
-        }
-        backBtn.innerText = "戻る";
-        backBtn.onclick = () => goBackSmart(backUrl);
-
-        // オーナー以外の編集制限
-        const isMaster = currentProfile.role === 'master' || currentProfile.isAdmin === true;
-        if (!isMaster) {
-          const targets = ['inShopName', 'inRepresentativeName', 'inAddress', 'inTel', 'inEmail', 'inLineUrl'];
-          targets.forEach(id => {
-            const el = document.getElementById(id);
-            if (el) {
-              el.readOnly = true;
-              el.style.background = "rgba(255, 255, 255, 0.8)";
-              el.style.border = "2px solid var(--line)";
-              el.style.pointerEvents = "none";
-            }
-          });
-          document.getElementById('saveBtn').style.display = 'none';
-        }
-
-        document.getElementById('dispShopId').textContent = `店舗ID: ${currentProfile.shopId}`;
-        document.getElementById('inShopName').value = currentProfile.shopName || "";
-        
-        if (currentProfile.shopType === 'factory') {
-          document.getElementById('factoryArea').style.display = 'block';
-          document.getElementById('inFactoryNumber').value = `${currentProfile.factoryType || ""} ${currentProfile.factoryNumber || ""}`.trim();
-        }
-
-        await loadShopInfo();
-        hideLoading();
-      }, 300);
-    });
-
-    /**
-     * 店舗情報の取得処理
-     */
-    async function loadShopInfo() {
-      try {
-        const res = await fetch(GAS_URL, {
-          method: 'POST', headers: { 'Content-Type': 'text/plain' },
-          body: JSON.stringify({ action: 'get_shop_info', shopId: currentProfile.shopId })
-        });
-        const data = await res.json();
-        
-        if (data.success && data.info) {
-          document.getElementById('inAddress').value = data.info.address || "";
-          document.getElementById('inTel').value = data.info.tel || "";
-          document.getElementById('inEmail').value = data.info.email || "";
-          document.getElementById('inLineUrl').value = data.info.lineUrl || "";
-          document.getElementById('inRepresentativeName').value = data.info.representativeName || currentProfile.representativeName || "";
-        }
-      } catch (e) {
-        console.error("店舗情報取得エラー", e);
+    function refreshDivisionDisplay_() {
+      var label = typeof ringGetShopDivisionLabel_ === 'function'
+        ? ringGetShopDivisionLabel_(currentProfile)
+        : '—';
+      document.getElementById('divisionCurrent').textContent = label;
+      var isFactory = currentProfile && currentProfile.shopType === 'factory';
+      document.getElementById('factoryArea').style.display = isFactory ? 'block' : 'none';
+      if (isFactory) {
+        document.getElementById('inFactoryNumber').value =
+          ((currentProfile.factoryType || '') + ' ' + (currentProfile.factoryNumber || '')).trim();
       }
     }
 
-    /**
-     * 店舗情報の更新処理
-     */
-    async function saveShopInfo() {
-      showLoading("保存中", "店舗情報を更新しています...");
+    function syncDivisionOptionUi_() {
+      var selected = document.querySelector('input[name="targetDivision"]:checked');
+      var code = selected ? selected.value : '';
+      document.querySelectorAll('.division-option').forEach(function (el) {
+        el.classList.toggle('selected', el.getAttribute('data-division') === code);
+      });
+      var factoryFields = document.getElementById('factoryFields');
+      var isFactoryTarget = code === '認証' || code === '指定';
+      factoryFields.classList.toggle('show', isFactoryTarget);
+      document.getElementById('divCertLabel').textContent =
+        (code === '指定' ? '指定番号' : '認証番号') + ' （必須）';
+    }
 
-      const btn = document.getElementById('saveBtn');
+    function getSelectedTargetDivision_() {
+      var selected = document.querySelector('input[name="targetDivision"]:checked');
+      return selected ? selected.value : '';
+    }
+
+    function buildPendingChange_() {
+      var target = getSelectedTargetDivision_();
+      if (!target) return null;
+      var before = typeof ringGetShopDivisionLabel_ === 'function'
+        ? ringGetShopDivisionLabel_(currentProfile) : '—';
+      var after = divisionLabelFromCode(target);
+      var payload = { targetDivision: target };
+      var detailRows = [
+        { k: '変更前', v: before },
+        { k: '変更後', v: after }
+      ];
+      if (target === '認証' || target === '指定') {
+        var bureau = document.getElementById('divTransportBureau').value;
+        var num = document.getElementById('divFactoryNumber').value.trim();
+        if (!bureau || !num) return { error: '陸運支局と番号を入力してください。' };
+        payload.transportBureau = bureau;
+        payload.factoryNumberPart = num;
+        detailRows.push({ k: '陸運支局', v: bureau });
+        detailRows.push({ k: target === '指定' ? '指定番号' : '認証番号', v: num });
+      }
+      if (before === after && target === 'dealer' && currentProfile.shopType === 'dealer') {
+        return { error: '既に販売店です。別の会社区分を選択してください。' };
+      }
+      return { payload: payload, detailRows: detailRows, before: before, after: after };
+    }
+
+    function openConfirmModal_(detailRows) {
+      var tbody = document.getElementById('confirmTable');
+      tbody.innerHTML = detailRows.map(function (row) {
+        return '<tr><th>' + escapeHtml(row.k) + '</th><td>' + escapeHtml(row.v) + '</td></tr>';
+      }).join('');
+      document.getElementById('divisionModal').classList.add('open');
+      document.getElementById('divisionModal').setAttribute('aria-hidden', 'false');
+    }
+
+    function closeConfirmModal_() {
+      document.getElementById('divisionModal').classList.remove('open');
+      document.getElementById('divisionModal').setAttribute('aria-hidden', 'true');
+      pendingDivisionChange = null;
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+
+    async function submitDivisionChange_() {
+      if (!pendingDivisionChange || !pendingDivisionChange.payload) return;
+      var btn = document.getElementById('btnConfirmDivision');
       btn.disabled = true;
-
-      const shopName = document.getElementById('inShopName').value.trim();
-      const representativeName = document.getElementById('inRepresentativeName').value.trim();
-      const address = document.getElementById('inAddress').value.trim();
-      const tel = document.getElementById('inTel').value.trim();
-      const email = document.getElementById('inEmail').value.trim();
-      const lineUrl = document.getElementById('inLineUrl').value.trim();
-
+      showLoading('変更中', '会社区分を更新しています…');
       try {
-        const res = await fetch(GAS_URL, {
-          method: 'POST', headers: { 'Content-Type': 'text/plain' },
+        var result = await ringUpdateShopType_(pendingDivisionChange.payload);
+        if (!result.ok) {
+          hideLoading();
+          showToast('error', result.error || '変更に失敗しました');
+          return;
+        }
+        var token = typeof ringResolveActiveAuthToken === 'function' ? ringResolveActiveAuthToken() : '';
+        var merged = typeof ringApplyShopTypeChangeSession_ === 'function'
+          ? ringApplyShopTypeChangeSession_(currentProfile, Object.assign({}, currentProfile, result.data.profile), token)
+          : Object.assign({}, currentProfile, result.data.profile);
+        currentProfile = merged;
+        closeConfirmModal_();
+        document.getElementById('divisionPanel').classList.remove('open');
+        refreshDivisionDisplay_();
+        hideLoading();
+        showToast('success', '会社区分を変更しました');
+        var home = typeof ringGetHomeForProfile === 'function'
+          ? ringGetHomeForProfile(currentProfile)
+          : (currentProfile.shopType === 'factory' ? 'factory_home.html' : 'dealer_home.html');
+        setTimeout(function () { location.replace(home); }, 600);
+      } catch (e) {
+        hideLoading();
+        showToast('error', '通信エラーが発生しました');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', function () {
+      showLoading('データ取得中', '店舗情報を読み込んでいます…');
+
+      setTimeout(async function () {
+        currentProfile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+        if (!currentProfile || !currentProfile.shopId) {
+          hideLoading();
+          alert('ログイン情報の有効期限が切れました。再度ログインしてください。');
+          location.replace('login.html');
+          return;
+        }
+
+        var backBtn = document.getElementById('backBtn');
+        var backUrl = currentProfile.shopType === 'factory' ? 'factory_home.html' : 'dealer_home.html';
+        backBtn.textContent = '戻る';
+        backBtn.onclick = function () { goBackSmart(backUrl); };
+
+        var isMaster = currentProfile.role === 'master' || currentProfile.isAdmin === true;
+        if (!isMaster) {
+          ['inShopName', 'inRepresentativeName', 'inAddress', 'inTel', 'inEmail', 'inLineUrl'].forEach(function (id) {
+            var el = document.getElementById(id);
+            if (el) { el.readOnly = true; el.style.pointerEvents = 'none'; }
+          });
+          document.getElementById('saveBtn').style.display = 'none';
+        } else {
+          document.getElementById('btnChangeDivision').style.display = 'inline-flex';
+        }
+
+        document.getElementById('dispShopId').textContent = '店舗ID: ' + currentProfile.shopId;
+        document.getElementById('inShopName').value = currentProfile.shopName || '';
+        refreshDivisionDisplay_();
+        await loadShopInfo();
+        hideLoading();
+      }, 200);
+
+      document.getElementById('btnChangeDivision').addEventListener('click', function () {
+        var panel = document.getElementById('divisionPanel');
+        panel.classList.toggle('open');
+        panel.setAttribute('aria-hidden', panel.classList.contains('open') ? 'false' : 'true');
+      });
+
+      document.querySelectorAll('input[name="targetDivision"]').forEach(function (radio) {
+        radio.addEventListener('change', syncDivisionOptionUi_);
+      });
+
+      document.getElementById('btnPreviewDivision').addEventListener('click', function () {
+        var built = buildPendingChange_();
+        if (built && built.error) {
+          showToast('error', built.error);
+          return;
+        }
+        if (!built) {
+          showToast('error', '会社区分を選択してください');
+          return;
+        }
+        pendingDivisionChange = built;
+        openConfirmModal_(built.detailRows);
+      });
+
+      document.getElementById('btnConfirmDivision').addEventListener('click', submitDivisionChange_);
+      document.getElementById('btnCancelDivision').addEventListener('click', closeConfirmModal_);
+      document.getElementById('divisionModal').addEventListener('click', function (e) {
+        if (e.target === document.getElementById('divisionModal')) closeConfirmModal_();
+      });
+    });
+
+    async function loadShopInfo() {
+      try {
+        var res = await fetch(GAS_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({ action: 'get_shop_info', shopId: currentProfile.shopId })
+        });
+        var data = await res.json();
+        if (data.success && data.info) {
+          document.getElementById('inAddress').value = data.info.address || '';
+          document.getElementById('inTel').value = data.info.tel || '';
+          document.getElementById('inEmail').value = data.info.email || '';
+          document.getElementById('inLineUrl').value = data.info.lineUrl || '';
+          document.getElementById('inRepresentativeName').value =
+            data.info.representativeName || currentProfile.representativeName || '';
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    async function saveShopInfo() {
+      showLoading('保存中', '店舗情報を更新しています…');
+      var btn = document.getElementById('saveBtn');
+      btn.disabled = true;
+      try {
+        var res = await fetch(GAS_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
           body: JSON.stringify({
             action: 'update_shop_info',
             authToken: localStorage.getItem('ring_auth_token') || '',
             shopId: currentProfile.shopId,
-            shopName: shopName,
-            representativeName: representativeName,
-            address: address,
-            tel: tel,
-            email: email,
-            lineUrl: lineUrl
+            shopName: document.getElementById('inShopName').value.trim(),
+            representativeName: document.getElementById('inRepresentativeName').value.trim(),
+            address: document.getElementById('inAddress').value.trim(),
+            tel: document.getElementById('inTel').value.trim(),
+            email: document.getElementById('inEmail').value.trim(),
+            lineUrl: document.getElementById('inLineUrl').value.trim()
           })
         });
-        const data = await res.json();
-        
+        var data = await res.json();
         if (data.success) {
           showToast('success', '正常に登録されました');
-          currentProfile.shopName = shopName;
-          currentProfile.representativeName = representativeName;
+          currentProfile.shopName = document.getElementById('inShopName').value.trim();
           login(currentProfile, localStorage.getItem('ring_auth_token') || '');
         } else {
           showToast('error', '保存に失敗しました: ' + data.error);
