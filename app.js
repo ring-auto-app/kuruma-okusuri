@@ -5374,7 +5374,7 @@ function createGlobalUI() {
         <div class="settings-group">
           <div class="settings-group-title">サポート</div>
           <ul class="settings-list">
-            <li><a href="manual.html">📖 操作マニュアル</a></li>
+            <li><a href="manual.html">📖 使い方ガイド</a></li>
             <li><a href="faq.html">❓ よくある質問</a></li>
             <li><a href="contact.html">📧 お問い合わせ</a></li>
             <li><a href="ads/ad_recruit.html">📢 広告掲載について（事業者向け）</a></li>
@@ -5426,7 +5426,7 @@ function createGlobalUI() {
         <div class="settings-group">
           <div class="settings-group-title">サポート</div>
           <ul class="settings-list">
-            <li><a href="manual.html">📖 操作マニュアル</a></li>
+            <li><a href="manual.html">📖 使い方ガイド</a></li>
             <li><a href="faq.html">❓ よくある質問</a></li>
             <li><a href="contact.html">📧 お問い合わせ</a></li>
           </ul>

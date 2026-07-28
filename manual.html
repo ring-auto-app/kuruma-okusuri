@@ -10,28 +10,44 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
   <link rel="manifest" href="manifest.json">
-    <title>車のお薬手帳</title>
+  <title>使い方ガイド — 車のお薬手帳</title>
   <link rel="stylesheet" href="common.css">
   <script src="app.js?v=20260528-v26"></script>
   <script src="theme.js"></script>
   <style>
-    .tab-bar {
-      display: flex; gap: 6px; margin-bottom: 24px; overflow-x: auto;
-      padding-bottom: 4px; scrollbar-width: none;
+    .guide-lead {
+      font-size: 14px; font-weight: 700; color: var(--muted);
+      line-height: 1.8; margin: 0 0 20px;
     }
-    .tab-bar::-webkit-scrollbar { display: none; }
-    .tab-btn {
-      flex-shrink: 0; min-height: var(--tap-min); padding: 0 20px;
+
+    .guide-nav {
+      display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 28px;
+    }
+    .guide-nav a {
+      flex-shrink: 0; min-height: 36px; padding: 0 14px;
       display: inline-flex; align-items: center; justify-content: center;
-      border-radius: 999px;
-      font-size: 14px; font-weight: 900; border: 2px solid var(--line);
-      background: var(--paper); color: var(--muted); cursor: pointer; transition: 0.15s;
+      border-radius: 999px; font-size: 12px; font-weight: 900;
+      border: 2px solid var(--line); background: var(--paper);
+      color: var(--text); text-decoration: none;
       -webkit-tap-highlight-color: transparent;
     }
-    .tab-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .guide-nav a:active { transform: scale(0.98); }
 
-    .tab-panel { display: none; }
-    .tab-panel.active { display: block; }
+    .guide-section {
+      margin-bottom: 36px; scroll-margin-top: 16px;
+    }
+    .guide-section-heading {
+      font-size: 20px; font-weight: 900; color: var(--text);
+      margin: 0 0 16px; display: flex; align-items: center; gap: 8px;
+      line-height: 1.4;
+    }
+    .guide-section-heading--hero {
+      font-size: 22px; margin-bottom: 12px;
+    }
+    .guide-section-note {
+      font-size: 13px; font-weight: 700; color: var(--muted);
+      line-height: 1.7; margin: 0 0 16px;
+    }
 
     .section {
       background: var(--paper); border: 1px solid var(--line); border-radius: 16px;
@@ -51,7 +67,7 @@
       display: flex; align-items: center; justify-content: center; margin-top: 2px;
     }
     .step-body { flex: 1; }
-    .step-label { font-size: 14px; font-weight: 900; color: var(--text); margin-bottom: 3px; }
+    .step-label { font-size: 14px; font-weight: 900; color: var(--text); margin-bottom: 3px; line-height: 1.5; }
     .step-desc  { font-size: 12px; font-weight: 700; color: var(--muted); line-height: 1.6; }
 
     .tip-box {
@@ -64,9 +80,75 @@
       padding: 12px 14px; margin-top: 14px; font-size: 12px; font-weight: 700;
       color: #9f1239; line-height: 1.6;
     }
-    .badge-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-    .badge-item {
-      font-size: 11px; font-weight: 900; padding: 4px 10px; border-radius: 6px;
+
+    /* ① ホーム画面へ追加 — OS別カード */
+    .install-cards { display: flex; flex-direction: column; gap: 16px; }
+    .install-card {
+      background: var(--paper); border: 2px solid var(--accent); border-radius: 16px;
+      padding: 20px; box-shadow: var(--shadow);
+    }
+    .install-card-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
+      padding-bottom: 12px; border-bottom: 1px dashed var(--line);
+    }
+    .install-card-icon {
+      font-size: 28px; line-height: 1; flex-shrink: 0;
+    }
+    .install-card-title {
+      font-size: 17px; font-weight: 900; color: var(--accent); margin: 0;
+    }
+    .install-card-sub {
+      font-size: 11px; font-weight: 800; color: var(--muted); margin: 2px 0 0;
+    }
+    .install-step {
+      display: flex; gap: 12px; margin-bottom: 12px; align-items: flex-start;
+    }
+    .install-step:last-child { margin-bottom: 0; }
+    .install-step-num {
+      flex-shrink: 0; width: 26px; height: 26px; border-radius: 8px;
+      background: var(--accent); color: #fff; font-size: 13px; font-weight: 900;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .install-step-text {
+      flex: 1; font-size: 14px; font-weight: 800; color: var(--text); line-height: 1.6;
+      padding-top: 2px;
+    }
+    .ui-icon-inline {
+      display: inline-block; font-size: 1.05em; vertical-align: middle;
+      margin: 0 1px;
+    }
+
+    /* ⑥ FAQ */
+    .faq-list { display: flex; flex-direction: column; gap: 14px; }
+    .faq-item {
+      background: var(--paper); border: 1px solid var(--line); border-radius: 14px;
+      padding: 16px 18px; box-shadow: var(--shadow);
+    }
+    .faq-q {
+      font-size: 14px; font-weight: 900; color: var(--text);
+      margin: 0 0 8px; line-height: 1.5;
+    }
+    .faq-a {
+      font-size: 13px; font-weight: 700; color: var(--muted);
+      margin: 0; line-height: 1.7;
+    }
+
+    /* 最下部 CTA */
+    .guide-cta {
+      margin: 40px 0 24px; padding-top: 8px;
+    }
+    .guide-cta-btn {
+      display: block; width: 100%; min-height: var(--tap-min);
+      padding: 18px 20px; text-align: center; text-decoration: none;
+      background: var(--accent); color: #fff; border: none; border-radius: 14px;
+      font-size: 17px; font-weight: 900; cursor: pointer;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+      -webkit-tap-highlight-color: transparent;
+    }
+    .guide-cta-btn:active { transform: scale(0.98); }
+    .guide-cta-note {
+      text-align: center; font-size: 12px; font-weight: 700;
+      color: var(--muted); margin-top: 10px; line-height: 1.6;
     }
   </style>
 </head>
@@ -74,125 +156,137 @@
   <div class="container">
     <div class="header">
       <a href="#" onclick="ringBackFromSupportPage(); return false;" class="back-link">≪戻る</a>
-      <h1 class="title">操作マニュアル</h1>
+      <h1 class="title">使い方ガイド</h1>
     </div>
 
-    <div class="tab-bar">
-      <button class="tab-btn active" onclick="switchTab('user', this)">👤 ユーザー</button>
-      <button class="tab-btn" onclick="switchTab('factory', this)">🔧 整備工場</button>
-      <button class="tab-btn" onclick="switchTab('dealer', this)">🚗 事業者</button>
-    </div>
+    <p class="guide-lead">
+      登録後はまず「ホーム画面へ追加」してからご利用ください。ログイン方法や、整備工場・販売店・一般ユーザーそれぞれの操作手順をまとめています。
+    </p>
 
-    <!-- ユーザー向け -->
-    <div id="tab-user" class="tab-panel active">
+    <nav class="guide-nav" aria-label="ガイド目次">
+      <a href="#guide-install">① ホーム画面へ追加</a>
+      <a href="#guide-login">② ログイン</a>
+      <a href="#guide-factory">③ 整備工場</a>
+      <a href="#guide-dealer">④ 販売店</a>
+      <a href="#guide-user">⑤ 一般ユーザー</a>
+      <a href="#guide-faq">⑥ FAQ</a>
+    </nav>
 
-      <div class="section">
-        <div class="section-title">📖 はじめに</div>
-        <p style="font-size:13px; font-weight:700; color:var(--muted); line-height:1.8; margin:0;">
-          「車のお薬手帳」は、愛車の整備履歴を一冊の手帳としてまとめるアプリです。
-          工場が入力した整備記録を車台番号（VIN）で管理し、売却・買取時の資産価値向上にも役立ちます。
-        </p>
+    <!-- ① ホーム画面へ追加 -->
+    <section id="guide-install" class="guide-section">
+      <h2 class="guide-section-heading guide-section-heading--hero">📲 ① ホーム画面へ追加</h2>
+      <p class="guide-section-note">
+        アプリのようにホーム画面からすぐ開けるように設定してください。LINEやメールアプリ内ブラウザでは追加できない場合があります。その場合は Safari や Chrome で開き直してください。
+      </p>
+
+      <div class="install-cards">
+        <article class="install-card">
+          <div class="install-card-head">
+            <span class="install-card-icon" aria-hidden="true">🍎</span>
+            <div>
+              <h3 class="install-card-title">iPhone（Safari）</h3>
+              <p class="install-card-sub">Safari 標準ブラウザで操作</p>
+            </div>
+          </div>
+          <div class="install-step">
+            <span class="install-step-num">1</span>
+            <p class="install-step-text">Safariでアプリを開く</p>
+          </div>
+          <div class="install-step">
+            <span class="install-step-num">2</span>
+            <p class="install-step-text">画面下の「共有 <span class="ui-icon-inline" aria-hidden="true">📤</span>」をタップ</p>
+          </div>
+          <div class="install-step">
+            <span class="install-step-num">3</span>
+            <p class="install-step-text">「ホーム画面に追加 <span class="ui-icon-inline" aria-hidden="true">➕</span>」を選択</p>
+          </div>
+          <div class="install-step">
+            <span class="install-step-num">4</span>
+            <p class="install-step-text">「追加」を押す</p>
+          </div>
+        </article>
+
+        <article class="install-card">
+          <div class="install-card-head">
+            <span class="install-card-icon" aria-hidden="true">🤖</span>
+            <div>
+              <h3 class="install-card-title">Android（Chrome）</h3>
+              <p class="install-card-sub">Chrome 標準ブラウザで操作</p>
+            </div>
+          </div>
+          <div class="install-step">
+            <span class="install-step-num">1</span>
+            <p class="install-step-text">Chromeでアプリを開く</p>
+          </div>
+          <div class="install-step">
+            <span class="install-step-num">2</span>
+            <p class="install-step-text">右上 <span class="ui-icon-inline" aria-hidden="true">⋮</span> をタップ</p>
+          </div>
+          <div class="install-step">
+            <span class="install-step-num">3</span>
+            <p class="install-step-text">「ホーム画面に追加 <span class="ui-icon-inline" aria-hidden="true">➕</span>」</p>
+          </div>
+          <div class="install-step">
+            <span class="install-step-num">4</span>
+            <p class="install-step-text">「追加」</p>
+          </div>
+        </article>
+
+        <article class="install-card">
+          <div class="install-card-head">
+            <span class="install-card-icon" aria-hidden="true">💻</span>
+            <div>
+              <h3 class="install-card-title">パソコン（Chrome / Edge）</h3>
+              <p class="install-card-sub">PWA としてインストール</p>
+            </div>
+          </div>
+          <div class="install-step">
+            <span class="install-step-num">1</span>
+            <p class="install-step-text">アプリを開く</p>
+          </div>
+          <div class="install-step">
+            <span class="install-step-num">2</span>
+            <p class="install-step-text">アドレスバー右側のインストールアイコン <span class="ui-icon-inline" aria-hidden="true">⬇️💻</span> をクリック</p>
+          </div>
+          <div class="install-step">
+            <span class="install-step-num">3</span>
+            <p class="install-step-text">「インストール」</p>
+          </div>
+        </article>
       </div>
+    </section>
 
+    <!-- ② ログイン方法 -->
+    <section id="guide-login" class="guide-section">
+      <h2 class="guide-section-heading">🔑 ② ログイン方法</h2>
       <div class="section">
-        <div class="section-title">🚙 マイカーを登録する</div>
         <div class="step">
           <div class="step-num">1</div>
           <div class="step-body">
-            <div class="step-label">ホーム画面から「マイカー管理」を開く</div>
-            <div class="step-desc">ホームの「マイカー管理」ボタンをタップします。</div>
+            <div class="step-label">登録したメールアドレスでログインします</div>
+            <div class="step-desc">アカウント登録時に入力したメールアドレスをご利用ください。</div>
           </div>
         </div>
         <div class="step">
           <div class="step-num">2</div>
           <div class="step-body">
-            <div class="step-label">「＋ 車両を追加」をタップ</div>
-            <div class="step-desc">車両一覧画面の右上または下部ボタンから追加できます。</div>
+            <div class="step-label">登録時のパスワードを入力します</div>
+            <div class="step-desc">整備工場・販売店は、店舗共通のパスワードです。一般ユーザーはご自身で設定したパスワードです。</div>
           </div>
         </div>
         <div class="step">
           <div class="step-num">3</div>
           <div class="step-body">
-            <div class="step-label">車台番号（VIN）と車検満了日を入力</div>
-            <div class="step-desc">車台番号は車検証に記載されています。全角・半角どちらでも入力可能です。自動で大文字に変換されます。</div>
-          </div>
-        </div>
-        <div class="step">
-          <div class="step-num">4</div>
-          <div class="step-body">
-            <div class="step-label">「この車両を登録する」をタップ</div>
-            <div class="step-desc">登録が完了するとマイカー一覧に表示されます。</div>
+            <div class="step-label">ログイン後はホーム画面へ追加して利用してください</div>
+            <div class="step-desc">①の手順でホーム画面に追加すると、次回からすぐにアプリを開けます。</div>
           </div>
         </div>
       </div>
+    </section>
 
-      <div class="section">
-        <div class="section-title">📋 整備履歴を確認する</div>
-        <div class="step">
-          <div class="step-num">1</div>
-          <div class="step-body">
-            <div class="step-label">マイカー一覧から車両をタップ</div>
-            <div class="step-desc">登録した車両をタップすると整備履歴の一覧が表示されます。</div>
-          </div>
-        </div>
-        <div class="step">
-          <div class="step-num">2</div>
-          <div class="step-body">
-            <div class="step-label">付箋カードをタップして詳細を確認</div>
-            <div class="step-desc">作業日・整備内容・交換部品・走行距離などが確認できます。</div>
-          </div>
-        </div>
-        <div class="tip-box">
-          💡 整備履歴は工場・事業者が入力します。ユーザー自身は閲覧のみ可能です。
-        </div>
-      </div>
-
-      <div class="section">
-        <div class="section-title">✅ 日常点検を記録する</div>
-        <div class="step">
-          <div class="step-num">1</div>
-          <div class="step-body">
-            <div class="step-label">ホームの「日常点検を入力」をタップ</div>
-            <div class="step-desc">対象車両のVINを選択して点検画面を開きます。</div>
-          </div>
-        </div>
-        <div class="step">
-          <div class="step-num">2</div>
-          <div class="step-body">
-            <div class="step-label">各項目を「○ OK」または「× 気になる」で選択</div>
-            <div class="step-desc">「× 気になる」を選ぶとメモ欄が表示されます。気になる点を自由に記入してください。</div>
-          </div>
-        </div>
-        <div class="step">
-          <div class="step-num">3</div>
-          <div class="step-body">
-            <div class="step-label">「手帳に記録する」をタップ</div>
-            <div class="step-desc">点検結果が保存されます。チェック日は今日から2週間前まで選択できます。</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="section">
-        <div class="section-title">🏥 かかりつけ工場を登録する</div>
-        <div class="step">
-          <div class="step-num">1</div>
-          <div class="step-body">
-            <div class="step-label">しおり（⚙）から「かかりつけ」をタップ</div>
-            <div class="step-desc">お気に入り工場の一覧が表示されます。</div>
-          </div>
-        </div>
-        <div class="step">
-          <div class="step-num">2</div>
-          <div class="step-body">
-            <div class="step-label">工場のQRコードを読み取る</div>
-            <div class="step-desc">工場のQRコードをスキャンすると自動で登録されます。</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 整備工場向け -->
-    <div id="tab-factory" class="tab-panel">
+    <!-- ③ 整備工場 -->
+    <section id="guide-factory" class="guide-section">
+      <h2 class="guide-section-heading">🔧 ③ 整備工場</h2>
 
       <div class="section">
         <div class="section-title">📖 はじめに</div>
@@ -284,10 +378,11 @@
           </div>
         </div>
       </div>
-    </div>
+    </section>
 
-    <!-- 事業者向け -->
-    <div id="tab-dealer" class="tab-panel">
+    <!-- ④ 販売店 -->
+    <section id="guide-dealer" class="guide-section">
+      <h2 class="guide-section-heading">🚗 ④ 販売店</h2>
 
       <div class="section">
         <div class="section-title">📖 はじめに</div>
@@ -295,6 +390,60 @@
           事業者アカウントでは、在庫車両の管理・整備記録の入力・スタッフ管理が利用できます。
           仕入れ・販売時の履歴確認にも活用できます。
         </p>
+      </div>
+
+      <div class="section">
+        <div class="section-title">🔍 整備履歴を検索する（VIN検索）</div>
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <div class="step-label">ホームの「履歴検索」をタップ</div>
+            <div class="step-desc">車台番号（VIN）で整備履歴を検索できます。</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <div class="step-label">車台番号（VIN）を入力して検索</div>
+            <div class="step-desc">過去の整備記録を一覧で確認できます。付箋カードをタップすると詳細が開きます。</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">📋 整備履歴を確認する</div>
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <div class="step-label">「履歴検索」でVINを検索</div>
+            <div class="step-desc">仕入れ・販売前の履歴確認にご利用ください。</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <div class="step-label">付箋カードをタップして詳細を確認</div>
+            <div class="step-desc">作業日・整備内容・交換部品・走行距離などが確認できます。</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">📷 QRコードの活用</div>
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <div class="step-label">しおり（⚙）から「QRコード読み取り」を開く</div>
+            <div class="step-desc">画面右下のしおりアイコンからQR読み取り画面を起動できます。</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <div class="step-label">お客様のQRコードを読み取る</div>
+            <div class="step-desc">お客様の車両情報や整備履歴の確認に活用できます。カメラの使用許可が必要です。</div>
+          </div>
+        </div>
       </div>
 
       <div class="section">
@@ -370,29 +519,186 @@
           </div>
         </div>
       </div>
+    </section>
+
+    <!-- ⑤ 一般ユーザー -->
+    <section id="guide-user" class="guide-section">
+      <h2 class="guide-section-heading">👤 ⑤ 一般ユーザー</h2>
+
+      <div class="section">
+        <div class="section-title">📖 はじめに</div>
+        <p style="font-size:13px; font-weight:700; color:var(--muted); line-height:1.8; margin:0;">
+          「車のお薬手帳」は、愛車の整備履歴を一冊の手帳としてまとめるアプリです。
+          工場が入力した整備記録を車台番号（VIN）で管理し、売却・買取時の資産価値向上にも役立ちます。
+        </p>
+      </div>
+
+      <div class="section">
+        <div class="section-title">🚙 マイカーを登録する</div>
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <div class="step-label">ホーム画面から「マイカー管理」を開く</div>
+            <div class="step-desc">ホームの「マイカー管理」ボタンをタップします。</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <div class="step-label">「＋ 車両を追加」をタップ</div>
+            <div class="step-desc">車両一覧画面の右上または下部ボタンから追加できます。</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <div class="step-label">車台番号（VIN）と車検満了日を入力</div>
+            <div class="step-desc">車台番号は車検証に記載されています。全角・半角どちらでも入力可能です。自動で大文字に変換されます。</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-body">
+            <div class="step-label">「この車両を登録する」をタップ</div>
+            <div class="step-desc">登録が完了するとマイカー一覧に表示されます。</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">📋 整備履歴を確認する</div>
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <div class="step-label">マイカー一覧から車両をタップ</div>
+            <div class="step-desc">登録した車両をタップすると整備履歴の一覧が表示されます。</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <div class="step-label">付箋カードをタップして詳細を確認</div>
+            <div class="step-desc">作業日・整備内容・交換部品・走行距離などが確認できます。</div>
+          </div>
+        </div>
+        <div class="tip-box">
+          💡 整備履歴は工場・事業者が入力します。ユーザー自身は閲覧のみ可能です。
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">📷 QRコードを読み込む</div>
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <div class="step-label">しおり（⚙）から「QRコード読み取り」を開く</div>
+            <div class="step-desc">画面右下のしおりアイコンから起動できます。</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <div class="step-label">工場のQRコードを読み取る</div>
+            <div class="step-desc">かかりつけ工場の登録などに利用できます。カメラの使用許可が必要です。</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">✅ 日常点検を記録する</div>
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <div class="step-label">ホームの「日常点検を入力」をタップ</div>
+            <div class="step-desc">対象車両のVINを選択して点検画面を開きます。</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <div class="step-label">各項目を「○ OK」または「× 気になる」で選択</div>
+            <div class="step-desc">「× 気になる」を選ぶとメモ欄が表示されます。気になる点を自由に記入してください。</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <div class="step-label">「手帳に記録する」をタップ</div>
+            <div class="step-desc">点検結果が保存されます。チェック日は今日から2週間前まで選択できます。</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">🏥 かかりつけ工場を登録する</div>
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <div class="step-label">しおり（⚙）から「かかりつけ」をタップ</div>
+            <div class="step-desc">お気に入り工場の一覧が表示されます。</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <div class="step-label">工場のQRコードを読み取る</div>
+            <div class="step-desc">工場のQRコードをスキャンすると自動で登録されます。</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ⑥ FAQ -->
+    <section id="guide-faq" class="guide-section">
+      <h2 class="guide-section-heading">❓ ⑥ よくある質問（FAQ）</h2>
+      <div class="faq-list">
+        <article class="faq-item">
+          <p class="faq-q">Q: ホーム画面へ追加できません</p>
+          <p class="faq-a">A: アプリ内ブラウザ（LINEやメールアプリ等）で開いている場合は、SafariやChromeなどの標準ブラウザで開き直してからお試しください。</p>
+        </article>
+        <article class="faq-item">
+          <p class="faq-q">Q: パスワードを忘れました</p>
+          <p class="faq-a">A: ログイン画面の「パスワードを忘れた方」から再設定をお願いいたします。</p>
+        </article>
+        <article class="faq-item">
+          <p class="faq-q">Q: 整備履歴が表示されません</p>
+          <p class="faq-a">A: 通信状況をご確認いただくか、一度画面を更新（リロード）してください。</p>
+        </article>
+        <article class="faq-item">
+          <p class="faq-q">Q: QRコードが読み込めません</p>
+          <p class="faq-a">A: カメラのレンズの汚れを拭き取り、明るい場所でもう一度お試しください。</p>
+        </article>
+      </div>
+    </section>
+
+    <div class="guide-cta">
+      <a href="login.html" class="guide-cta-btn">アプリを開く（ログイン画面へ）</a>
+      <p class="guide-cta-note">ガイドを読んだあとは、上のボタンからログインしてご利用ください。</p>
     </div>
 
   </div>
 
   <script>
-    function switchTab(id, btn) {
-      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-      document.getElementById('tab-' + id).classList.add('active');
-      btn.classList.add('active');
-    }
+    window.addEventListener('DOMContentLoaded', function () {
+      var hash = (window.location.hash || '').replace('#', '');
+      var params = new URLSearchParams(window.location.search);
+      var targetId = hash || params.get('section') || '';
 
-    // ログインロールに合わせて初期タブを自動選択
-    window.addEventListener('DOMContentLoaded', () => {
-      const profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
-      if (!profile) return; // 未ログインはデフォルト（ユーザータブ）のまま
+      if (!targetId) {
+        var profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+        if (profile && profile.shopType === 'factory') targetId = 'guide-factory';
+        else if (profile && profile.shopType === 'dealer') targetId = 'guide-dealer';
+        else if (profile && !profile.shopType) targetId = 'guide-user';
+      }
 
-      let targetId = 'user';
-      if (profile.shopType === 'factory') targetId = 'factory';
-      else if (profile.shopType === 'dealer') targetId = 'dealer';
-
-      const btn = document.querySelector(`.tab-btn[onclick*="'${targetId}'"]`);
-      if (btn) switchTab(targetId, btn);
+      if (targetId) {
+        var el = document.getElementById(targetId);
+        if (el) {
+          setTimeout(function () {
+            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }, 100);
+        }
+      }
     });
   </script>
 </body>
