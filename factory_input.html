@@ -405,9 +405,20 @@
     }
 
     window.addEventListener('DOMContentLoaded', () => {
-      if (typeof ringBootAuthForOcrPage === 'function') ringBootAuthForOcrPage('shop');
+      if (typeof ringBootAuthForMode === 'function') {
+        var boot = ringBootAuthForMode('shop');
+        if (!boot.ok) {
+          location.replace('login.html?tab=shop');
+          return;
+        }
+      }
       currentProfile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
-      if (!currentProfile) return location.replace("login.html?tab=factory");
+      if (!currentProfile || currentProfile.shopType !== 'factory') {
+        location.replace('login.html?tab=shop');
+        return;
+      }
+
+      if (typeof ringBootAuthForOcrPage === 'function') ringBootAuthForOcrPage('shop');
 
       // inspector（日常点検のみ）・viewer（閲覧のみ）は整備入力不可
       if (currentProfile.role === 'inspector' || currentProfile.role === 'viewer') {

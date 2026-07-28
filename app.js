@@ -512,6 +512,20 @@ function ringClearAuthSlot(mode) {
     }
 }
 
+/**
+ * スタッフ管理画面 URL（shopType で工場/販売店を分岐）
+ * @param {object} profile
+ * @returns {string}
+ */
+function ringGetStaffAdminUrl_(profile) {
+    profile = profile || {};
+    if (String(profile.role || '') !== 'master') return '';
+    var st = String(profile.shopType || '');
+    if (st === 'dealer') return 'dealer_admin.html';
+    if (st === 'factory') return 'factory_admin.html';
+    return '';
+}
+
 function ringGetHomeForProfile(profile) {
     if (!profile) return 'login.html';
     if (profile.shopType === 'factory') return 'factory_home.html';
@@ -5472,10 +5486,13 @@ function createGlobalUI() {
     } else {
         const canManageStaff = profile && profile.role === 'master';
         const isBizUser = profile && (profile.shopType === 'factory' || profile.shopType === 'dealer');
+        const staffAdminUrl = typeof ringGetStaffAdminUrl_ === 'function'
+            ? ringGetStaffAdminUrl_(profile)
+            : '';
         const staffMenuItem = !isBizUser
             ? ''
-            : (canManageStaff
-                ? '<li><a href="factory_admin.html">👑 スタッフ管理</a></li>'
+            : (canManageStaff && staffAdminUrl
+                ? '<li><a href="' + staffAdminUrl + '">👑 スタッフ管理</a></li>'
                 : '<li><a href="#" onclick="event.preventDefault(); showToast(\'info\',\'スタッフ管理はオーナー権限のみ利用できます\'); return false;">👑 スタッフ管理（オーナー専用）</a></li>');
         const pwMenuItem = canManageStaff
             ? '<li><a href="change_password.html">🔑 パスワード変更</a></li>' : '';
@@ -5696,6 +5713,7 @@ window.ringParseShopRegisterErrorMessage_ = ringParseShopRegisterErrorMessage_;
 window.ringFormatFactoryHistoryCardBodyHtml_ = ringFormatFactoryHistoryCardBodyHtml_;
 window.ringGetShopDivisionLabel_ = ringGetShopDivisionLabel_;
 window.ringUpdateShopType_ = ringUpdateShopType_;
+window.ringGetStaffAdminUrl_ = ringGetStaffAdminUrl_;
 window.ringApplyShopTypeChangeSession_ = ringApplyShopTypeChangeSession_;
 
 document.addEventListener('blur', function (e) {
