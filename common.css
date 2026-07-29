@@ -828,6 +828,75 @@ textarea.ring-auto-grow {
 .ring-ocr-batch__qi--processing { color: var(--accent); }
 .ring-ocr-batch__qi--fail { color: #b45309; }
 
+/* 作業内容・交換部品 — 4画面共通表示 */
+.ring-maint-body { margin-top: 4px; }
+.ring-maint-group { margin-bottom: 34px; }
+.ring-maint-group:last-child { margin-bottom: 0; }
+.ring-maint-work,
+.fh-work {
+  font-size: 16px;
+  font-weight: 900;
+  color: #1e3a8a;
+  margin: 0 0 34px;
+  line-height: 1.3;
+}
+.ring-maint-group:last-child .ring-maint-work { margin-bottom: 34px; }
+.ring-maint-part,
+.fh-part {
+  font-size: 12px;
+  font-weight: 700;
+  color: #000;
+  line-height: 1.3;
+  padding-left: 1em;
+  margin: 0;
+}
+.ring-maint-memo,
+.fh-memo {
+  font-size: 12px;
+  font-weight: 700;
+  color: #1e3a8a;
+  margin: 8px 0 0;
+  line-height: 1.3;
+}
+.ring-maint-empty,
+.fh-empty {
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b;
+  line-height: 1.3;
+  opacity: 0.6;
+}
+.ring-maint-empty-inline {
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b;
+  opacity: 0.6;
+}
+.ring-maint-preview {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 2px dashed var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+  min-height: 34px;
+}
+.ring-save-confirm__v--maint { display: block; white-space: normal; }
+.ring-save-confirm__row--maint { align-items: flex-start; }
+.ring-ocr-review__maint-preview { margin-top: 8px; }
+
+@media print {
+  .ring-maint-work, .ring-maint-memo, .fh-work, .fh-memo {
+    color: #1e3a8a !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .ring-maint-part, .fh-part {
+    color: #000 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
 /* OCR バッチレビュー */
 .ring-ocr-review__card .ring-save-confirm__body { overflow-y: auto; }
 .ring-ocr-review__body { padding-bottom: 8px; }

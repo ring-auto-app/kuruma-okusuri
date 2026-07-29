@@ -13,7 +13,7 @@
     <title>車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20260528-v26"></script>
+  <script src="app.js?v=20260629-v30"></script>
   <script src="theme.js"></script>
   
   <style>
@@ -61,6 +61,15 @@
       font-size: 15px; font-weight: 700; color: var(--text);
       line-height: 34px; min-height: 34px; margin: 0;
       white-space: pre-wrap; word-break: break-all;
+    }
+
+    .field-stacked .value.ring-maint-value {
+      font-size: inherit;
+      font-weight: inherit;
+      line-height: inherit;
+      min-height: 0;
+      white-space: normal;
+      word-break: break-word;
     }
 
     #photoSection { display: none; margin: 34px 16px; }
@@ -147,7 +156,7 @@
 
     <div class="field-stacked spaced">
       <span class="label">交換部品・作業内容</span>
-      <div class="value" id="outParts">---</div>
+      <div class="value ring-maint-value" id="outParts">---</div>
     </div>
 
     <div class="field-stacked spaced">
@@ -240,7 +249,13 @@
             
             document.getElementById('outFactory').innerText = factoryText;
             
-            document.getElementById('outParts').innerText = log.parts || "なし";
+            if (typeof renderMaintenanceItems === 'function') {
+              document.getElementById('outParts').innerHTML = log.parts
+                ? renderMaintenanceItems(log)
+                : '<div class="ring-maint-empty">なし</div>';
+            } else {
+              document.getElementById('outParts').innerText = log.parts || "なし";
+            }
             document.getElementById('outMemo').innerText = log.memo || "なし";
 
             if (log.partsPhoto) {

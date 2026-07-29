@@ -1960,21 +1960,6 @@ function ringFormatFactoryHistoryPartLine_(item) {
     return line;
 }
 
-/** 【作業】/【部品】ブロックを行配列で抽出（表示専用） */
-function ringParseFactoryHistoryMarkedSection_(text, marker) {
-    var src = String(text || "");
-    if (!src) return [];
-    var tag = "\u3010" + marker + "\u3011";
-    var idx = src.indexOf(tag);
-    if (idx < 0) return [];
-    var rest = src.slice(idx + tag.length);
-    var next = rest.search(/\n\s*\u3010/);
-    var block = next >= 0 ? rest.slice(0, next) : rest;
-    return block.split("\n").map(function (line) {
-        return String(line || "").replace(/^[\s\u30FB\u2022\-]+/, "").trim();
-    }).filter(Boolean);
-}
-
 function ringStripFactoryHistoryMarkedSections_(text) {
     return String(text || "")
         .replace(/\u3010\u4F5C\u696D\u3011[\s\S]*?(?=\n\s*\u3010|$)/g, "")
@@ -1982,99 +1967,190 @@ function ringStripFactoryHistoryMarkedSections_(text) {
         .trim();
 }
 
-function ringPushUniqueFactoryHistoryLine_(arr, line) {
-    var s = String(line || "").trim();
-    if (!s) return;
-    for (var i = 0; i < arr.length; i++) {
-        if (arr[i] === s) return;
-    }
-    arr.push(s);
+/** 行頭のリスト記号のみ除去（文中の「・」は保持） */
+function ringStripMaintenanceLineBullet_(line) {
+    return String(line || "").replace(/^[\s\u30FB\u2022\u00B7\-]+/, "").trim();
 }
 
-function ringSplitFactoryHistoryPartTokens_(text) {
-    return String(text || "").split(/[\n\u30FB\u3001]/).map(function (seg) {
-        return String(seg || "").replace(/^[\s\u30FB\u2022\-]+/, "").trim();
-    }).filter(Boolean);
+var RING_MAINT_WORK_TAIL_RE_ = /(?:交換|取替|取付|装着|整備|点検|修理|脱着|調整|清掃|充填|締付|締め直し|分解|組付|洗浄|給油|オーバーホール|板金|塗装|研磨|コーティング|リペア|補修|車検|メンテナンス|メンテ)$/;
+var RING_MAINT_WORK_ANY_RE_ = /(?:交換|取替|取付|装着|整備|点検|修理|脱着|調整|清掃|充填|締付|締め直し|分解|組付|洗浄|給油|オーバーホール|板金|塗装|研磨|コーティング|リペア|補修|車検|メンテナンス|メンテ)/;
+
+/**
+ * 表示専用：1行が作業か部品かを判定（文字列自体は変更しない）
+ * @param {string} text
+ * @param {'work'|'part'|null} sectionHint 【作業】/【部品】ブロック由来のヒント
+ * @returns {'work'|'part'}
+ */
+function ringClassifyMaintenanceLineKind_(text, sectionHint) {
+    if (sectionHint === "work") return "work";
+    if (sectionHint === "part") return "part";
+    var s = ringStripMaintenanceLineBullet_(text);
+    if (!s) return "part";
+    if (RING_MAINT_WORK_TAIL_RE_.test(s)) return "work";
+    var withoutParens = s.replace(/[（(][^）)]*[）)]/g, "");
+    if (RING_MAINT_WORK_ANY_RE_.test(withoutParens)) return "work";
+    return "part";
 }
 
 /**
- * 工場・整備履歴一覧カード本文 HTML（表示専用・データは変更しない）
+ * parts / contentText テキストを改行単位で解析（「・」では分割しない）
+ * @param {string} text
+ * @returns {Array<{text:string, kind:'work'|'part'}>}
+ */
+function ringParseMaintenanceTextToLines_(text) {
+    var out = [];
+    var sectionHint = null;
+    String(text || "").split("\n").forEach(function (rawLine) {
+        var line = String(rawLine || "").trim();
+        if (!line) return;
+        if (line === "\u3010\u4F5C\u696D\u3011") { sectionHint = "work"; return; }
+        if (line === "\u3010\u90E8\u54C1\u3011") { sectionHint = "part"; return; }
+        var displayText = ringStripMaintenanceLineBullet_(line);
+        if (!displayText) return;
+        out.push({
+            text: displayText,
+            kind: ringClassifyMaintenanceLineKind_(line, sectionHint)
+        });
+    });
+    return out;
+}
+
+/**
+ * 表示専用：フラットな保存データから行リストへ（保存形式は変更しない）
+ * @param {object} source { parts?, contentText?, lines?, works?, partsItems? }
+ * @returns {Array<{text:string, kind:'work'|'part'}>}
+ */
+function ringCollectMaintenanceDisplayLines_(source) {
+    source = source || {};
+    if (Array.isArray(source.lines) && source.lines.length) {
+        return source.lines.map(function (line) {
+            var t = String(line || "").trim();
+            return {
+                text: ringStripMaintenanceLineBullet_(t) || t,
+                kind: ringClassifyMaintenanceLineKind_(t, null)
+            };
+        }).filter(function (item) { return item.text; });
+    }
+    var text = String(
+        source.contentText != null ? source.contentText : (source.parts != null ? source.parts : "")
+    ).trim();
+    if (text) return ringParseMaintenanceTextToLines_(text);
+
+    var out = [];
+    (Array.isArray(source.works) ? source.works : []).forEach(function (w) {
+        var t = String(w || "").trim();
+        if (t) out.push({ text: t, kind: "work" });
+    });
+    (Array.isArray(source.partsItems) ? source.partsItems : []).forEach(function (p) {
+        var line = ringFormatFactoryHistoryPartLine_(p);
+        if (line) out.push({ text: line, kind: "part" });
+    });
+    return out;
+}
+
+/**
+ * 表示専用：行リストを「作業→部品」の親子グループへ変換
+ * @param {object} source
+ * @returns {Array<{work:string, parts:string[]}>}
+ */
+function ringBuildMaintenanceDisplayGroups_(source) {
+    var lines = ringCollectMaintenanceDisplayLines_(source);
+    var groups = [];
+    var current = null;
+
+    lines.forEach(function (item) {
+        if (item.kind === "work") {
+            if (current) groups.push(current);
+            current = { work: item.text, parts: [] };
+        } else {
+            if (!current) current = { work: "", parts: [] };
+            current.parts.push(item.text);
+        }
+    });
+    if (current) groups.push(current);
+
+    return groups.filter(function (g) {
+        return g.work || g.parts.length;
+    });
+}
+
+/**
+ * 作業内容・交換部品の共通 HTML レンダリング（4画面共通）
+ * @param {object} source { parts?, contentText?, lines?, works?, partsItems? }
+ * @param {{ emptyHtml?: string }} [opts]
+ * @returns {string}
+ */
+function renderMaintenanceItems(source, opts) {
+    opts = opts || {};
+    var groups = ringBuildMaintenanceDisplayGroups_(source);
+    if (!groups.length) {
+        return opts.emptyHtml != null
+            ? opts.emptyHtml
+            : '<div class="ring-maint-empty">\u4EA4\u63DB\u90E8\u54C1\u306A\u3057</div>';
+    }
+    var html = '<div class="ring-maint-body">';
+    groups.forEach(function (g) {
+        html += '<div class="ring-maint-group">';
+        if (g.work) {
+            html += '<div class="ring-maint-work">' + escapeHtml(g.work) + "</div>";
+        }
+        g.parts.forEach(function (p) {
+            var bullet = p.charAt(0) === "\u30FB" ? p : "\u30FB" + p;
+            html += '<div class="ring-maint-part">' + escapeHtml(bullet) + "</div>";
+        });
+        html += "</div>";
+    });
+    html += "</div>";
+    return html;
+}
+
+/** 保存前確認モーダル：作業内容・交換部品行 */
+function ringConfirmMaintenanceRow(label, source) {
+    var html = renderMaintenanceItems(source, {
+        emptyHtml: '<span class="ring-maint-empty-inline">\u2014</span>'
+    });
+    return '<div class="ring-save-confirm__row ring-save-confirm__row--maint">' +
+        '<span class="ring-save-confirm__k">' + escapeHtml(label) + '</span>' +
+        '<span class="ring-save-confirm__v ring-save-confirm__v--maint">' + html + '</span></div>';
+}
+
+/** 入力欄のプレビューを共通レンダリングで同期 */
+function ringSyncMaintenancePreview_(textareaEl, previewEl, meta) {
+    if (!previewEl) return;
+    meta = meta || {};
+    previewEl.innerHTML = renderMaintenanceItems({
+        parts: textareaEl ? textareaEl.value : "",
+        works: meta.works || [],
+        partsItems: meta.partsItems || []
+    });
+}
+
+/** textarea 入力に連動するプレビュー初期化 */
+function ringMountMaintenanceItemsPreview_(textareaId, previewId, getMeta) {
+    var ta = document.getElementById(textareaId);
+    var prev = document.getElementById(previewId);
+    if (!ta || !prev) return null;
+    function sync() {
+        var meta = typeof getMeta === "function" ? getMeta() : {};
+        ringSyncMaintenancePreview_(ta, prev, meta);
+    }
+    ta.addEventListener("input", sync);
+    sync();
+    return sync;
+}
+
+/**
+ * 工場・整備履歴一覧カード本文 HTML（renderMaintenanceItems ラッパー）
  * @param {object} log
  * @returns {string}
  */
 function ringFormatFactoryHistoryCardBodyHtml_(log) {
     log = log || {};
-    var works = [];
-    var parts = [];
-    var memos = [];
-    var partsText = String(log.parts || "").trim();
-    var memoText = String(log.memo || "").trim();
-
-    if (Array.isArray(log.works)) {
-        log.works.forEach(function (w) {
-            ringPushUniqueFactoryHistoryLine_(works, w);
-        });
+    var html = renderMaintenanceItems(log);
+    var memoText = ringStripFactoryHistoryMarkedSections_(String(log.memo || "").trim());
+    if (memoText && memoText.indexOf("\u3010") < 0) {
+        html += '<div class="ring-maint-memo">' + escapeHtml(memoText) + "</div>";
     }
-    if (Array.isArray(log.partsItems) && log.partsItems.length) {
-        log.partsItems.forEach(function (p) {
-            var line = ringFormatFactoryHistoryPartLine_(p);
-            if (line) ringPushUniqueFactoryHistoryLine_(parts, line);
-        });
-    }
-
-    ringParseFactoryHistoryMarkedSection_(partsText, "\u4F5C\u696D").forEach(function (w) {
-        ringPushUniqueFactoryHistoryLine_(works, w);
-    });
-    ringParseFactoryHistoryMarkedSection_(memoText, "\u4F5C\u696D").forEach(function (w) {
-        ringPushUniqueFactoryHistoryLine_(works, w);
-    });
-    if (!parts.length) {
-        ringParseFactoryHistoryMarkedSection_(partsText, "\u90E8\u54C1").forEach(function (p) {
-            ringPushUniqueFactoryHistoryLine_(parts, p);
-        });
-        ringParseFactoryHistoryMarkedSection_(memoText, "\u90E8\u54C1").forEach(function (p) {
-            ringPushUniqueFactoryHistoryLine_(parts, p);
-        });
-    }
-
-    var plainPartsRemain = ringStripFactoryHistoryMarkedSections_(partsText);
-    if (!parts.length && plainPartsRemain) {
-        if (/[\n\u30FB\u3001]/.test(plainPartsRemain)) {
-            ringSplitFactoryHistoryPartTokens_(plainPartsRemain).forEach(function (p) {
-                ringPushUniqueFactoryHistoryLine_(parts, p);
-            });
-        } else {
-            ringPushUniqueFactoryHistoryLine_(works, plainPartsRemain);
-        }
-    }
-
-    var plainMemoRemain = ringStripFactoryHistoryMarkedSections_(memoText);
-    if (plainMemoRemain && plainMemoRemain.indexOf("\u3010") < 0) {
-        ringPushUniqueFactoryHistoryLine_(memos, plainMemoRemain);
-    }
-
-    var titleLine = String(log.title || "").trim();
-    if (titleLine && titleLine !== "\u4E00\u822C\u6574\u5099") {
-        var dupTitle = works.some(function (w) { return w === titleLine; });
-        if (!dupTitle) works.unshift(titleLine);
-    }
-
-    if (!works.length && !parts.length && !memos.length) {
-        return '<div class="fh-empty">\u4EA4\u63DB\u90E8\u54C1\u306A\u3057</div>';
-    }
-
-    var html = '<div class="fh-body">';
-    works.forEach(function (w) {
-        html += '<div class="fh-work">' + escapeHtml(w) + "</div>";
-    });
-    parts.forEach(function (p) {
-        var bullet = p.charAt(0) === "\u30FB" ? p : "\u30FB" + p;
-        html += '<div class="fh-part">' + escapeHtml(bullet) + "</div>";
-    });
-    memos.forEach(function (m) {
-        html += '<div class="fh-memo">' + escapeHtml(m) + "</div>";
-    });
-    html += "</div>";
     return html;
 }
 
@@ -5122,7 +5198,6 @@ function ringApplyInvoiceOcrToFormForFactory_(ocrResult) {
         partsEl.value = contentText;
         ringAutoGrowTextareaSoon_(partsEl);
     }
-    if (typeof lookupVehicle === 'function' && r.vin) lookupVehicle(r.vin);
     if (typeof window !== 'undefined') {
         window.__ringInvoiceOcrMeta = {
             documentType: r.documentType,
@@ -5133,6 +5208,11 @@ function ringApplyInvoiceOcrToFormForFactory_(ocrResult) {
         };
         window.__ringOcrAppliedThisSession = true;
     }
+    if (typeof ringSyncMaintenancePreview_ === 'function') {
+        var prevEl = document.getElementById('inPartsPreview');
+        if (prevEl) ringSyncMaintenancePreview_(partsEl, prevEl, window.__ringInvoiceOcrMeta || {});
+    }
+    if (typeof lookupVehicle === 'function' && r.vin) lookupVehicle(r.vin);
     if (typeof ringInitAutoGrowTextareas === 'function') ringInitAutoGrowTextareas();
 }
 
@@ -5168,6 +5248,17 @@ function showInvoiceOcrReviewModal(ocrResult, opts) {
         return '<div class="ring-ocr-review__row"><label class="ring-ocr-review__lbl">' + escapeHtml(label) + '</label>' + tag + '</div>';
     }
 
+    function fieldRowWithMaintPreview(key, label, type, val) {
+        var row = fieldRow(key, label, type, val);
+        if (key !== 'partsContent') return row;
+        var preview = renderMaintenanceItems({
+            parts: val,
+            works: r.works,
+            partsItems: (r.parts || []).map(function (p) { return { n: p.n, s: p.s, q: p.q }; })
+        });
+        return row + '<div class="ring-ocr-review__maint-preview ring-maint-preview" id="ringOcrPartsPreview">' + preview + '</div>';
+    }
+
     var body = '';
     body += fieldRow('vin', '車台番号 (VIN)', 'text', r.vin || '');
     body += '<p class="ring-vin-input-notice" style="font-size:11px;color:var(--muted,#64748b);font-weight:700;margin:0 0 10px;line-height:1.55;">※車台番号（VIN）は車検証・記録事項の「車台番号」を入力してください。<br>左下の「車両ID」ではありません。</p>';
@@ -5176,7 +5267,7 @@ function showInvoiceOcrReviewModal(ocrResult, opts) {
         '<div class="ring-ocr-review__input" style="background:#f8fafc;border:none;padding:8px 0;">' +
         escapeHtml(ringInvoiceDocTypeLabel_(r.documentType)) + ' (' + escapeHtml(r.documentType || 'unknown') + ')' +
         '</div></div>';
-    body += fieldRow('partsContent', '作業内容・交換部品', 'textarea', unifiedText);
+    body += fieldRowWithMaintPreview('partsContent', '作業内容・交換部品', 'textarea', unifiedText);
 
     var html = '<div class="ring-save-confirm" id="' + id + '">' +
         '<div class="ring-save-confirm__backdrop"></div>' +
@@ -5242,6 +5333,18 @@ function showInvoiceOcrReviewModal(ocrResult, opts) {
 
     if (typeof ringInitAutoGrowTextareas === 'function') ringInitAutoGrowTextareas(el);
     if (typeof ringInitIosTextareaKeyboardFix_ === 'function') ringInitIosTextareaKeyboardFix_(el);
+
+    var partsTa = el.querySelector('[data-key="partsContent"]');
+    var partsPreview = document.getElementById('ringOcrPartsPreview');
+    if (partsTa && partsPreview) {
+        partsTa.addEventListener('input', function () {
+            partsPreview.innerHTML = renderMaintenanceItems({
+                parts: partsTa.value,
+                works: r.works,
+                partsItems: (r.parts || []).map(function (p) { return { n: p.n, s: p.s, q: p.q }; })
+            });
+        });
+    }
 }
 
 function ringGetPreSaveLeadText() {
@@ -5711,6 +5814,11 @@ window.ringFactoryVinSearchConsumeFlash_ = ringFactoryVinSearchConsumeFlash_;
 window.ringSubmitShopRegister_ = ringSubmitShopRegister_;
 window.ringParseShopRegisterErrorMessage_ = ringParseShopRegisterErrorMessage_;
 window.ringFormatFactoryHistoryCardBodyHtml_ = ringFormatFactoryHistoryCardBodyHtml_;
+window.renderMaintenanceItems = renderMaintenanceItems;
+window.ringBuildMaintenanceDisplayGroups_ = ringBuildMaintenanceDisplayGroups_;
+window.ringConfirmMaintenanceRow = ringConfirmMaintenanceRow;
+window.ringMountMaintenanceItemsPreview_ = ringMountMaintenanceItemsPreview_;
+window.ringSyncMaintenancePreview_ = ringSyncMaintenancePreview_;
 window.ringGetShopDivisionLabel_ = ringGetShopDivisionLabel_;
 window.ringUpdateShopType_ = ringUpdateShopType_;
 window.ringGetStaffAdminUrl_ = ringGetStaffAdminUrl_;

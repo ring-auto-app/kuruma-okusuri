@@ -13,7 +13,7 @@
     <title>車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20260528-v26"></script>
+  <script src="app.js?v=20260629-v30"></script>
   <script src="theme.js"></script>
   <script src="gemini-ocr.js"></script>
   <script src="gemini-invoice-ocr.js"></script>
@@ -278,7 +278,7 @@
         <select id="inTitle" required></select>
         <div id="errTitle" style="display:none; color:#dc2626; font-size:12px; font-weight:800; margin-top:4px;">⚠ 整備区分を選択してください</div>
       </div>
-      <div class="field"><span class="label">作業内容・交換部品</span><textarea id="inParts" class="ring-auto-grow" rows="3" placeholder="自動抽出されます"></textarea></div>
+      <div class="field"><span class="label">作業内容・交換部品</span><textarea id="inParts" class="ring-auto-grow" rows="3" placeholder="自動抽出されます"></textarea><div id="inPartsPreview" class="ring-maint-preview" aria-live="polite"></div></div>
       <div class="field"><span class="label">整備メモ</span><textarea id="inMemo" class="ring-auto-grow" rows="2" placeholder="特記事項があれば入力"></textarea></div>
 
       <div class="field" style="margin-bottom: 0;">
@@ -442,6 +442,11 @@
       if (typeof ringCarAddInitDateFields === 'function') ringCarAddInitDateFields();
       if (typeof ringInitAutoGrowTextareas === 'function') ringInitAutoGrowTextareas();
       if (typeof ringInitIosTextareaKeyboardFix_ === 'function') ringInitIosTextareaKeyboardFix_();
+      if (typeof ringMountMaintenanceItemsPreview_ === 'function') {
+        ringMountMaintenanceItemsPreview_('inParts', 'inPartsPreview', function () {
+          return window.__ringInvoiceOcrMeta || {};
+        });
+      }
 
       const preVin = new URLSearchParams(location.search).get('vin');
       if (preVin) {
@@ -582,7 +587,13 @@
         ringConfirmRow('原動機型式', document.getElementById('inEngine').value) +
         ringConfirmRow('類別区分番号', document.getElementById('inClass').value) +
         ringConfirmRow('型式指定番号', document.getElementById('inTypeDesig').value) +
-        ringConfirmRow('作業内容・交換部品', truncateRingConfirm(partsVal, 180)) +
+        (typeof ringConfirmMaintenanceRow === 'function'
+          ? ringConfirmMaintenanceRow('作業内容・交換部品', {
+              parts: partsVal,
+              works: (window.__ringInvoiceOcrMeta || {}).works || [],
+              partsItems: (window.__ringInvoiceOcrMeta || {}).partsItems || []
+            })
+          : ringConfirmRow('作業内容・交換部品', truncateRingConfirm(partsVal, 180))) +
         ringConfirmRow('整備メモ', truncateRingConfirm(memoVal, 180)) +
         ringConfirmRow('写真', photoOn ? '添付あり' : '—');
 
