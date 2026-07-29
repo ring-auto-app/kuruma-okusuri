@@ -5146,6 +5146,94 @@ function ringInvoiceDocTypeLabel_(t) {
     return map[String(t || '').toLowerCase()] || String(t || '不明');
 }
 
+/** 整備明細 OCR: ブロック時に案内する読み込み推奨書類（判定には使わない） */
+var RING_INVOICE_OCR_RECOMMENDED_DOCUMENT_HINT_ =
+    '登録する場合は次の書類を読み込んでください。\n\n' +
+    '・納品書\n' +
+    '・請求書\n' +
+    '・分解整備記録簿\n' +
+    '・点検整備記録簿';
+
+/**
+ * 整備明細 OCR: 登録不可書類（ブラックリスト — ここに載る documentType のみブロック）
+ * 種別追加時はここに1行足すだけでブロックとメッセージが有効になる
+ * @type {Object<string, { label: string, message?: string }>}
+ */
+var RING_INVOICE_OCR_NON_REGISTRABLE_DOCUMENTS_ = {
+    estimate: {
+        label: '見積書',
+        message: '📄 この書類は【見積書】と判定されました。\n\n' +
+            '見積書からは整備履歴を登録できません。\n' +
+            RING_INVOICE_OCR_RECOMMENDED_DOCUMENT_HINT_
+    }
+};
+
+function ringInvoiceOcrNormalizeDocumentType_(ocrResult) {
+    var r = typeof ringInvoiceNormalizeResult_ === 'function'
+        ? ringInvoiceNormalizeResult_(ocrResult)
+        : (ocrResult || {});
+    return String(r.documentType || 'unknown').trim().toLowerCase() || 'unknown';
+}
+
+function ringInvoiceOcrBuildRejectedDocumentMessage_(config) {
+    if (!config) return '';
+    if (config.message) return String(config.message);
+    var label = String(config.label || 'この書類').trim() || 'この書類';
+    return '📄 この書類は【' + label + '】と判定されました。\n\n' +
+        label + 'からは整備履歴を登録できません。\n' +
+        RING_INVOICE_OCR_RECOMMENDED_DOCUMENT_HINT_;
+}
+
+/**
+ * 整備明細 OCR: 登録不可書類か判定（ブラックリスト方式 — NON_REGISTRABLE のみブロック）
+ * @param {object} ocrResult
+ * @returns {{ registrable: boolean, documentType: string, config: object|null }}
+ */
+function ringInvoiceOcrCheckRegistrable_(ocrResult) {
+    var docType = ringInvoiceOcrNormalizeDocumentType_(ocrResult);
+    var blocked = RING_INVOICE_OCR_NON_REGISTRABLE_DOCUMENTS_[docType] || null;
+    return {
+        registrable: !blocked,
+        documentType: docType,
+        config: blocked
+    };
+}
+
+/** 登録不可書類: 確認モーダルを開かず理由を表示（ring-save-confirm 系 UI） */
+function ringShowInvoiceOcrRejectedDocumentModal_(checkResult) {
+    checkResult = checkResult || {};
+    var message = ringInvoiceOcrBuildRejectedDocumentMessage_(checkResult.config);
+    var id = 'ring-invoice-ocr-rejected';
+    var old = document.getElementById(id);
+    if (old) old.remove();
+    var html = '<div class="ring-save-confirm" id="' + id + '">' +
+        '<div class="ring-save-confirm__backdrop"></div>' +
+        '<div class="ring-save-confirm__card">' +
+        '<div class="ring-save-confirm__title">読み取りできない書類</div>' +
+        '<p class="ring-save-confirm__lead" style="margin-top:0;white-space:pre-line">' + escapeHtml(message) + '</p>' +
+        '<div class="ring-save-confirm__actions">' +
+        '<button type="button" class="ring-save-confirm__btn ring-save-confirm__btn--primary" data-ring-action="close">閉じる</button>' +
+        '</div></div></div>';
+    document.body.insertAdjacentHTML('beforeend', html);
+    var el = document.getElementById(id);
+    var card = el.querySelector('.ring-save-confirm__card');
+    function syncCardMaxHeight() {
+        if (!card) return;
+        var vv = window.visualViewport;
+        var h = vv ? vv.height : window.innerHeight;
+        card.style.maxHeight = Math.max(160, Math.min(h * 0.8, h - 48)) + 'px';
+    }
+    var detachVv = typeof ringAttachVisualViewportCard === 'function'
+        ? ringAttachVisualViewportCard(card, syncCardMaxHeight)
+        : function () {};
+    function close() {
+        detachVv();
+        if (el && el.parentNode) el.remove();
+    }
+    el.querySelector('[data-ring-action="close"]').onclick = close;
+    el.querySelector('.ring-save-confirm__backdrop').onclick = close;
+}
+
 /** 整備明細 OCR: contentText / lines 優先。なければ works/parts をブロック分けせず連結 */
 function ringFormatInvoiceOcrUnifiedText_(raw) {
     if (!raw || typeof raw !== 'object') return '';
@@ -5223,6 +5311,14 @@ function ringApplyInvoiceOcrToFormForFactory_(ocrResult) {
  */
 function showInvoiceOcrReviewModal(ocrResult, opts) {
     opts = opts || {};
+    if (typeof ringInvoiceOcrCheckRegistrable_ === 'function') {
+        var docCheck = ringInvoiceOcrCheckRegistrable_(ocrResult);
+        if (!docCheck.registrable) {
+            ringShowInvoiceOcrRejectedDocumentModal_(docCheck);
+            if (typeof opts.onCancel === 'function') opts.onCancel();
+            return;
+        }
+    }
     var r = typeof ringInvoiceNormalizeResult_ === 'function'
         ? ringInvoiceNormalizeResult_(ocrResult)
         : (ocrResult || {});
@@ -5813,6 +5909,8 @@ window.ringFactoryVinSearchSetFlash_ = ringFactoryVinSearchSetFlash_;
 window.ringFactoryVinSearchConsumeFlash_ = ringFactoryVinSearchConsumeFlash_;
 window.ringSubmitShopRegister_ = ringSubmitShopRegister_;
 window.ringParseShopRegisterErrorMessage_ = ringParseShopRegisterErrorMessage_;
+window.ringInvoiceOcrCheckRegistrable_ = ringInvoiceOcrCheckRegistrable_;
+window.ringShowInvoiceOcrRejectedDocumentModal_ = ringShowInvoiceOcrRejectedDocumentModal_;
 window.ringFormatFactoryHistoryCardBodyHtml_ = ringFormatFactoryHistoryCardBodyHtml_;
 window.renderMaintenanceItems = renderMaintenanceItems;
 window.ringBuildMaintenanceDisplayGroups_ = ringBuildMaintenanceDisplayGroups_;

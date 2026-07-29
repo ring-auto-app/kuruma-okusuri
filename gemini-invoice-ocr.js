@@ -278,6 +278,23 @@
             }
             if (!result) return null;
 
+            if (typeof ringInvoiceOcrCheckRegistrable_ === 'function') {
+                var docCheck = ringInvoiceOcrCheckRegistrable_(result);
+                if (!docCheck.registrable) {
+                    if (typeof ringShowInvoiceOcrRejectedDocumentModal_ === 'function') {
+                        ringShowInvoiceOcrRejectedDocumentModal_(docCheck);
+                    } else if (typeof showToast === 'function') {
+                        showToast('warning', 'この書類からは整備履歴を登録できません。');
+                    }
+                    if (typeof ringLogSystemEvent === 'function') {
+                        ringLogSystemEvent('OCR_INVOICE_DOC_REJECTED', {
+                            documentType: docCheck.documentType
+                        });
+                    }
+                    return result;
+                }
+            }
+
             var ocrApplied = false;
             if (typeof showInvoiceOcrReviewModal === 'function') {
                 await new Promise(function (resolve) {
