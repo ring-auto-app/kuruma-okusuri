@@ -68,22 +68,53 @@
         'MINI': 'ミニ', 'PORSCHE': 'ポルシェ', 'FERRARI': 'フェラーリ', 'LAMBORGHINI': 'ランボルギーニ'
     };
 
-    var RING_GEMINI_SHAKEN_PROMPT =
-        'この車両書類の画像から情報を抽出し、JSON形式で返してください。\n' +
-        '- vin: 車台番号\n' +
-        '- firstRegistrationDate: 初度登録年月（YYYY-MM形式）\n' +
-        '- expiryDate: 有効期間の満了する日（YYYY-MM-DD形式。記載がない場合は空文字列）\n' +
-        '- carName: 車名\n' +
-        '- model: 型式\n' +
-        '- engineModel: 原動機型式\n' +
-        '- typeDesignationNumber: 型式指定番号\n' +
-        '- classificationNumber: 類別区分番号\n' +
-        '- vehicleType: 自動車の種別（普通・小型・軽自動車・大型特殊・小型特殊のいずれか）\n' +
-        '- purpose: 用途\n' +
-        '- useCategory: 自家用・事業用の別\n' +
-        '- bodyShape: 車体の形状（『車体の形状』欄に注目し、『オートバイ』『二輪』などの記載があれば、その文字をそのまま抽出）\n' +
-        '純粋なJSON文字列のみを出力すること。マークダウンや説明文は一切含めないでください。\n' +
-        '【重要】純粋なJSONのみ返却。Markdown記法（```json等）禁止。説明禁止。思考過程禁止。推測禁止。存在しない値はnull。JSON以外の文字を出力しないこと。';
+    var RING_GEMINI_SHAKEN_PROMPT = `
+日本の自動車検査証（車検証）の画像を解析し、指定されたJSONのみを返してください。
+
+【取得ルール】
+画像に印字されたラベル（項目名）を基準に、そのラベルに対応する値のみを取得してください。
+各JSONキーには、そのラベルに対応する値のみを設定してください。
+他のラベルの値を使用してはいけません。
+判読できない場合のみ空文字列("")を返してください。
+
+【ラベルとJSONキーの対応】
+・車台番号 → vin（例: KE2FW-105890）
+・型式 → model（例: LDA-KE2FW）
+・原動機の型式 → engineModel
+・初度登録年月 → firstRegistrationDate（YYYY-MM形式）
+・有効期間の満了する日 → expiryDate（YYYY-MM-DD形式。記載なしは""）
+・車名 → carName
+・型式指定番号 → typeDesignationNumber
+・類別区分番号 → classificationNumber
+・自動車の種別 → vehicleType
+・用途 → purpose
+・自家用・事業用の別 → useCategory
+・車体の形状 → bodyShape
+
+【厳守：混同禁止】
+「車台番号」「型式」「原動機の型式」は完全に独立した別項目です。
+・車台番号の値を model に設定してはいけません。
+・型式の値を vin に設定してはいけません。
+・原動機の型式を他の項目へ設定してはいけません。
+同一の値を複数のキーに設定することは絶対に禁止します。
+
+【出力形式】
+以下のキーのみを持つ純粋なJSON文字列を出力してください。マークダウンや説明文は一切禁止します。
+{
+  "vin":"",
+  "firstRegistrationDate":"",
+  "expiryDate":"",
+  "carName":"",
+  "model":"",
+  "engineModel":"",
+  "typeDesignationNumber":"",
+  "classificationNumber":"",
+  "vehicleType":"",
+  "purpose":"",
+  "useCategory":"",
+  "bodyShape":""
+}
+`;
 
     /**
      * Canvas API で JPEG 圧縮（Exif なし Base64）。Gemini OCR 送信専用。
