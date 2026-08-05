@@ -5,7 +5,7 @@
     'use strict';
 
     var RING_INVOICE_OCR_ACTION = 'ocr_invoice';
-    var RING_INVOICE_OCR_TIMEOUT_MS = 120000;
+    var RING_INVOICE_OCR_TIMEOUT_MS = 180000;
     var RING_INVOICE_SLOT_COUNT = 5;
 
     var ringInvoiceSlotState = {

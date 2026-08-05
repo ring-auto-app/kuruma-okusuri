@@ -8,7 +8,7 @@
     /** GAS ルータ action（app.js の GAS_URL へ POST） */
     var RING_GEMINI_OCR_GAS_ACTION = 'ocr_gemini_shaken';
     /** Gemini OCR は応答が遅いため長め */
-    var RING_GEMINI_OCR_TIMEOUT_MS = 90000;
+    var RING_GEMINI_OCR_TIMEOUT_MS = 120000;
     /** Gemini OCR 専用：長辺上限（超える場合のみ縮小、未満は拡大しない） */
     var MAX_IMAGE_SIZE = 1600;
     var RING_OCR_JPEG_QUALITY = 0.8;

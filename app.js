@@ -3252,7 +3252,7 @@ function ringGasErrorToUserMessage_(errMsg, actionType) {
  * GAS：fetch タイムアウト（H-01）
  */
 async function fetchJsonWithTimeout(url, options, timeoutMs) {
-    const ms = timeoutMs != null ? timeoutMs : 20000;
+    const ms = timeoutMs != null ? timeoutMs : 60000;
     if (typeof AbortController === 'undefined') {
         try {
             const res = await fetch(url, options || {});
@@ -3313,7 +3313,7 @@ async function sendToGAS_Safe(actionType, data, opts) {
     const authToken = ringResolveActiveAuthToken();
     if (authToken) payload.authToken = authToken;
 
-    const timeoutMs = opts && opts.timeoutMs != null ? opts.timeoutMs : 20000;
+    const timeoutMs = opts && opts.timeoutMs != null ? opts.timeoutMs : 60000;
     const json = await fetchJsonWithTimeout(GAS_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain' },
