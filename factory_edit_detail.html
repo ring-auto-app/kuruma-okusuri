@@ -147,38 +147,16 @@
     }
 
     window.addEventListener('DOMContentLoaded', () => {
-      showLoading("データ取得中", "対象の記録を読み込んでいます...");
-      init().finally(function () { hideLoading(); });
+      loadAndRenderEditDetail(false);
     });
 
-    async function init() {
-      if (!vin || !logId) {
-        alert("データが見つかりません。");
-        location.replace("factory_edit_list.html");
-        return;
-      }
-
-      if (typeof syncMaintenanceHistoryForVin === 'function') {
-        try { await syncMaintenanceHistoryForVin(vin); } catch (eSync) { /* キャッシュ */ }
-      }
-
+    function ringEditDetailFindCachedLog_() {
       const logs = typeof readLogsArray === 'function' ? readLogsArray() : safeJsonParse(localStorage.getItem("nappy_logs_v1"), []);
-      const targetLog = logs.find(l => l.log_id === logId && _normalize(l.vin) === _normalize(vin));
+      return logs.find(l => l.log_id === logId && _normalize(l.vin) === _normalize(vin));
+    }
 
-      if (!targetLog) {
-        alert("該当する履歴がありません。");
-        location.replace("factory_edit_list.html");
-        return;
-      }
-
+    function ringEditDetailApplyLog_(targetLog) {
       originalCreatedAt = targetLog.createdAt || targetLog.created_at || targetLog.date;
-      const createdMs = typeof ringLogCreatedAtMs_ === 'function' ? ringLogCreatedAtMs_(targetLog) : new Date(originalCreatedAt).getTime();
-      if (!createdMs || (Date.now() - createdMs) >= 7 * 24 * 60 * 60 * 1000) {
-        alert("【エラー】この記録は登録から7日以上経過しているため、ロック（確定）されています。");
-        location.replace("factory_edit_list.html");
-        return;
-      }
-
       document.getElementById("inVin").value = targetLog.vin;
       const dateVal = targetLog.date || "";
       document.getElementById("inDate").value = dateVal;
@@ -206,6 +184,72 @@
         document.getElementById("partsPhotoPreview").src = targetLog.partsPhoto;
         document.getElementById("partsPhotoPreview").style.display = "block";
         document.getElementById("inPartsPhotoBase64").value = targetLog.partsPhoto;
+      }
+    }
+
+    function ringEditDetailBackgroundSync_() {
+      if (!vin || typeof syncMaintenanceHistoryForVin !== 'function') return;
+      var prevSig = typeof ringMaintenanceLogsSignature_ === 'function'
+        ? ringMaintenanceLogsSignature_([ringEditDetailFindCachedLog_()].filter(Boolean))
+        : '';
+      syncMaintenanceHistoryForVin(vin).then(function (syncResult) {
+        if (!syncResult || syncResult.ok !== true) return;
+        var updated = ringEditDetailFindCachedLog_();
+        if (!updated) return;
+        var newSig = typeof ringMaintenanceLogsSignature_ === 'function'
+          ? ringMaintenanceLogsSignature_([updated])
+          : '';
+        if (newSig !== prevSig) {
+          ringEditDetailApplyLog_(updated);
+        }
+      }).catch(function () { /* ignore */ });
+    }
+
+    async function loadAndRenderEditDetail(isManualRefresh) {
+      if (!vin || !logId) {
+        alert("データが見つかりません。");
+        location.replace("factory_edit_list.html");
+        return;
+      }
+
+      var cachedLog = ringEditDetailFindCachedLog_();
+
+      if (cachedLog && !isManualRefresh) {
+        const createdMs = typeof ringLogCreatedAtMs_ === 'function' ? ringLogCreatedAtMs_(cachedLog) : new Date(cachedLog.createdAt || cachedLog.date).getTime();
+        if (!createdMs || (Date.now() - createdMs) >= 7 * 24 * 60 * 60 * 1000) {
+          alert("【エラー】この記録は登録から7日以上経過しているため、ロック（確定）されています。");
+          location.replace("factory_edit_list.html");
+          return;
+        }
+        ringEditDetailApplyLog_(cachedLog);
+        ringEditDetailBackgroundSync_();
+        return;
+      }
+
+      if (typeof showLoading === 'function') showLoading("データ取得中", "対象の記録を読み込んでいます...");
+      try {
+        if (typeof syncMaintenanceHistoryForVin === 'function') {
+          try { await syncMaintenanceHistoryForVin(vin); } catch (eSync) { /* キャッシュ */ }
+        }
+
+        const targetLog = ringEditDetailFindCachedLog_();
+
+        if (!targetLog) {
+          alert("該当する履歴がありません。");
+          location.replace("factory_edit_list.html");
+          return;
+        }
+
+        const createdMs = typeof ringLogCreatedAtMs_ === 'function' ? ringLogCreatedAtMs_(targetLog) : new Date(targetLog.createdAt || targetLog.date).getTime();
+        if (!createdMs || (Date.now() - createdMs) >= 7 * 24 * 60 * 60 * 1000) {
+          alert("【エラー】この記録は登録から7日以上経過しているため、ロック（確定）されています。");
+          location.replace("factory_edit_list.html");
+          return;
+        }
+
+        ringEditDetailApplyLog_(targetLog);
+      } finally {
+        if (typeof hideLoading === 'function') hideLoading();
       }
     }
 

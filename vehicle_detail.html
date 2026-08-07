@@ -144,34 +144,18 @@
     const targetVin = params.get("vin");
 
     /**
-     * モード切替と初期化
-     */
-    function init() {
-      if (!profile) {
-        document.getElementById("pageTitle").innerText = "マイカー詳細";
-      } else if (profile.shopType === 'factory' || profile.shopType === 'dealer') {
-        document.getElementById("pageTitle").innerText = "管理車両詳細";
-        document.getElementById("subText").innerText = "登録されている車両情報を確認できます";
-      }
-      
-      renderVehicle();
-      
-      document.getElementById("removeBtn").onclick = () => {
-        if (typeof showToast === 'function') showToast('info', '一覧から外す機能は準備中です。');
-      };
-    }
-
-    /**
      * 車両および履歴の表示
      */
-    function renderVehicle() {
+    function renderVehicle(showOverlay) {
       if (!targetVin) {
         if (typeof showToast === 'function') showToast('error', '車両データが見つかりません。');
         location.replace("vehicles.html");
         return;
       }
 
-      showLoading("読込中", "車両カルテを開いています...");
+      if (showOverlay !== false) {
+        showLoading("読込中", "車両カルテを開いています...");
+      }
 
       setTimeout(() => {
         const vehicles = safeJsonParse(localStorage.getItem("nappy_vehicles_v1"), []);
@@ -196,7 +180,60 @@
 
         renderHistoryList(logs);
         hideLoading();
-      }, 300);
+      }, showOverlay === false ? 0 : 300);
+    }
+
+    function ringVehicleDetailHasCache_() {
+      if (!targetVin) return false;
+      var vehicles = safeJsonParse(localStorage.getItem("nappy_vehicles_v1"), []);
+      var hasVehicle = vehicles.some(function (v) { return v.vin === targetVin; });
+      var allLogs = safeJsonParse(localStorage.getItem("nappy_logs_v1"), []);
+      var hasLogs = allLogs.some(function (l) { return l.vin === targetVin; });
+      return hasVehicle || hasLogs;
+    }
+
+    function ringVehicleDetailBackgroundSync_() {
+      if (!targetVin) return;
+      var prevSig = '';
+      if (typeof ringMaintenanceLogsSignature_ === 'function') {
+        var allLogs0 = safeJsonParse(localStorage.getItem("nappy_logs_v1"), []);
+        var logs0 = allLogs0.filter(function (l) { return l.vin === targetVin; });
+        prevSig = ringMaintenanceLogsSignature_(logs0);
+      }
+      var tasks = [];
+      if (typeof syncVehiclesFromServer === 'function') tasks.push(syncVehiclesFromServer());
+      if (typeof syncMaintenanceHistoryForVin === 'function') tasks.push(syncMaintenanceHistoryForVin(targetVin));
+      if (!tasks.length) return;
+      Promise.all(tasks).then(function () {
+        if (typeof ringMaintenanceLogsSignature_ !== 'function') {
+          renderVehicle(false);
+          return;
+        }
+        var allLogs1 = safeJsonParse(localStorage.getItem("nappy_logs_v1"), []);
+        var logs1 = allLogs1.filter(function (l) { return l.vin === targetVin; });
+        var newSig = ringMaintenanceLogsSignature_(logs1);
+        if (newSig !== prevSig) renderVehicle(false);
+      }).catch(function () { /* ignore */ });
+    }
+
+    function init() {
+      if (!profile) {
+        document.getElementById("pageTitle").innerText = "マイカー詳細";
+      } else if (profile.shopType === 'factory' || profile.shopType === 'dealer') {
+        document.getElementById("pageTitle").innerText = "管理車両詳細";
+        document.getElementById("subText").innerText = "登録されている車両情報を確認できます";
+      }
+
+      if (ringVehicleDetailHasCache_()) {
+        renderVehicle(false);
+        ringVehicleDetailBackgroundSync_();
+      } else {
+        renderVehicle(true);
+      }
+      
+      document.getElementById("removeBtn").onclick = () => {
+        if (typeof showToast === 'function') showToast('info', '一覧から外す機能は準備中です。');
+      };
     }
 
     function renderHistoryList(logs) {

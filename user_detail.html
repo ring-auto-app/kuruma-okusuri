@@ -85,13 +85,47 @@
     });
 
     async function loadAndRender() {
-      showLoading("読込中", "履歴詳細を取得しています...");
+      var cachedLog = null;
+      if (vin && logId) {
+        var logs = safeJsonParse(localStorage.getItem("nappy_logs_v1"), []);
+        cachedLog = logs.find(l => String(l.log_id) === String(logId));
+      }
+
+      if (cachedLog) {
+        render(false);
+        ringUserDetailBackgroundSync_();
+        return;
+      }
+
+      if (typeof showLoading === 'function') showLoading("読込中", "履歴詳細を取得しています...");
       try {
         if (typeof syncMaintenanceHistoryForVin === "function" && vin) {
           await syncMaintenanceHistoryForVin(vin);
         }
       } catch (eSync) { /* ignore */ }
-      render();
+      render(false);
+    }
+
+    function ringUserDetailBackgroundSync_() {
+      if (!vin || typeof syncMaintenanceHistoryForVin !== "function") return;
+      var prevSig = '';
+      if (logId && typeof ringMaintenanceLogsSignature_ === 'function') {
+        var logs0 = safeJsonParse(localStorage.getItem("nappy_logs_v1"), []);
+        var log0 = logs0.find(l => String(l.log_id) === String(logId));
+        if (log0) prevSig = ringMaintenanceLogsSignature_([log0]);
+      }
+      syncMaintenanceHistoryForVin(vin).then(function (syncResult) {
+        if (!syncResult || syncResult.ok !== true) return;
+        if (!logId || typeof ringMaintenanceLogsSignature_ !== 'function') {
+          render(false);
+          return;
+        }
+        var logs1 = safeJsonParse(localStorage.getItem("nappy_logs_v1"), []);
+        var log1 = logs1.find(l => String(l.log_id) === String(logId));
+        if (!log1) return;
+        var newSig = ringMaintenanceLogsSignature_([log1]);
+        if (newSig !== prevSig) render(false);
+      }).catch(function () { /* ignore */ });
     }
 
     // inspection_biz.html の点検項目ID → 名前マップ
@@ -106,7 +140,11 @@
       o1:'エアタンク', o2:'異臭確認', o3:'その他異常'
     };
 
-    function render() {
+    function render(showOverlay) {
+      if (showOverlay !== false && typeof showLoading === 'function') {
+        showLoading("読込中", "履歴詳細を取得しています...");
+      }
+
       setTimeout(() => {
         const logs = safeJsonParse(localStorage.getItem("nappy_logs_v1"), []);
         const log = logs.find(l => String(l.log_id) === String(logId));
@@ -187,7 +225,7 @@
           </div>
         `;
         hideLoading();
-      }, 300);
+      }, showOverlay === false ? 0 : 300);
     }
 
     function escapeHtml(str) {

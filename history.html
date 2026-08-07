@@ -252,14 +252,44 @@
     }
 
     window.addEventListener('DOMContentLoaded', () => {
-      // 掟3：読込開始時にローディングを表示
+      var hasLocal = false;
+      if (vin) {
+        hasLocal = (typeof getMaintenanceLogsByVin === 'function')
+          ? getMaintenanceLogsByVin(vin).length > 0
+          : (typeof getLogsByVin === 'function' && getLogsByVin(vin).length > 0);
+      }
+
+      if (hasLocal) {
+        init();
+        ringHistoryBizBackgroundSync_();
+        return;
+      }
+
       showLoading("履歴照会中", "お薬手帳のデータを取得しています...");
-      
       setTimeout(() => {
         init();
         hideLoading();
       }, 300);
     });
+
+    function ringHistoryBizBackgroundSync_() {
+      if (!vin || typeof syncMaintenanceHistoryForVin !== 'function') return;
+      var prevSig = '';
+      if (typeof ringMaintenanceLogsSignature_ === 'function' && typeof getMaintenanceLogsByVin === 'function') {
+        prevSig = ringMaintenanceLogsSignature_(getMaintenanceLogsByVin(vin));
+      }
+      syncMaintenanceHistoryForVin(vin).then(function (syncResult) {
+        if (!syncResult || syncResult.ok !== true) return;
+        if (typeof ringMaintenanceLogsSignature_ !== 'function' || typeof getMaintenanceLogsByVin !== 'function') {
+          renderHistory();
+          return;
+        }
+        var newSig = ringMaintenanceLogsSignature_(getMaintenanceLogsByVin(vin));
+        if (newSig !== prevSig) {
+          init();
+        }
+      }).catch(function () { /* ignore */ });
+    }
 
     function init() {
       if (!vin) { location.replace("index.html"); return; }

@@ -301,9 +301,6 @@
         } else if (newSig !== prevSig) {
           buildYearSelect(allLogs);
           applyFilter();
-        } else if (allLogs.length > 0) {
-          buildYearSelect(allLogs);
-          applyFilter();
         }
       } else if (allLogs.length === 0) {
         renderFactoryEmptyState_('error');
@@ -396,9 +393,13 @@
       renderFactoryHistoryFromCache_();
       consumeFactorySearchFlash_();
 
-      await runFactoryHistoryBackgroundSync_();
-
-      if (typeof hideLoading === 'function') hideLoading();
+      if (hadCache) {
+        if (typeof hideLoading === 'function') hideLoading();
+        runFactoryHistoryBackgroundSync_();
+      } else {
+        await runFactoryHistoryBackgroundSync_();
+        if (typeof hideLoading === 'function') hideLoading();
+      }
     });
 
     // 年セレクタを構築

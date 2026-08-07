@@ -51,12 +51,10 @@
     return [...a, ...b];
   }
 
-  /**
-   * 詳細データの描画処理
-   */
-  function render() {
-    // 掟3：読込開始時にローディングを表示
-    showLoading("読込中", "詳細データを取得しています...");
+  function render(showOverlay) {
+    if (showOverlay !== false) {
+      showLoading("読込中", "詳細データを取得しています...");
+    }
 
     setTimeout(() => {
       const logs = getLogs();
@@ -103,12 +101,41 @@
           </a>
         </div>
       `;
-      // 掟4：完了時にローディングを解除
       hideLoading();
-    }, 300);
+    }, showOverlay === false ? 0 : 300);
   }
 
-  window.addEventListener('DOMContentLoaded', render);
+  function ringHistoryDetailBackgroundSync_() {
+    if (!vin || typeof syncMaintenanceHistoryForVin !== 'function') return;
+    var prevSig = '';
+    if (logId && typeof ringMaintenanceLogsSignature_ === 'function') {
+      var log0 = getLogs().find(function (l) { return l.log_id == logId; });
+      if (log0) prevSig = ringMaintenanceLogsSignature_([log0]);
+    }
+    syncMaintenanceHistoryForVin(vin).then(function (syncResult) {
+      if (!syncResult || syncResult.ok !== true) return;
+      if (!logId || typeof ringMaintenanceLogsSignature_ !== 'function') {
+        render(false);
+        return;
+      }
+      var log1 = getLogs().find(function (l) { return l.log_id == logId; });
+      if (!log1) return;
+      var newSig = ringMaintenanceLogsSignature_([log1]);
+      if (newSig !== prevSig) render(false);
+    }).catch(function () { /* ignore */ });
+  }
+
+  function loadAndRender() {
+    var cachedLog = logId ? getLogs().find(function (l) { return l.log_id == logId; }) : null;
+    if (cachedLog) {
+      render(false);
+      ringHistoryDetailBackgroundSync_();
+      return;
+    }
+    render(true);
+  }
+
+  window.addEventListener('DOMContentLoaded', loadAndRender);
 </script>
 
 </body>

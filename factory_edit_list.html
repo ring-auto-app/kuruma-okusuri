@@ -137,8 +137,6 @@
 
       var hasLocal = getMyRecentShopLogs().length > 0;
       var fresh = (typeof ringIsPageCacheFresh_ === 'function') && ringIsPageCacheFresh_(editListCacheKey, 'factory_edit_list');
-      var hasMeta = !!(typeof ringGetPageSyncMeta_ === 'function' && ringGetPageSyncMeta_(editListCacheKey));
-      var isFirstAccess = corrupt || !hasMeta || (!hasLocal && !fresh);
 
       if (isManualRefresh) {
         if (typeof showLoading === 'function') showLoading('更新中', 'サーバーから最新履歴を取得しています...');
@@ -147,22 +145,21 @@
         return;
       }
 
-      if (isFirstAccess) {
-        if (typeof showLoading === 'function') showLoading('データ取得中', 'サーバーから最新履歴を取得しています...');
-        var syncResult = await ringRunPageSync_(buildEditListSyncOpts('同期中…'));
-        if (!syncResult.rendered) {
-          renderEditList(false);
+      if (hasLocal && !corrupt) {
+        renderEditList(false);
+        if (typeof ringUpdateLastSyncLabel_ === 'function') ringUpdateLastSyncLabel_('ringEditListLastSync', editListCacheKey);
+        if (!fresh && typeof ringRunPageSync_ === 'function') {
+          ringRunPageSync_(buildEditListSyncOpts('最新データ取得中…'));
         }
-        if (typeof hideLoading === 'function') hideLoading();
         return;
       }
 
-      renderEditList(false);
-      if (typeof ringUpdateLastSyncLabel_ === 'function') ringUpdateLastSyncLabel_('ringEditListLastSync', editListCacheKey);
-
-      if (fresh) return;
-
-      ringRunPageSync_(buildEditListSyncOpts('最新データ取得中…'));
+      if (typeof showLoading === 'function') showLoading('データ取得中', 'サーバーから最新履歴を取得しています...');
+      var syncResult = await ringRunPageSync_(buildEditListSyncOpts('同期中…'));
+      if (!syncResult.rendered) {
+        renderEditList(false);
+      }
+      if (typeof hideLoading === 'function') hideLoading();
     }
 
     function getMyRecentShopLogs() {

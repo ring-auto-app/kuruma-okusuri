@@ -182,112 +182,128 @@
   </div>
 
   <script>
+    function paintFactoryDetail_(vinParam, logIdParam, backUrl) {
+      const vehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
+      const logs = safeJsonParse(localStorage.getItem('nappy_logs_v1'), []);
+      const vehicle = vehicles.find(v => v.vin.toUpperCase() === vinParam.toUpperCase());
+      const log = logs.find(l => l.log_id === logIdParam);
+
+      if (!log) return false;
+
+      document.getElementById('outTitle').innerText = log.title || "一般整備";
+      document.getElementById('outDate').innerText = ringFormatDateLocal_(log.date, false);
+      document.getElementById('outVin').innerText = log.vin.toUpperCase();
+
+      if (vehicle) {
+        document.getElementById('outModel').innerText      = vehicle.vehicleModel || vehicle.model || log.vehicleModel || "---";
+        document.getElementById('outEngine').innerText     = vehicle.engine || log.engine || "---";
+        document.getElementById('outClass').innerText      = vehicle.classification || vehicle.category || log.classification || "---";
+        document.getElementById('outTypeDesig').innerText  = vehicle.typeDesignation || log.typeDesignation || "---";
+        document.getElementById('outShaken').innerText = ringFormatDateLocal_(vehicle.nextShaken || log.nextShaken, false);
+      } else {
+        document.getElementById('outModel').innerText      = log.vehicleModel   || "---";
+        document.getElementById('outEngine').innerText     = log.engine         || "---";
+        document.getElementById('outClass').innerText      = log.classification  || "---";
+        document.getElementById('outTypeDesig').innerText  = log.typeDesignation || "---";
+        document.getElementById('outShaken').innerText = ringFormatDateLocal_(log.nextShaken, false);
+      }
+
+      document.getElementById('outMileage').innerText = log.mileage ? `${Number(log.mileage).toLocaleString()} km` : "---";
+
+      let factoryText = log.shopName || "不明";
+      let factorySuffix = "";
+      if (log.factoryType && log.factoryNumber) {
+        factorySuffix = `(${log.factoryType} ${log.factoryNumber})`;
+      } else if (log.factoryNumber) {
+        factorySuffix = `(${log.factoryNumber})`;
+      } else if (log.factoryType) {
+        factorySuffix = `(${log.factoryType})`;
+      }
+      if (factorySuffix) factoryText += ` ${factorySuffix}`;
+      document.getElementById('outFactory').innerText = factoryText;
+
+      if (typeof renderMaintenanceItems === 'function') {
+        document.getElementById('outParts').innerHTML = log.parts
+          ? renderMaintenanceItems(log)
+          : '<div class="ring-maint-empty">なし</div>';
+      } else {
+        document.getElementById('outParts').innerText = log.parts || "なし";
+      }
+      document.getElementById('outMemo').innerText = log.memo || "なし";
+
+      if (log.partsPhoto) {
+        document.getElementById('outPartsPhoto').src = log.partsPhoto;
+        document.getElementById('photoSection').style.display = 'block';
+      } else {
+        document.getElementById('photoSection').style.display = 'none';
+      }
+
+      const editArea = document.getElementById('editArea');
+      const createdAt = log.createdAt || log.date;
+      const diffDays = (new Date() - new Date(createdAt)) / (1000 * 60 * 60 * 24);
+      const currentProfile = typeof getCurrentProfile === "function" ? getCurrentProfile() : null;
+      const isSameShop = currentProfile && log.shopId && log.shopId === currentProfile.shopId;
+
+      if (diffDays < 7 && isSameShop) {
+        editArea.innerHTML = `
+          <a href="factory_edit_detail.html?log_id=${encodeURIComponent(logIdParam)}&vin=${encodeURIComponent(vinParam)}" class="edit-btn">
+            ✏️ この記録を修正する（残り ${Math.floor(7 - diffDays)} 日）
+          </a>
+        `;
+      } else {
+        editArea.innerHTML = "";
+      }
+      return true;
+    }
+
+    function ringFactoryDetailBackgroundSync_(vinParam, logIdParam) {
+      if (!vinParam || typeof syncMaintenanceHistoryForVin !== 'function') return;
+      var logs0 = safeJsonParse(localStorage.getItem('nappy_logs_v1'), []);
+      var log0 = logs0.find(function (l) { return l.log_id === logIdParam; });
+      var prevSig = (log0 && typeof ringMaintenanceLogsSignature_ === 'function')
+        ? ringMaintenanceLogsSignature_([log0]) : '';
+      syncMaintenanceHistoryForVin(vinParam).then(function (syncResult) {
+        if (!syncResult || syncResult.ok !== true) return;
+        var logs1 = safeJsonParse(localStorage.getItem('nappy_logs_v1'), []);
+        var log1 = logs1.find(function (l) { return l.log_id === logIdParam; });
+        if (!log1) return;
+        var newSig = typeof ringMaintenanceLogsSignature_ === 'function'
+          ? ringMaintenanceLogsSignature_([log1]) : '';
+        if (newSig !== prevSig) paintFactoryDetail_(vinParam, logIdParam, '');
+      }).catch(function () { /* ignore */ });
+    }
+
     document.addEventListener("DOMContentLoaded", () => {
-      // ★ 開いた瞬間に最高のぐるぐるを出す
+      const params = new URLSearchParams(window.location.search);
+      const vinParam = params.get('vin');
+      const logIdParam = params.get('log_id');
+      const backUrl = vinParam ? `factory_history.html?vin=${encodeURIComponent(vinParam)}` : 'factory_search.html';
+
+      document.getElementById('backBtnTop').onclick = () => {
+        goBackSmart(backUrl);
+      };
+
+      if (!vinParam || !logIdParam) {
+        alert("データが見つかりません。");
+        return;
+      }
+
+      var logsCached = safeJsonParse(localStorage.getItem('nappy_logs_v1'), []);
+      var hasCachedLog = logsCached.some(function (l) { return l.log_id === logIdParam; });
+
+      if (hasCachedLog) {
+        paintFactoryDetail_(vinParam, logIdParam, backUrl);
+        ringFactoryDetailBackgroundSync_(vinParam, logIdParam);
+        return;
+      }
+
       showLoading("カルテ展開中", "詳細情報を読み込んでいます...");
-
       setTimeout(() => {
-        const params = new URLSearchParams(window.location.search);
-        const vinParam = params.get('vin');
-        const logIdParam = params.get('log_id');
-
-        // ★ 掟3：スマート戻るボタンの適用
-        const backUrl = vinParam ? `factory_history.html?vin=${encodeURIComponent(vinParam)}` : 'factory_search.html';
-        document.getElementById('backBtnTop').onclick = () => {
-          goBackSmart(backUrl);
-        };
-
-        if (!vinParam || !logIdParam) { 
-          alert("データが見つかりません。"); 
-          hideLoading();
-          return; 
+        if (!paintFactoryDetail_(vinParam, logIdParam, backUrl)) {
+          alert("履歴データが見つかりません。");
+          location.href = backUrl;
         }
-
-        const vehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
-        const logs = safeJsonParse(localStorage.getItem('nappy_logs_v1'), []);
-
-        const vehicle = vehicles.find(v => v.vin.toUpperCase() === vinParam.toUpperCase());
-        const log = logs.find(l => l.log_id === logIdParam);
-
-        if (log) {
-            document.getElementById('outTitle').innerText = log.title || "一般整備";
-            document.getElementById('outDate').innerText = ringFormatDateLocal_(log.date, false);
-            document.getElementById('outVin').innerText = log.vin.toUpperCase();
-            
-            if(vehicle) {
-              document.getElementById('outModel').innerText      = vehicle.vehicleModel || vehicle.model || log.vehicleModel || "---";
-              document.getElementById('outEngine').innerText     = vehicle.engine || log.engine || "---";
-              document.getElementById('outClass').innerText      = vehicle.classification || vehicle.category || log.classification || "---";
-              document.getElementById('outTypeDesig').innerText  = vehicle.typeDesignation || log.typeDesignation || "---";
-              document.getElementById('outShaken').innerText = ringFormatDateLocal_(vehicle.nextShaken || log.nextShaken, false);
-            } else {
-              // 車両レコードがない場合はログの情報で補完
-              document.getElementById('outModel').innerText      = log.vehicleModel   || "---";
-              document.getElementById('outEngine').innerText     = log.engine         || "---";
-              document.getElementById('outClass').innerText      = log.classification  || "---";
-              document.getElementById('outTypeDesig').innerText  = log.typeDesignation || "---";
-              document.getElementById('outShaken').innerText = ringFormatDateLocal_(log.nextShaken, false);
-            }
-            
-            document.getElementById('outMileage').innerText = log.mileage ? `${Number(log.mileage).toLocaleString()} km` : "---";
-            
-            // 工場名に認証・指定番号を追加
-            let factoryText = log.shopName || "不明";
-            let factorySuffix = "";
-            
-            if (log.factoryType && log.factoryNumber) {
-                factorySuffix = `(${log.factoryType} ${log.factoryNumber})`;
-            } else if (log.factoryNumber) {
-                factorySuffix = `(${log.factoryNumber})`;
-            } else if (log.factoryType) {
-                factorySuffix = `(${log.factoryType})`;
-            }
-
-            if (factorySuffix) {
-                factoryText += ` ${factorySuffix}`;
-            }
-            
-            document.getElementById('outFactory').innerText = factoryText;
-            
-            if (typeof renderMaintenanceItems === 'function') {
-              document.getElementById('outParts').innerHTML = log.parts
-                ? renderMaintenanceItems(log)
-                : '<div class="ring-maint-empty">なし</div>';
-            } else {
-              document.getElementById('outParts').innerText = log.parts || "なし";
-            }
-            document.getElementById('outMemo').innerText = log.memo || "なし";
-
-            if (log.partsPhoto) {
-              document.getElementById('outPartsPhoto').src = log.partsPhoto;
-              document.getElementById('photoSection').style.display = 'block';
-            }
-
-            // ===== 7日ロック判定 =====
-            const editArea = document.getElementById('editArea');
-            const createdAt = log.createdAt || log.date;
-            const diffDays = (new Date() - new Date(createdAt)) / (1000 * 60 * 60 * 24);
-            const currentProfile = typeof getCurrentProfile === "function" ? getCurrentProfile() : null;
-            const isSameShop = currentProfile && log.shopId && log.shopId === currentProfile.shopId;
-
-            if (diffDays < 7 && isSameShop) {
-              // 7日以内かつ同じ工場 → 編集ボタン表示
-              editArea.innerHTML = `
-                <a href="factory_edit_detail.html?log_id=${encodeURIComponent(logIdParam)}&vin=${encodeURIComponent(vinParam)}" class="edit-btn">
-                  ✏️ この記録を修正する（残り ${Math.floor(7 - diffDays)} 日）
-                </a>
-              `;
-            } else {
-              // 7日超 or 他工場 → 何も表示しない
-              editArea.innerHTML = "";
-            }
-
-        } else {
-            alert("履歴データが見つかりません。");
-            location.href = backUrl;
-        }
-        
-        hideLoading(); // ★ 読み込み完了でぐるぐるを消す
+        hideLoading();
       }, 300);
     });
   </script>
