@@ -2638,6 +2638,202 @@ function mapGasVehicleRowToLocal(row) {
 }
 
 /**
+ * 用途・所有者種別から法定点検サイクル（月数）を返す
+ * @param {{ usage?: string, ownerType?: string }} vehicle
+ * @returns {number}
+ */
+function ringGetInspectionCycleMonths_(vehicle) {
+    vehicle = vehicle || {};
+    var usage = String(vehicle.usage || '').trim();
+    var ownerType = String(vehicle.ownerType || '').trim();
+    if (ownerType === '事業用' && usage === '乗合') return 3;
+    if (ownerType === '事業用' && usage === '貨物') return 3;
+    if (ownerType === '事業用') return 6;
+    if (ownerType === 'レンタカー') return 6;
+    if (usage === '貨物') return 6;
+    if (usage === '乗合') return 3;
+    if (usage === '特種') return 6;
+    return 12;
+}
+
+/**
+ * @param {{ usage?: string, ownerType?: string }} vehicle
+ * @returns {string}
+ */
+function ringGetInspectionCycleLabel_(vehicle) {
+    vehicle = vehicle || {};
+    var usage = String(vehicle.usage || '').trim();
+    var ownerType = String(vehicle.ownerType || '').trim();
+    if (ownerType === '事業用' && usage === '乗合') return '3ヶ月点検（事業用乗合・バス）';
+    if (ownerType === '事業用' && usage === '貨物') return '3ヶ月点検（事業用貨物・緑ナンバー）';
+    if (ownerType === '事業用') return '6ヶ月点検（事業用）';
+    if (ownerType === 'レンタカー') return '6ヶ月点検（レンタカー）';
+    if (usage === '貨物') return '6ヶ月点検（自家用貨物）';
+    if (usage === '乗合') return '3ヶ月点検（乗合・バス）';
+    if (usage === '特種') return '6ヶ月点検（特種車両）';
+    return '12ヶ月点検（一般乗用車）';
+}
+
+/**
+ * @param {{ usage?: string, ownerType?: string, inspectMonths?: number }} vehicle
+ * @returns {{ months: number, label: string }}
+ */
+function ringGetInspectionCycle_(vehicle) {
+    vehicle = vehicle || {};
+    return {
+        months: vehicle.inspectMonths || ringGetInspectionCycleMonths_(vehicle),
+        label: ringGetInspectionCycleLabel_(vehicle)
+    };
+}
+
+/**
+ * 車検満了日から次回法定点検日を算出（マイカー一覧用）
+ * @param {{ nextShaken?: string, inspectMonths?: number, usage?: string, ownerType?: string }} vehicle
+ * @returns {Date|null}
+ */
+function ringCalcNextLegalInspectionDate_(vehicle) {
+    vehicle = vehicle || {};
+    if (!vehicle.nextShaken) return null;
+    var months = vehicle.inspectMonths || ringGetInspectionCycleMonths_(vehicle);
+    var shaken = new Date(vehicle.nextShaken);
+    if (isNaN(shaken.getTime())) return null;
+    var today = new Date();
+    today.setHours(0, 0, 0, 0);
+    var upcoming = [];
+    var i;
+    for (i = 1; i <= Math.ceil(60 / months); i++) {
+        var d = new Date(shaken);
+        d.setMonth(d.getMonth() - months * i);
+        if (d >= today) upcoming.push(d);
+        else break;
+    }
+    return upcoming.length ? upcoming[upcoming.length - 1] : null;
+}
+
+/**
+ * @param {Date|string|null} d
+ * @returns {number}
+ */
+function ringDaysUntilDate_(d) {
+    if (!d) return Infinity;
+    var today = new Date();
+    today.setHours(0, 0, 0, 0);
+    var target = d instanceof Date ? d : new Date(d);
+    if (isNaN(target.getTime())) return Infinity;
+    return Math.ceil((target - today) / 86400000);
+}
+
+/**
+ * inspectMonths 等の派生フィールドを車両オブジェクトへ反映
+ * @param {object} vehicle
+ * @returns {object}
+ */
+function ringApplyVehicleInspectionDerivedFields_(vehicle) {
+    if (!vehicle || typeof vehicle !== 'object') return vehicle;
+    vehicle.inspectMonths = ringGetInspectionCycleMonths_(vehicle);
+    return vehicle;
+}
+
+/**
+ * 車検満了日から法定点検スケジュール日付群を算出
+ * @param {string} expiryVal
+ * @param {number} months
+ * @returns {{ shaken: Date|null, upcoming: Date[], past: Date[] }}
+ */
+function ringCalcInspectionScheduleDates_(expiryVal, months) {
+    if (!expiryVal || !months) return { shaken: null, upcoming: [], past: [] };
+    var shaken = new Date(expiryVal);
+    if (isNaN(shaken.getTime())) return { shaken: null, upcoming: [], past: [] };
+    var today = new Date();
+    today.setHours(0, 0, 0, 0);
+    var allDates = [];
+    var i;
+    for (i = 1; i <= Math.ceil(60 / months); i++) {
+        var d = new Date(shaken);
+        d.setMonth(d.getMonth() - months * i);
+        allDates.push(d);
+    }
+    return {
+        shaken: shaken,
+        upcoming: allDates.filter(function (dt) { return dt >= today; }).reverse().slice(0, 3),
+        past: allDates.filter(function (dt) { return dt < today; }).slice(0, 1)
+    };
+}
+
+/** @param {Date} d */
+function ringFormatInspectionScheduleDateJa_(d) {
+    if (!d || isNaN(d.getTime())) return '---';
+    return d.getFullYear() + '年' +
+        String(d.getMonth() + 1).padStart(2, '0') + '月' +
+        String(d.getDate()).padStart(2, '0') + '日';
+}
+
+/**
+ * @param {{ past: Date[], upcoming: Date[], shaken: Date }} schedule
+ * @returns {string}
+ */
+function ringBuildInspectionScheduleDatesHtml_(schedule) {
+    schedule = schedule || {};
+    var html = '';
+    if (schedule.past && schedule.past.length) {
+        html += '<div class="ic-date-row"><span class="ic-badge past">前回</span>' +
+            ringFormatInspectionScheduleDateJa_(schedule.past[0]) + '</div>';
+    }
+    (schedule.upcoming || []).forEach(function (d, i) {
+        var lbl = i === 0 ? '次回' : i === 1 ? '2回目' : '3回目';
+        html += '<div class="ic-date-row"><span class="ic-badge">' + lbl + '</span>' +
+            ringFormatInspectionScheduleDateJa_(d) + '</div>';
+    });
+    if (schedule.shaken) {
+        html += '<div class="ic-date-row"><span class="ic-badge" style="background:#6b7280;">車検</span>' +
+            ringFormatInspectionScheduleDateJa_(schedule.shaken) + '</div>';
+    }
+    return html;
+}
+
+/**
+ * 法定点検スケジュールカード描画（car_add / vehicle_info 共通）
+ */
+function ringUpdateInspectionSchedulePanel_(opts) {
+    opts = opts || {};
+    var card = opts.cardEl || (opts.cardId ? document.getElementById(opts.cardId) : null);
+    if (!card) return;
+    var expiryVal = String(opts.expiryVal != null ? opts.expiryVal : '').trim();
+    if (!expiryVal) {
+        card.style.display = 'none';
+        return;
+    }
+    var cycle = ringGetInspectionCycle_({
+        usage: opts.usage || '',
+        ownerType: opts.ownerType || ''
+    });
+    var schedule = ringCalcInspectionScheduleDates_(expiryVal, cycle.months);
+    var cycleEl = opts.cycleEl || (opts.cycleId ? document.getElementById(opts.cycleId) : null);
+    var datesEl = opts.datesEl || (opts.datesId ? document.getElementById(opts.datesId) : null);
+    if (cycleEl) cycleEl.textContent = '点検サイクル：' + cycle.label;
+    if (datesEl) {
+        if (!schedule.shaken || (schedule.upcoming.length === 0 && schedule.past.length === 0)) {
+            datesEl.innerHTML = '<div class="ic-empty">車検日から点検日を計算できませんでした。</div>';
+        } else {
+            datesEl.innerHTML = ringBuildInspectionScheduleDatesHtml_(schedule);
+        }
+    }
+    card.style.display = 'block';
+}
+
+/**
+ * 車両1件の同期差分判定用シグネチャ
+ */
+function ringVehicleRecordSignature_(car) {
+    if (!car) return '';
+    return String(car.vin || '') + '|' +
+        String(car.nextShaken || '') + '|' +
+        String(car.usage || '') + '|' +
+        String(car.ownerType || '') + '|' +
+        String(car.inspectMonths || '');
+}
+
+/**
  * ローカル nappy_vehicles_v1 とサーバ一覧を VIN 単位でマージ
  */
 function mergeVehiclesLocalAndServer(localList, serverList, opts) {
@@ -2660,7 +2856,6 @@ function mergeVehiclesLocalAndServer(localList, serverList, opts) {
             ...prev,
             ...loc,
             model: sharedModel || (isBiz ? (prev.model || '') : ''),
-            inspectMonths: prev.inspectMonths || 12,
             lastMaint: prev.lastMaint,
             nickname: ringResolveLocalVehicleNickname_(prev, myUserId),
             shopName: prev.shopName,
@@ -2668,6 +2863,7 @@ function mergeVehiclesLocalAndServer(localList, serverList, opts) {
         };
         if (!merged.createdAt && prev.createdAt) merged.createdAt = prev.createdAt;
         if (!merged.createdAt) merged.createdAt = new Date().toISOString();
+        ringApplyVehicleInspectionDerivedFields_(merged);
         map.set(k, merged);
     });
     return Array.from(map.values());
@@ -5894,6 +6090,17 @@ window.ringApplyVinInputFormat_ = ringApplyVinInputFormat_;
 window.ringInitVinInputAttrs_ = ringInitVinInputAttrs_;
 window.ringVehicleDisplayName_ = ringVehicleDisplayName_;
 window.ringResolveLocalVehicleNickname_ = ringResolveLocalVehicleNickname_;
+window.ringGetInspectionCycleMonths_ = ringGetInspectionCycleMonths_;
+window.ringGetInspectionCycleLabel_ = ringGetInspectionCycleLabel_;
+window.ringGetInspectionCycle_ = ringGetInspectionCycle_;
+window.ringCalcNextLegalInspectionDate_ = ringCalcNextLegalInspectionDate_;
+window.ringDaysUntilDate_ = ringDaysUntilDate_;
+window.ringApplyVehicleInspectionDerivedFields_ = ringApplyVehicleInspectionDerivedFields_;
+window.ringCalcInspectionScheduleDates_ = ringCalcInspectionScheduleDates_;
+window.ringFormatInspectionScheduleDateJa_ = ringFormatInspectionScheduleDateJa_;
+window.ringBuildInspectionScheduleDatesHtml_ = ringBuildInspectionScheduleDatesHtml_;
+window.ringUpdateInspectionSchedulePanel_ = ringUpdateInspectionSchedulePanel_;
+window.ringVehicleRecordSignature_ = ringVehicleRecordSignature_;
 window.ringIsBizProfile_ = ringIsBizProfile_;
 window.ringRemoveLocalVehicleFromList_ = ringRemoveLocalVehicleFromList_;
 window.ringTryRemoveLocalVehicleAfterDeleteNotFound_ = ringTryRemoveLocalVehicleAfterDeleteNotFound_;

@@ -342,6 +342,98 @@
     const targetVin = urlParams.get('vin') || '';
     // from パラメータで戻り先を切り替え
     const fromPage  = urlParams.get('from') || '';
+    var vehicleInfoCacheKey = '';
+
+    function getCarFromLocal_() {
+      var vehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
+      return vehicles.find(function (v) { return v.vin === targetVin; }) || null;
+    }
+
+    function getVehicleInfoSignature_() {
+      return typeof ringVehicleRecordSignature_ === 'function'
+        ? ringVehicleRecordSignature_(getCarFromLocal_())
+        : '';
+    }
+
+    function updateSchedule() {
+      if (typeof ringUpdateInspectionSchedulePanel_ !== 'function') return;
+      ringUpdateInspectionSchedulePanel_({
+        expiryVal: document.getElementById('inExpiry').value,
+        usage: document.getElementById('inUsage').value,
+        ownerType: document.getElementById('inOwnerType').value,
+        cardId: 'inspectionCard',
+        cycleId: 'icCycle',
+        datesId: 'icDates'
+      });
+    }
+
+    function refreshVehicleScheduleAfterSync_() {
+      var car = getCarFromLocal_();
+      if (!car) return;
+      var expiryHidden = document.getElementById('inExpiry');
+      var prevExpiry = expiryHidden ? String(expiryHidden.value || '').trim() : '';
+      var nextExpiry = String(car.nextShaken || '').trim();
+      if (nextExpiry && prevExpiry !== nextExpiry) {
+        if (typeof ringCarAddLoadFormDatesFromVehicle === 'function') {
+          ringCarAddLoadFormDatesFromVehicle(car);
+        } else if (expiryHidden) {
+          expiryHidden.value = nextExpiry;
+        }
+      }
+      updateSchedule();
+    }
+
+    function buildVehicleInfoSyncOpts(statusMsg) {
+      return {
+        cacheKey: vehicleInfoCacheKey,
+        statusMessage: statusMsg || '最新データ取得中…',
+        preserveScroll: true,
+        getSignatureFn: getVehicleInfoSignature_,
+        renderFn: refreshVehicleScheduleAfterSync_,
+        syncFn: async function () {
+          if (typeof syncVehiclesFromServer !== 'function') return { ok: false };
+          try {
+            await syncVehiclesFromServer();
+            return { ok: true };
+          } catch (e) {
+            return { ok: false };
+          }
+        }
+      };
+    }
+
+    function populateVehicleFormFromCar_(car, prof, isBizInfo) {
+      var displayNick = car.nickname || '';
+      if (!displayNick && typeof ringResolveLocalVehicleNickname_ === 'function') {
+        displayNick = ringResolveLocalVehicleNickname_(car, prof && prof.userId ? prof.userId : '');
+      } else if (!displayNick && isBizInfo) {
+        displayNick = car.model || '';
+      }
+      document.getElementById('inName').value = displayNick;
+      document.getElementById('inVehicleName').value = car.vehicleName || '';
+      document.getElementById('inModel').value     = car.vehicleModel || '';
+      document.getElementById('inEngine').value    = car.engine || '';
+      document.getElementById('inCategory').value  = car.category || car.classification || '';
+      document.getElementById('inTypeDesig').value = car.typeDesignation || '';
+
+      if (typeof ringCarAddInitDateFields === 'function') {
+        ringCarAddInitDateFields();
+      }
+      if (typeof ringCarAddLoadFormDatesFromVehicle === 'function') {
+        ringCarAddLoadFormDatesFromVehicle(car);
+      } else {
+        document.getElementById('inFirstReg').value = car.firstRegistration || '';
+        document.getElementById('inExpiry').value = car.nextShaken || '';
+      }
+
+      setSelectValue('inClass',     car.vClass);
+      setSelectValue('inUsage',     car.usage);
+      setSelectValue('inOwnerType', car.ownerType);
+
+      var savedCat = car.vehicleCategory || 'managed';
+      var catRadio = document.querySelector('input[name="vehicleCategory"][value="' + savedCat + '"]');
+      if (catRadio) catRadio.checked = true;
+    }
 
     // 戻るボタンの設定（呼び出し元に応じて戻り先を変更）
     (function setBackBtn() {
@@ -372,9 +464,8 @@
         document.getElementById('categoryFieldInfo').style.display = '';
       }
 
-      // 既存データを読み込んでフォームに反映
-      const vehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
-      const car = vehicles.find(v => v.vin === targetVin);
+      // 既存データを読み込んでフォームに反映（キャッシュ即時描画）
+      var car = getCarFromLocal_();
 
       if (!car) {
         alert("車両データが見つかりません。");
@@ -382,44 +473,24 @@
         return;
       }
 
-      // VIN は表示のみ
       document.getElementById('vinDisplay').textContent = targetVin;
-
-      // 各フィールドを現在の値で埋める
-      var displayNick = car.nickname || '';
-      if (!displayNick && typeof ringResolveLocalVehicleNickname_ === 'function') {
-        displayNick = ringResolveLocalVehicleNickname_(car, prof && prof.userId ? prof.userId : '');
-      } else if (!displayNick && isBizInfo) {
-        displayNick = car.model || '';
-      }
-      document.getElementById('inName').value = displayNick;
-      document.getElementById('inVehicleName').value = car.vehicleName || '';
-      document.getElementById('inModel').value     = car.vehicleModel || '';
-      document.getElementById('inEngine').value    = car.engine || '';
-      document.getElementById('inCategory').value  = car.category || car.classification || '';
-      document.getElementById('inTypeDesig').value = car.typeDesignation || '';
-
-      if (typeof ringCarAddInitDateFields === 'function') {
-        ringCarAddInitDateFields();
-      }
-      if (typeof ringCarAddLoadFormDatesFromVehicle === 'function') {
-        ringCarAddLoadFormDatesFromVehicle(car);
-      } else {
-        document.getElementById('inFirstReg').value = car.firstRegistration || '';
-        document.getElementById('inExpiry').value = car.nextShaken || '';
-      }
-
-      // セレクトの値をセット
-      setSelectValue('inClass',     car.vClass);
-      setSelectValue('inUsage',     car.usage);
-      setSelectValue('inOwnerType', car.ownerType);
-
-      // 車両区分ラジオボタンを現在値にセット
-      const savedCat = car.vehicleCategory || 'managed';
-      const catRadio = document.querySelector(`input[name="vehicleCategory"][value="${savedCat}"]`);
-      if (catRadio) catRadio.checked = true;
-
+      populateVehicleFormFromCar_(car, prof, isBizInfo);
       updateSchedule();
+
+      vehicleInfoCacheKey = 'vehicle_info:' + targetVin + ':' + ((prof && (prof.userId || prof.shopId)) || 'unknown');
+      if (typeof ringRunPageSync_ === 'function') {
+        ringRunPageSync_(buildVehicleInfoSyncOpts('最新データ取得中…'));
+      }
+
+      if (typeof ringSetupBackgroundResync_ === 'function') {
+        ringSetupBackgroundResync_({
+          onResume: function () {
+            if (typeof ringRunPageSync_ === 'function') {
+              ringRunPageSync_(buildVehicleInfoSyncOpts('最新データ取得中…'));
+            }
+          }
+        });
+      }
     });
 
     // セレクトの値を安全にセット
@@ -429,61 +500,6 @@
       for (let i = 0; i < el.options.length; i++) {
         if (el.options[i].value === value) { el.selectedIndex = i; return; }
       }
-    }
-
-    /* ── 法定点検スケジュール計算 ── */
-    function getInspectionCycle() {
-      const usage     = document.getElementById('inUsage').value;
-      const ownerType = document.getElementById('inOwnerType').value;
-      if (ownerType === '事業用' && usage === '乗合') return { months: 3, label: '3ヶ月点検（事業用乗合・バス）' };
-      if (ownerType === '事業用' && usage === '貨物') return { months: 3, label: '3ヶ月点検（事業用貨物・緑ナンバー）' };
-      if (ownerType === '事業用')                     return { months: 6, label: '6ヶ月点検（事業用）' };
-      if (ownerType === 'レンタカー')                 return { months: 6, label: '6ヶ月点検（レンタカー）' };
-      if (usage === '貨物')                           return { months: 6, label: '6ヶ月点検（自家用貨物）' };
-      if (usage === '乗合')                           return { months: 3, label: '3ヶ月点検（乗合・バス）' };
-      if (usage === '特種')                           return { months: 6, label: '6ヶ月点検（特種車両）' };
-      return { months: 12, label: '12ヶ月点検（一般乗用車）' };
-    }
-
-    function fmtDate(d) {
-      return d.getFullYear() + '年' +
-             String(d.getMonth() + 1).padStart(2, '0') + '月' +
-             String(d.getDate()).padStart(2, '0') + '日';
-    }
-
-    function updateSchedule() {
-      const expiryVal = document.getElementById('inExpiry').value;
-      const card      = document.getElementById('inspectionCard');
-      if (!expiryVal) { card.style.display = 'none'; return; }
-
-      const { months, label } = getInspectionCycle();
-      const shaken = new Date(expiryVal);
-      const today  = new Date(); today.setHours(0, 0, 0, 0);
-
-      const allDates = [];
-      for (let i = 1; i <= Math.ceil(60 / months); i++) {
-        const d = new Date(shaken);
-        d.setMonth(d.getMonth() - months * i);
-        allDates.push(d);
-      }
-      const upcoming = allDates.filter(d => d >= today).reverse().slice(0, 3);
-      const past     = allDates.filter(d => d < today).slice(0, 1);
-
-      document.getElementById('icCycle').textContent = '点検サイクル：' + label;
-      const container = document.getElementById('icDates');
-      if (upcoming.length === 0 && past.length === 0) {
-        container.innerHTML = '<div class="ic-empty">車検日から点検日を計算できませんでした。</div>';
-      } else {
-        let html = '';
-        if (past.length) html += `<div class="ic-date-row"><span class="ic-badge past">前回</span>${fmtDate(past[0])}</div>`;
-        upcoming.forEach((d, i) => {
-          const lbl = i === 0 ? '次回' : i === 1 ? '2回目' : '3回目';
-          html += `<div class="ic-date-row"><span class="ic-badge">${lbl}</span>${fmtDate(d)}</div>`;
-        });
-        html += `<div class="ic-date-row"><span class="ic-badge" style="background:#6b7280;">車検</span>${fmtDate(shaken)}</div>`;
-        container.innerHTML = html;
-      }
-      card.style.display = 'block';
     }
 
     /* ── 保存処理 ── */
@@ -526,7 +542,13 @@
       if (typeof showLoading === 'function') showLoading('保存中', '車両情報を更新しています...');
 
       try {
-        const { months } = getInspectionCycle();
+        const cycle = typeof ringGetInspectionCycle_ === 'function'
+          ? ringGetInspectionCycle_({
+              usage: document.getElementById('inUsage').value,
+              ownerType: document.getElementById('inOwnerType').value
+            })
+          : { months: 12 };
+        const months = cycle.months;
         const vehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
         const idx = vehicles.findIndex(v => v.vin === targetVin);
 

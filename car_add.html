@@ -452,76 +452,17 @@
       if (errEl) { errEl.textContent = '⚠ ' + msg; errEl.classList.add('show'); }
     }
 
-    /* ── 法定点検スケジュール計算 ── */
-    function getInspectionCycle() {
-      const usage     = document.getElementById('inUsage').value;
-      const ownerType = document.getElementById('inOwnerType').value;
-
-      if (ownerType === '事業用' && (usage === '乗合')) return { months: 3, label: '3ヶ月点検（事業用乗合・バス）' };
-      if (ownerType === '事業用' && (usage === '貨物'))  return { months: 3, label: '3ヶ月点検（事業用貨物・緑ナンバー）' };
-      if (ownerType === '事業用')                        return { months: 6, label: '6ヶ月点検（事業用）' };
-      if (ownerType === 'レンタカー')                    return { months: 6, label: '6ヶ月点検（レンタカー）' };
-      if (usage === '貨物')                              return { months: 6, label: '6ヶ月点検（自家用貨物）' };
-      if (usage === '乗合')                              return { months: 3, label: '3ヶ月点検（乗合・バス）' };
-      if (usage === '特種')                              return { months: 6, label: '6ヶ月点検（特種車両）' };
-      return { months: 12, label: '12ヶ月点検（一般乗用車）' };
-    }
-
-    function addMonths(date, n) {
-      const d = new Date(date);
-      d.setMonth(d.getMonth() + n);
-      return d;
-    }
-
-    function fmtDate(d) {
-      return d.getFullYear() + '年' +
-             String(d.getMonth() + 1).padStart(2, '0') + '月' +
-             String(d.getDate()).padStart(2, '0') + '日';
-    }
-
+    /* ── 法定点検スケジュール（app.js 共通関数） ── */
     function updateSchedule() {
-      const expiryVal = document.getElementById('inExpiry').value;
-      const card      = document.getElementById('inspectionCard');
-
-      if (!expiryVal) { card.style.display = 'none'; return; }
-
-      const { months, label } = getInspectionCycle();
-      const shaken = new Date(expiryVal);
-      const today  = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      // 車検日から遡って点検日を生成（最大5年分）
-      const allDates = [];
-      for (let i = 1; i <= Math.ceil(60 / months); i++) {
-        const d = new Date(shaken);
-        d.setMonth(d.getMonth() - months * i);
-        allDates.push(d);
-      }
-
-      // 今日以降の直近3件（近い順）
-      const upcoming = allDates.filter(d => d >= today).reverse().slice(0, 3);
-      // 過去直近1件
-      const past     = allDates.filter(d => d < today).slice(0, 1);
-
-      document.getElementById('icCycle').textContent = '点検サイクル：' + label;
-
-      const container = document.getElementById('icDates');
-      if (upcoming.length === 0 && past.length === 0) {
-        container.innerHTML = '<div class="ic-empty">車検日から点検日を計算できませんでした。</div>';
-      } else {
-        let html = '';
-        if (past.length) {
-          html += `<div class="ic-date-row"><span class="ic-badge past">前回</span>${fmtDate(past[0])}</div>`;
-        }
-        upcoming.forEach((d, i) => {
-          const lbl = i === 0 ? '次回' : i === 1 ? '2回目' : '3回目';
-          html += `<div class="ic-date-row"><span class="ic-badge">${lbl}</span>${fmtDate(d)}</div>`;
-        });
-        html += `<div class="ic-date-row"><span class="ic-badge" style="background:#6b7280;">車検</span>${fmtDate(shaken)}</div>`;
-        container.innerHTML = html;
-      }
-
-      card.style.display = 'block';
+      if (typeof ringUpdateInspectionSchedulePanel_ !== 'function') return;
+      ringUpdateInspectionSchedulePanel_({
+        expiryVal: document.getElementById('inExpiry').value,
+        usage: document.getElementById('inUsage').value,
+        ownerType: document.getElementById('inOwnerType').value,
+        cardId: 'inspectionCard',
+        cycleId: 'icCycle',
+        datesId: 'icDates'
+      });
     }
 
     /* ── 登録実行（確認後） ── */
@@ -542,7 +483,13 @@
       btn.disabled = true;
       if (typeof showLoading === 'function') showLoading('登録中', '車両情報を保存しています...');
 
-      const { months } = getInspectionCycle();
+      const cycle = typeof ringGetInspectionCycle_ === 'function'
+        ? ringGetInspectionCycle_({
+            usage: document.getElementById('inUsage').value,
+            ownerType: document.getElementById('inOwnerType').value
+          })
+        : { months: 12 };
+      const months = cycle.months;
 
       // 車両区分（工場・事業者のみ選択あり、それ以外は managed）
       const catEl = document.querySelector('input[name="vehicleCategory"]:checked');

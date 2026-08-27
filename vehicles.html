@@ -185,7 +185,6 @@
 
     async function loadAndRenderVehicles(isManualRefresh) {
       var hasLocal = getFilteredVehicles().length > 0;
-      var fresh = (typeof ringIsPageCacheFresh_ === 'function') && ringIsPageCacheFresh_(vehiclesCacheKey, 'vehicles');
 
       if (isManualRefresh) {
         if (typeof showLoading === 'function') showLoading('更新中', 'サーバーから最新情報を取得しています...');
@@ -197,7 +196,7 @@
       if (hasLocal) {
         renderCars(false);
         if (typeof ringUpdateLastSyncLabel_ === 'function') ringUpdateLastSyncLabel_('ringVehiclesLastSync', vehiclesCacheKey);
-        if (!fresh && typeof ringRunPageSync_ === 'function') {
+        if (typeof ringRunPageSync_ === 'function') {
           ringRunPageSync_(buildVehiclesSyncOpts('最新データ取得中…'));
         }
         return;
@@ -252,7 +251,6 @@
       if (typeof ringSetupBackgroundResync_ === 'function') {
         ringSetupBackgroundResync_({
           onResume: function () {
-            if (typeof ringIsPageCacheFresh_ === 'function' && ringIsPageCacheFresh_(vehiclesCacheKey, 'vehicles')) return;
             ringRunPageSync_(buildVehiclesSyncOpts('最新データ取得中…'));
           }
         });
@@ -269,25 +267,7 @@
       renderCars(false, window.scrollY);
     }
 
-    /* ── 次回点検日の計算 ── */
-    function calcNextInspect(car) {
-      if (!car.nextShaken) return null;
-      const months = car.inspectMonths || 12;
-      const shaken = new Date(car.nextShaken);
-      const today  = new Date(); today.setHours(0, 0, 0, 0);
-
-      // 車検日から遡って点検日を生成し、今日以降の最も近いものを返す
-      const upcoming = [];
-      for (let i = 1; i <= Math.ceil(60 / months); i++) {
-        const d = new Date(shaken);
-        d.setMonth(d.getMonth() - months * i);
-        if (d >= today) upcoming.push(d);
-        else break;
-      }
-      return upcoming.length ? upcoming[upcoming.length - 1] : null;
-    }
-
-    function fmtDate(d) {
+    function fmtInspectListDate(d) {
       if (!d) return '---';
       if (typeof ringFormatDateLocal_ === 'function') return ringFormatDateLocal_(d, false);
       const dd = d instanceof Date ? d : new Date(d);
@@ -295,12 +275,6 @@
       return dd.getFullYear() + '/' +
              String(dd.getMonth() + 1).padStart(2, '0') + '/' +
              String(dd.getDate()).padStart(2, '0');
-    }
-
-    function daysUntil(d) {
-      if (!d) return Infinity;
-      const today = new Date(); today.setHours(0, 0, 0, 0);
-      return Math.ceil((d - today) / 86400000);
     }
 
     function updateUserVehicleCountLabel() {
@@ -323,11 +297,17 @@
         let allVehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
         let vehicles = allVehicles.filter(getMyVehiclesFilter());
 
-        // 次回点検日を事前計算してキャッシュ
-        vehicles = vehicles.map(car => ({
-          ...car,
-          _nextInspect: calcNextInspect(car)
-        }));
+        // 次回点検日を事前計算
+        vehicles = vehicles.map(car => {
+          var c = typeof ringApplyVehicleInspectionDerivedFields_ === 'function'
+            ? ringApplyVehicleInspectionDerivedFields_(Object.assign({}, car))
+            : car;
+          return Object.assign({}, c, {
+            _nextInspect: typeof ringCalcNextLegalInspectionDate_ === 'function'
+              ? ringCalcNextLegalInspectionDate_(c)
+              : null
+          });
+        });
 
         // タブカウント更新（工場・事業者のみ）
         if (isBizMode) {
@@ -375,8 +355,10 @@
         let html = "";
         vehicles.forEach(car => {
           const nextInspectDate = car._nextInspect;
-          const days = daysUntil(nextInspectDate);
-          let inspectStr = fmtDate(nextInspectDate);
+          const days = typeof ringDaysUntilDate_ === 'function'
+            ? ringDaysUntilDate_(nextInspectDate)
+            : Infinity;
+          let inspectStr = fmtInspectListDate(nextInspectDate);
 
           // 期限が近い場合に警告色
           let inspectStyle = '';
