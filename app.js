@@ -2365,6 +2365,8 @@ function ringBuildShopRegisterPayload_(fields) {
         factoryType: String(fields.factoryType || '').trim(),
         factoryNumber: String(fields.factoryNumber || '').trim(),
         transportBureau: String(fields.transportBureau || '').trim(),
+        address: String(fields.address || '').trim(),
+        tel: String(fields.tel || '').trim(),
         password: String(fields.password || '')
     };
 }
@@ -2402,6 +2404,8 @@ async function ringSubmitShopRegister_(fields) {
         factoryType: fields.factoryType,
         factoryNumber: fields.shopType === 'factory' ? cert.factoryNumber : '',
         transportBureau: fields.shopType === 'factory' ? cert.transportBureau : '',
+        address: fields.address,
+        tel: fields.tel,
         password: fields.password
     });
     return ringRegisterShop_(payload);

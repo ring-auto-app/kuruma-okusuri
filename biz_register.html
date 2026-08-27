@@ -18,6 +18,7 @@
   
   <style>
     /* ページ固有のデザイン設定：34pxルールおよびレイアウトを維持 */
+    :root { --neutral-light: rgba(75, 85, 99, 0.15); }
     #factoryArea { display: none; margin-top: 16px; padding-top: 16px; border-top: 2px dashed var(--line); }
     .required { color: #ef4444; font-size: 11px; margin-left: 6px; }
     .login-link { text-align: center; margin-top: 24px; font-size: 14px; font-weight: 800; }
@@ -36,6 +37,15 @@
       pointer-events: none;
       background-color: #f0f0f0;
     }
+    .consent-panel {
+      padding: 16px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.7);
+      border: 2px solid var(--neutral-light);
+      margin-bottom: 16px;
+    }
+    .consent-check { display: flex; gap: 10px; align-items: flex-start; margin: 10px 0; font-size: 14px; font-weight: 700; }
+    .consent-err { display: none; color: #dc2626; font-size: 13px; font-weight: 800; margin-top: 8px; }
   </style>
 </head>
 <body>
@@ -179,6 +189,16 @@
         <span class="label">代表者名・ご担当者名 <span class="required">必須</span></span>
         <input type="text" id="inRepresentativeName" placeholder="例：山田 太郎（日常点検などの入力者表示に使います）" autocomplete="name" required>
       </div>
+
+      <div class="field">
+        <span class="label">住所 <span class="required">必須</span></span>
+        <input type="text" id="inAddress" placeholder="例：東京都〇〇区1-2-3" required>
+      </div>
+
+      <div class="field" style="margin-top: 34px;">
+        <span class="label">電話番号 <span class="required">必須</span></span>
+        <input type="tel" id="inTel" placeholder="例：03-1234-5678" required>
+      </div>
       
       <div class="field">
         <span class="label">会社共通パスワード <span class="required">必須</span></span>
@@ -186,6 +206,17 @@
           <input type="password" id="inPassword" placeholder="スタッフ全員で使うパスワード" required minlength="1">
           <button type="button" class="pw-eye" onclick="const i=document.getElementById('inPassword'); i.type=i.type==='password'?'text':'password'; this.textContent=i.type==='password'?'👁':'🙈';">👁</button>
         </div>
+      </div>
+
+      <div class="consent-panel">
+        <p style="margin:0 0 12px;font-weight:800;">利用開始前に規約への同意が必要です。</p>
+        <ul style="margin:0 0 12px;padding-left:1.2em;font-weight:700;">
+          <li><a href="terms.html" target="_blank" rel="noopener">利用規約</a></li>
+          <li><a href="privacy.html" target="_blank" rel="noopener">プライバシーポリシー</a></li>
+        </ul>
+        <label class="consent-check"><input type="checkbox" id="chkConsentTerms"> <span>利用規約に同意します</span></label>
+        <label class="consent-check"><input type="checkbox" id="chkConsentPrivacy"> <span>プライバシーポリシーに同意します</span></label>
+        <div class="consent-err" id="consentErr">両方にチェックを入れてください。</div>
       </div>
       
       <button type="submit" class="save-btn">この内容で登録する</button>
@@ -297,6 +328,8 @@
       const shopName = document.getElementById('inShopName').value.trim();
       const loginEmail = document.getElementById('inLoginEmail').value.trim();
       const representativeName = document.getElementById('inRepresentativeName').value.trim();
+      const address = document.getElementById('inAddress').value.trim();
+      const tel = document.getElementById('inTel').value.trim();
       const businessType = document.getElementById('inShopType').value.trim();
       const password = document.getElementById('inPassword').value.trim();
       
@@ -318,6 +351,24 @@
       }
       if (!representativeName) {
         if (typeof showToast === 'function') showToast('error', '代表者名・ご担当者名を入力してください。');
+        return;
+      }
+      if (!address) {
+        if (typeof showToast === 'function') showToast('error', '住所を入力してください');
+        return;
+      }
+      if (!tel) {
+        if (typeof showToast === 'function') showToast('error', '電話番号を入力してください');
+        return;
+      }
+
+      var consentTerms = document.getElementById('chkConsentTerms');
+      var consentPrivacy = document.getElementById('chkConsentPrivacy');
+      var consentErr = document.getElementById('consentErr');
+      if (consentErr) consentErr.style.display = 'none';
+      if (!consentTerms || !consentPrivacy || !consentTerms.checked || !consentPrivacy.checked) {
+        if (consentErr) consentErr.style.display = 'block';
+        if (typeof showToast === 'function') showToast('error', '利用規約とプライバシーポリシーに同意してください');
         return;
       }
 
@@ -345,6 +396,8 @@
           shopName: shopName,
           loginEmail: loginEmail,
           representativeName: representativeName,
+          address: address,
+          tel: tel,
           shopType: accountKind,
           businessType: businessType,
           factoryType: factoryType,
