@@ -27,6 +27,26 @@
     .back-link { color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 800; display: inline-block; cursor: pointer; height: 34px; line-height: 34px; }
     .title { font-size: 26px; font-weight: 900; color: var(--text-main); margin: 0; position: relative; display: inline-block; width: max-content; }
     .title::after { content: ""; position: absolute; left: 0; right: 0; bottom: 2px; height: 10px; background: var(--highlighter); z-index: -1; border-radius: 4px; transform: rotate(-1deg); }
+    .vehicle-search-wrap {
+      position: relative; margin-bottom: 16px;
+    }
+    .vehicle-search-input {
+      width: 100%; box-sizing: border-box; min-height: var(--tap-min);
+      padding: 10px 48px 10px 14px; border: 2px solid var(--line);
+      border-radius: 12px; font-size: 15px; font-weight: 700;
+      color: var(--text); background: var(--paper); outline: none;
+    }
+    .vehicle-search-input:focus { border-color: var(--accent); }
+    .vehicle-search-clear {
+      position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+      width: var(--tap-min); height: var(--tap-min); min-width: var(--tap-min);
+      display: none; align-items: center; justify-content: center;
+      border: none; border-radius: 50%; background: transparent;
+      color: var(--muted); font-size: 20px; font-weight: 900; line-height: 1;
+      cursor: pointer; padding: 0; -webkit-tap-highlight-color: transparent;
+    }
+    .vehicle-search-clear.is-visible { display: inline-flex; }
+    .vehicle-search-clear:active { background: rgba(0,0,0,0.06); }
     .sort-area { margin-bottom: 20px; text-align: right; }
     .sort-select { min-height: var(--tap-min); padding: 0 14px; border: 2px solid var(--accent); border-radius: 10px; font-size: 14px; font-weight: 700; color: var(--text); background: var(--paper); outline: none; cursor: pointer; }
 
@@ -116,6 +136,13 @@
       </button>
     </div>
 
+    <div class="vehicle-search-wrap">
+      <input type="search" id="vehicleSearchInput" class="vehicle-search-input"
+             placeholder="車両名・ナンバー・管理番号で検索" autocomplete="off" enterkeyhint="search"
+             inputmode="search" autocapitalize="off" autocorrect="off">
+      <button type="button" id="vehicleSearchClear" class="vehicle-search-clear" aria-label="検索をクリア">×</button>
+    </div>
+
     <div class="sort-area">
       <select id="sortSelect" class="sort-select" onchange="renderCars(false, window.scrollY)">
         <option value="inspect_near">点検が近い順</option>
@@ -136,6 +163,57 @@
     // 現在選択中の車両区分タブ（工場・事業者のみ使用）
     let currentCategoryTab = 'managed';
     let vehiclesCacheKey = '';
+    var vehicleSearchDebounceTimer_ = null;
+    var VEHICLE_SEARCH_DEBOUNCE_MS_ = 250;
+
+    /** 検索用: 大文字小文字・全角半角を吸収（表示名 ringVehicleDisplayName_ と突合） */
+    function normalizeVehicleSearchText_(s) {
+      var t = String(s || '').trim().toLowerCase();
+      if (!t) return '';
+      t = t.replace(/[Ａ-Ｚａ-ｚ０-９]/g, function (ch) {
+        return String.fromCharCode(ch.charCodeAt(0) - 0xFEE0);
+      });
+      t = t.replace(/\u3000/g, ' ').replace(/\s+/g, '');
+      return t;
+    }
+
+    function getVehicleSearchDisplayName_(car) {
+      if (typeof ringVehicleDisplayName_ === 'function') {
+        return ringVehicleDisplayName_(car);
+      }
+      return String(car.nickname || car.model || '未設定').trim() || '未設定';
+    }
+
+    function vehicleMatchesSearchQuery_(car, normalizedQuery) {
+      if (!normalizedQuery) return true;
+      var displayName = getVehicleSearchDisplayName_(car);
+      if (displayName === '未設定') return false;
+      return normalizeVehicleSearchText_(displayName).indexOf(normalizedQuery) >= 0;
+    }
+
+    function syncVehicleSearchClearVisibility_() {
+      var input = document.getElementById('vehicleSearchInput');
+      var clearBtn = document.getElementById('vehicleSearchClear');
+      if (!input || !clearBtn) return;
+      var has = String(input.value || '').trim().length > 0;
+      clearBtn.classList.toggle('is-visible', has);
+    }
+
+    function clearVehicleSearch_(rerender) {
+      var input = document.getElementById('vehicleSearchInput');
+      if (input) input.value = '';
+      syncVehicleSearchClearVisibility_();
+      if (rerender !== false) renderCars(false, window.scrollY);
+    }
+
+    function scheduleRenderCarsFromSearch_() {
+      syncVehicleSearchClearVisibility_();
+      if (vehicleSearchDebounceTimer_) clearTimeout(vehicleSearchDebounceTimer_);
+      vehicleSearchDebounceTimer_ = setTimeout(function () {
+        vehicleSearchDebounceTimer_ = null;
+        renderCars(false, window.scrollY);
+      }, VEHICLE_SEARCH_DEBOUNCE_MS_);
+    }
 
     function getMyVehiclesFilter() {
       return function (car) {
@@ -256,6 +334,15 @@
         });
       }
 
+      var searchInput = document.getElementById('vehicleSearchInput');
+      var searchClear = document.getElementById('vehicleSearchClear');
+      if (searchInput) {
+        searchInput.addEventListener('input', scheduleRenderCarsFromSearch_);
+      }
+      if (searchClear) {
+        searchClear.addEventListener('click', function () { clearVehicleSearch_(true); });
+      }
+
       loadAndRenderVehicles(false);
     });
 
@@ -264,6 +351,7 @@
       currentCategoryTab = tab;
       document.getElementById('tabManaged').classList.toggle('active', tab === 'managed');
       document.getElementById('tabLoaner').classList.toggle('active', tab === 'loaner');
+      clearVehicleSearch_(false);
       renderCars(false, window.scrollY);
     }
 
@@ -323,11 +411,29 @@
           );
         }
 
+        var searchInputEl = document.getElementById('vehicleSearchInput');
+        var searchQueryRaw = searchInputEl ? String(searchInputEl.value || '') : '';
+        var normalizedSearchQuery = normalizeVehicleSearchText_(searchQueryRaw);
+        var vehiclesBeforeSearchFilter = vehicles.length;
+
+        if (normalizedSearchQuery) {
+          vehicles = vehicles.filter(function (car) {
+            return vehicleMatchesSearchQuery_(car, normalizedSearchQuery);
+          });
+        }
+
+        syncVehicleSearchClearVisibility_();
+
         const container = document.getElementById('carListArea');
         if (vehicles.length === 0) {
-          const emptyMsg = isBizMode && currentCategoryTab === 'loaner'
-            ? '代車の登録がありません。'
-            : '登録車両がありません。';
+          var emptyMsg;
+          if (vehiclesBeforeSearchFilter > 0 && normalizedSearchQuery) {
+            emptyMsg = '該当する車両がありません';
+          } else {
+            emptyMsg = isBizMode && currentCategoryTab === 'loaner'
+              ? '代車の登録がありません。'
+              : '登録車両がありません。';
+          }
           container.innerHTML = `<div class="empty-msg">${emptyMsg}</div>`;
           updateUserVehicleCountLabel();
           if (showLoadOverlay !== false && typeof hideLoading === "function") hideLoading();
