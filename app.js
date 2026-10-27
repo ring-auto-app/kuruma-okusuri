@@ -3565,6 +3565,56 @@ async function sendToGAS_Safe(actionType, data, opts) {
 }
 
 /**
+ * 再送キュー item の所有者メタ（enqueue 時のみ付与）。
+ * 事業者: ringIsBizProfile_ + shopId。一般: ringIsUserAccountProfile_ + userId。
+ * 復旧: queueOwner* が無い既存 item は自動 flush 対象外。同一端末で元アカウント再ログイン後に
+ * 手動再送するか、将来の管理 UI / 移行処理で所有者を付与してから flush する。
+ */
+function ringRetryQueueResolveOwner_(profile) {
+    if (!profile) return null;
+    if (ringIsBizProfile_(profile)) {
+        var shopId = String(profile.shopId || '').trim();
+        if (!shopId) return null;
+        return {
+            queueOwnerMode: ringClassifyProfile(profile),
+            queueOwnerShopId: shopId
+        };
+    }
+    if (typeof ringIsUserAccountProfile === 'function' && ringIsUserAccountProfile(profile)) {
+        var userId = String(profile.userId || '').trim();
+        if (!userId) return null;
+        return { queueOwnerMode: 'user', queueOwnerUserId: userId };
+    }
+    return null;
+}
+
+/** flush 可能か（所有者一致 + 種別一致）。所有者不明・レガシー item は false */
+function ringRetryQueueItemMayFlush_(item, profile) {
+    if (!item || !profile) return false;
+    var shopOwner = String(item.queueOwnerShopId || '').trim();
+    var userOwner = String(item.queueOwnerUserId || '').trim();
+    if (!shopOwner && !userOwner) return false;
+
+    var currentMode = ringClassifyProfile(profile);
+    var storedMode = item.queueOwnerMode != null && String(item.queueOwnerMode).trim() !== ''
+        ? ringNormalizeMode(item.queueOwnerMode)
+        : '';
+
+    if (shopOwner) {
+        if (!storedMode) return false;
+        if (currentMode !== 'shop' && currentMode !== 'business') return false;
+        if (storedMode !== currentMode) return false;
+        return shopOwner === String(profile.shopId || '').trim();
+    }
+    if (userOwner) {
+        if (!storedMode || storedMode !== 'user') return false;
+        if (currentMode !== 'user') return false;
+        return userOwner === String(profile.userId || '').trim();
+    }
+    return false;
+}
+
+/**
  * GAS 失敗分を再送キューへ（C-01）
  */
 function enqueueRetry(action, payload) {
@@ -3580,13 +3630,21 @@ function enqueueRetry(action, payload) {
     if (queue.some((item) => item.key === key)) return;
     const stored = JSON.parse(JSON.stringify(payload || {}));
     delete stored.action;
-    queue.push({
+    var profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+    var ownerMeta = ringRetryQueueResolveOwner_(profile);
+    var entry = {
         key,
         action,
         payload: stored,
         retryCount: 0,
         queuedAt: new Date().toISOString()
-    });
+    };
+    if (ownerMeta) {
+        if (ownerMeta.queueOwnerMode) entry.queueOwnerMode = ownerMeta.queueOwnerMode;
+        if (ownerMeta.queueOwnerShopId) entry.queueOwnerShopId = ownerMeta.queueOwnerShopId;
+        if (ownerMeta.queueOwnerUserId) entry.queueOwnerUserId = ownerMeta.queueOwnerUserId;
+    }
+    queue.push(entry);
     localStorage.setItem(DB_RETRY_QUEUE, JSON.stringify(queue));
     try { ringRefreshPendingSyncBanner(); } catch (eR) { /* ignore */ }
     ringLogSystemEvent('SAVE_FAIL', {
@@ -3659,8 +3717,13 @@ async function flushRetryQueue() {
             try { ringRefreshPendingSyncBanner(); } catch (eEmpty) { /* ignore */ }
             return;
         }
+        const profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
         const remaining = [];
         for (const item of queue) {
+            if (!ringRetryQueueItemMayFlush_(item, profile)) {
+                remaining.push(item);
+                continue;
+            }
             try {
                 await sendToGAS_Safe(item.action, item.payload);
             } catch (e) {
