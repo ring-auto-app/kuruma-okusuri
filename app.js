@@ -3510,7 +3510,9 @@ async function sendToGAS_Safe(actionType, data, opts) {
         payload.photoUrl = payload.partsPhoto;
     }
 
-    const authToken = ringResolveActiveAuthToken();
+    var authToken = (opts && opts.authToken != null && String(opts.authToken).trim() !== '')
+        ? String(opts.authToken).trim()
+        : ringResolveActiveAuthToken();
     if (authToken) payload.authToken = authToken;
 
     const timeoutMs = opts && opts.timeoutMs != null ? opts.timeoutMs : 60000;
@@ -3576,6 +3578,7 @@ function ringRetryQueueResolveOwner_(profile) {
         var shopId = String(profile.shopId || '').trim();
         if (!shopId) return null;
         return {
+            queueOwnerAccountKind: 'biz',
             queueOwnerMode: ringClassifyProfile(profile),
             queueOwnerShopId: shopId
         };
@@ -3583,12 +3586,16 @@ function ringRetryQueueResolveOwner_(profile) {
     if (typeof ringIsUserAccountProfile === 'function' && ringIsUserAccountProfile(profile)) {
         var userId = String(profile.userId || '').trim();
         if (!userId) return null;
-        return { queueOwnerMode: 'user', queueOwnerUserId: userId };
+        return {
+            queueOwnerAccountKind: 'user',
+            queueOwnerMode: 'user',
+            queueOwnerUserId: userId
+        };
     }
     return null;
 }
 
-/** flush 可能か（所有者一致 + 種別一致）。所有者不明・レガシー item は false */
+/** flush 可能か（所有者一致 + アカウント種別一致 + モード一致）。所有者不明・レガシー item は false */
 function ringRetryQueueItemMayFlush_(item, profile) {
     if (!item || !profile) return false;
     var shopOwner = String(item.queueOwnerShopId || '').trim();
@@ -3596,22 +3603,53 @@ function ringRetryQueueItemMayFlush_(item, profile) {
     if (!shopOwner && !userOwner) return false;
 
     var currentMode = ringClassifyProfile(profile);
+    if (currentMode !== 'user' && currentMode !== 'shop' && currentMode !== 'business') return false;
+
     var storedMode = item.queueOwnerMode != null && String(item.queueOwnerMode).trim() !== ''
         ? ringNormalizeMode(item.queueOwnerMode)
         : '';
+    if (!storedMode) return false;
+    if (storedMode !== ringNormalizeMode(currentMode)) return false;
+
+    var activeMode = ringNormalizeMode(ringGetActiveMode());
+    if (activeMode !== ringNormalizeMode(currentMode)) return false;
+    if (activeMode !== storedMode) return false;
+
+    var ownerKind = String(item.queueOwnerAccountKind || '').trim();
+    var profileIsBiz = ringIsBizProfile_(profile);
+    var profileIsUser = typeof ringIsUserAccountProfile === 'function' && ringIsUserAccountProfile(profile);
 
     if (shopOwner) {
-        if (!storedMode) return false;
-        if (currentMode !== 'shop' && currentMode !== 'business') return false;
-        if (storedMode !== currentMode) return false;
-        return shopOwner === String(profile.shopId || '').trim();
+        if (ownerKind === 'user') return false;
+        if (!profileIsBiz) return false;
+        var profileShopId = String(profile.shopId || '').trim();
+        if (!profileShopId) return false;
+        return shopOwner === profileShopId;
     }
     if (userOwner) {
-        if (!storedMode || storedMode !== 'user') return false;
-        if (currentMode !== 'user') return false;
-        return userOwner === String(profile.userId || '').trim();
+        if (ownerKind === 'biz') return false;
+        if (profileIsBiz) return false;
+        if (!profileIsUser) return false;
+        var profileUserId = String(profile.userId || '').trim();
+        if (!profileUserId) return false;
+        return userOwner === profileUserId;
     }
     return false;
+}
+
+/**
+ * 再送直前の所有者・モード・token を固定（アカウント切替と sendToGAS の TOCTOU 防止）
+ * @returns {{ ok: boolean, token?: string }}
+ */
+function ringRetryQueueBuildFlushContext_(item) {
+    if (!item) return { ok: false };
+    var profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+    if (!ringRetryQueueItemMayFlush_(item, profile)) return { ok: false };
+    var token = ringResolveActiveAuthToken();
+    if (!token) return { ok: false };
+    profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+    if (!ringRetryQueueItemMayFlush_(item, profile)) return { ok: false };
+    return { ok: true, token: token };
 }
 
 /**
@@ -3640,6 +3678,7 @@ function enqueueRetry(action, payload) {
         queuedAt: new Date().toISOString()
     };
     if (ownerMeta) {
+        if (ownerMeta.queueOwnerAccountKind) entry.queueOwnerAccountKind = ownerMeta.queueOwnerAccountKind;
         if (ownerMeta.queueOwnerMode) entry.queueOwnerMode = ownerMeta.queueOwnerMode;
         if (ownerMeta.queueOwnerShopId) entry.queueOwnerShopId = ownerMeta.queueOwnerShopId;
         if (ownerMeta.queueOwnerUserId) entry.queueOwnerUserId = ownerMeta.queueOwnerUserId;
@@ -3717,15 +3756,15 @@ async function flushRetryQueue() {
             try { ringRefreshPendingSyncBanner(); } catch (eEmpty) { /* ignore */ }
             return;
         }
-        const profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
         const remaining = [];
         for (const item of queue) {
-            if (!ringRetryQueueItemMayFlush_(item, profile)) {
+            var flushCtx = ringRetryQueueBuildFlushContext_(item);
+            if (!flushCtx.ok) {
                 remaining.push(item);
                 continue;
             }
             try {
-                await sendToGAS_Safe(item.action, item.payload);
+                await sendToGAS_Safe(item.action, item.payload, { authToken: flushCtx.token });
             } catch (e) {
                 item.retryCount = (item.retryCount || 0) + 1;
                 if (item.retryCount < 5) remaining.push(item);
