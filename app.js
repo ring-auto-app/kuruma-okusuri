@@ -273,10 +273,18 @@ function readLogsArray() {
     return Array.isArray(v) ? v : [];
 }
 
-/** C-01: 再送キュー件数（ホーム表示用） */
+/** C-01: 現在アカウントで再送対象となるキュー件数（ホーム・未送信バナー表示用。キュー全体の長さではない） */
 function getPendingRetryCount() {
     const q = safeJsonParse(localStorage.getItem(DB_RETRY_QUEUE), []);
-    return Array.isArray(q) ? q.length : 0;
+    if (!Array.isArray(q) || !q.length) return 0;
+    var profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+    if (!profile) return 0;
+    if (typeof ringRetryQueueItemMayFlush_ !== 'function') return 0;
+    var n = 0;
+    for (var i = 0; i < q.length; i++) {
+        if (ringRetryQueueItemMayFlush_(q[i], profile)) n++;
+    }
+    return n;
 }
 
 /**
@@ -867,6 +875,7 @@ function ringSwitchAccount(mode) {
     ringSetCurrentMode(mode);
     ringApplyActiveSession(slot, mode);
     if (typeof window !== 'undefined') window.__ringSessionVerified = false;
+    try { ringRefreshPendingSyncBanner(); } catch (ePendBanner) { /* ignore */ }
     return { ok: true, profile: slot.profile, mode: mode };
 }
 
