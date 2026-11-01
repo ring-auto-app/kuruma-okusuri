@@ -872,6 +872,7 @@ function ringSwitchAccount(mode) {
     if (!slot || !slot.token || !slot.profile) {
         return { ok: false, reason: 'not_registered', mode: mode };
     }
+    try { ringClearPendingSyncUi_(); } catch (eClearPend) { /* ignore */ }
     ringSetCurrentMode(mode);
     ringApplyActiveSession(slot, mode);
     if (typeof window !== 'undefined') window.__ringSessionVerified = false;
@@ -972,6 +973,7 @@ async function ringEnsureAuthForOcr() {
 
 function login(profile, authToken) {
     ringSaveAuthSlot(profile, authToken);
+    try { ringRefreshPendingSyncBanner(); } catch (ePendLogin) { /* ignore */ }
 }
 
 function getCurrentProfile() {
@@ -1002,6 +1004,7 @@ function logout() {
     try {
         sessionStorage.removeItem(RING_OCR_DEMO_SESSION_KEY);
     } catch (e) { /* ignore */ }
+    try { ringClearPendingSyncUi_(); } catch (ePendLogout) { /* ignore */ }
 }
 
 // ★ 全ページ共通のログアウト処理
@@ -3793,10 +3796,36 @@ function ringShouldAttachPendingSyncBanner() {
     return !/^(login|user_login|user_line_callback|register|biz_register|splash)\.html$/i.test(f);
 }
 
+/** 切替・ログアウト直後に未送信案内 DOM を消す（件数再計算前） */
+function ringClearPendingSyncUi_() {
+    var el = document.getElementById('ring-pending-sync-banner');
+    if (el) el.remove();
+    var pbar = document.getElementById('ringPendingSyncBar');
+    if (pbar) {
+        pbar.style.display = 'none';
+        pbar.textContent = '';
+    }
+}
+
+/** user / factory / dealer ホームの #ringPendingSyncBar（getPendingRetryCount と同基準） */
+function ringRefreshPendingSyncHomeBar_() {
+    var pbar = document.getElementById('ringPendingSyncBar');
+    if (!pbar) return;
+    var n = typeof getPendingRetryCount === 'function' ? getPendingRetryCount() : 0;
+    if (!n) {
+        pbar.style.display = 'none';
+        pbar.textContent = '';
+        return;
+    }
+    pbar.style.display = 'block';
+    pbar.textContent = '未送信のデータが ' + n + ' 件あります。オンライン復帰時に自動送信します。';
+}
+
 /**
  * GAS 再送キュー件数があるときトップに注意バーを出し、手動で flushRetryQueue 可能にする。
  */
 function ringRefreshPendingSyncBanner() {
+    try { ringRefreshPendingSyncHomeBar_(); } catch (eHomeBar) { /* ignore */ }
     if (!ringShouldAttachPendingSyncBanner()) return;
     var n = getPendingRetryCount();
     var id = 'ring-pending-sync-banner';
