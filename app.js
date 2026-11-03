@@ -3130,7 +3130,7 @@ function ringInitSystemMonitoring() {
     try {
         fn = String(window.location.pathname || '').split('/').pop() || '';
     } catch (e) { return; }
-    var watchPages = ['factory_input.html', 'dealer_input.html', 'car_add.html'];
+    var watchPages = ['maintenance_input.html', 'factory_input.html', 'dealer_input.html', 'car_add.html'];
     if (watchPages.indexOf(fn) !== -1) {
         ringInitUiExitWatch(fn.replace('.html', ''));
     }

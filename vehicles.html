@@ -456,7 +456,7 @@
         const historyLink      = (userRole === 'user') ? 'user_history.html'            : 'history.html';
         const inspectHistoryLink = (userRole === 'user') ? 'user_inspection_history.html' : 'daily_history.html';
         const inspectLink      = (userRole === 'user') ? 'inspection_user.html'          : 'inspection_biz.html';
-        const maintInputBase   = (userRole === 'factory') ? 'factory_input.html' : (userRole === 'dealer') ? 'dealer_input.html' : '';
+        const maintInputBase   = (userRole === 'factory' || userRole === 'dealer') ? 'maintenance_input.html' : '';
 
         let html = "";
         vehicles.forEach(car => {

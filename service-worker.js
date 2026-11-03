@@ -10,6 +10,7 @@ const PRECACHE_URLS = [
   "./factory_home.html",
   "./dealer_home.html",
   "./user_home.html",
+  "./maintenance_input.html",
   "./factory_input.html",
   "./dealer_input.html",
   "./car_add.html",

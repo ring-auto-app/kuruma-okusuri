@@ -112,7 +112,7 @@
         `<strong>${currentProfile.shopName}</strong> の直近7日間の記録です。<br>` +
         `それ以前の記録は改ざん防止のためロックされています。`;
 
-      const inputPage = currentProfile.shopType === 'dealer' ? 'dealer_input.html' : 'factory_input.html';
+      const inputPage = 'maintenance_input.html';
       document.getElementById('backToInputBtn').onclick = () => goBackSmart(inputPage);
       document.getElementById('ringRefreshEditListBtn').onclick = () => loadAndRenderEditList(true);
 

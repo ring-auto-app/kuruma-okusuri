@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#4b5563" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="車のお薬手帳" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="manifest" href="manifest.json">
+  <title>車のお薬手帳</title>
+
+  <link rel="stylesheet" href="common.css">
+  <script src="app.js?v=20261102-v32"></script>
+  <script src="theme.js"></script>
+  <script src="gemini-ocr.js"></script>
+  <script src="gemini-invoice-ocr.js"></script>
+  <script src="car-add-date.js"></script>
+
+  <style>
+    .edit-link {
+      display: block; color: var(--muted); font-size: 13.5px; font-weight: 800;
+      text-decoration: underline; text-underline-offset: 4px; height: 34px; line-height: 34px;
+    }
+
+    .ring-maint-tabs {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+      margin: 12px 0 16px; padding: 4px;
+      background: rgba(255,255,255,0.5); border-radius: 14px; border: 2px solid var(--line);
+    }
+    .ring-maint-tab {
+      min-height: var(--tap-min); border: none; border-radius: 10px;
+      font-size: 15px; font-weight: 900; cursor: pointer;
+      background: transparent; color: var(--muted);
+      -webkit-tap-highlight-color: transparent;
+    }
+    .ring-maint-tab[aria-selected="true"] {
+      background: var(--accent); color: #fff;
+      box-shadow: var(--shadow);
+    }
+    .ring-maint-tab:active { transform: scale(0.98); }
+
+    .ring-maint-panel[hidden] { display: none !important; }
+    #ring-maint-detail-ocr[hidden] { display: none !important; }
+
+    .parent-btn {
+      width: 100%; background: var(--paper); border: 2px solid var(--line); border-radius: 12px;
+      padding: 16px; text-align: left; font-size: 16px; font-weight: 900; color: var(--text);
+      cursor: pointer; margin-top: 12px; display: flex; justify-content: space-between; align-items: center;
+      box-shadow: var(--shadow); box-sizing: border-box;
+    }
+    .parent-btn.active { border-color: var(--accent); color: var(--accent); }
+    .parent-btn::after { content: "▼"; font-size: 12px; color: var(--muted); transition: 0.2s; }
+    .parent-btn.active::after { transform: rotate(180deg); color: var(--accent); }
+
+    .sub-menu {
+      display: none; grid-template-columns: 1fr 1fr; gap: 12px; padding: 16px;
+      background: rgba(255,255,255,0.6); border: 1px solid var(--line); border-top: none;
+      border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; margin-bottom: 8px;
+    }
+    .sub-menu.show { display: grid; animation: fadeIn 0.2s ease-out; }
+
+    .toggle-wrap { position: relative; width: 100%; }
+    .toggle-btn {
+      min-height: var(--tap-min);
+      display: flex; align-items: center; justify-content: center;
+      background: var(--paper); border: 2px solid var(--line); border-radius: 10px;
+      padding: 8px 6px; text-align: center; font-size: 14px; font-weight: 800; color: var(--muted);
+      cursor: pointer; position: relative; user-select: none; box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .toggle-btn:active { transform: scale(0.97); }
+    .toggle-btn.active { border-color: #e53e3e; color: #e53e3e; box-shadow: inset 0 0 0 1px #e53e3e; }
+    .toggle-btn.active::before {
+      content: "○"; position: absolute; top: -12px; left: -6px;
+      font-size: 32px; font-weight: 900; color: #e53e3e; z-index: 10;
+    }
+    .detail-input { display: none; width: 100%; margin-top: 6px; border: 2px dashed #e53e3e !important; background: #fff !important; }
+    .detail-input.show { display: block; }
+
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
+
+    .invoice-scan-section { margin-bottom: 20px; }
+    .invoice-scan-label { font-size: 14px; font-weight: 900; color: var(--text); margin: 0 0 10px 2px; }
+    .invoice-slot-row {
+      display: flex; gap: 8px; overflow-x: auto; -webkit-overflow-scrolling: touch;
+      padding-bottom: 4px; margin-bottom: 12px;
+    }
+    .invoice-slot {
+      flex: 0 0 68px; width: 68px; height: 88px;
+      border: 2px dashed var(--line); border-radius: 12px;
+      background: rgba(255, 255, 255, 0.6);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 4px; padding: 0; cursor: pointer; position: relative;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .invoice-slot:active { transform: scale(0.97); }
+    .invoice-slot--filled { border-style: solid; border-color: var(--accent); padding: 0; overflow: hidden; }
+    .invoice-slot__num { font-size: 18px; font-weight: 900; color: var(--muted); line-height: 1; }
+    .invoice-slot__cam { font-size: 20px; line-height: 1; opacity: 0.7; }
+    .invoice-slot__thumb { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .invoice-slot__remove {
+      position: absolute; top: 2px; right: 2px;
+      width: 28px; height: 28px; min-width: 28px; min-height: 28px;
+      border: none; border-radius: 50%; background: rgba(0,0,0,0.55);
+      color: #fff; font-size: 12px; line-height: 28px; text-align: center;
+      padding: 0; cursor: pointer; z-index: 2;
+    }
+    .invoice-scan-btn {
+      width: 100%; min-height: var(--tap-min); border: none; border-radius: 14px;
+      background: var(--accent); color: #fff; font-size: 16px; font-weight: 900;
+      cursor: pointer; margin-bottom: 10px; padding: 14px 16px;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .invoice-scan-btn:disabled { background: #cbd5e1; color: #64748b; cursor: not-allowed; }
+    .invoice-scan-btn:not(:disabled):active { transform: scale(0.98); }
+    .discard-notice {
+      font-size: 12px; color: var(--accent); font-weight: 800; text-align: center;
+      margin-bottom: 16px; line-height: 1.4;
+    }
+
+    .row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; min-width: 0; max-width: 100%; }
+    .row > .field { min-width: 0; max-width: 100%; }
+
+    input[type="text"], input[type="number"], input[type="date"], select, textarea {
+      width: 100%; max-width: 100%; min-width: 0; flex-shrink: 1;
+      min-height: var(--tap-min); padding: 8px 10px;
+      border: 2px solid var(--line) !important; border-radius: 10px;
+      box-sizing: border-box; font-size: 16px; background: #fff; outline: none;
+      -webkit-appearance: none; appearance: none;
+    }
+    #inVin {
+      font-family: "Helvetica Neue", Arial, sans-serif;
+      text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    textarea { min-height: 88px; }
+    textarea.ring-auto-grow { scroll-margin-bottom: 120px; }
+    #inParts.ring-auto-grow, #inMemo.ring-auto-grow {
+      field-sizing: content; overflow-y: hidden; resize: none;
+    }
+
+    .shared-footer-card { margin-top: 20px; padding-bottom: 8px; }
+    .photo-btn {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      background: var(--paper); border: 2px dashed var(--line);
+      padding: 16px; border-radius: 12px; font-weight: 900; color: var(--muted);
+      cursor: pointer; width: 100%; box-sizing: border-box;
+    }
+    .photo-preview {
+      width: 100%; max-height: 200px; border-radius: 8px; object-fit: contain;
+      display: none; border: 1px solid var(--line); margin-top: 12px;
+    }
+
+    input[type="number"].era-date-box, select.era-date-box {
+      width: 3.2em; min-width: 48px; max-width: 72px;
+      padding: 8px 6px; text-align: center; font-size: 16px; font-weight: 900;
+      border-radius: 10px; flex-shrink: 0; border: 2px solid var(--line);
+      background: var(--page-bg); color: var(--text); box-sizing: border-box;
+      font-family: inherit; -webkit-appearance: none; appearance: none;
+    }
+    select.era-date-box { padding: 8px 4px; cursor: pointer; }
+    .era-date-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; }
+    .era-date-unit { font-size: 13px; font-weight: 900; color: var(--text); flex-shrink: 0; }
+    .era-date-unit.era-date-fixed { min-width: 44px; font-size: 14px; padding: 8px 0; }
+    .seireki-preview {
+      font-size: 11px; font-weight: 700; color: var(--muted);
+      margin-top: 4px; padding-left: 2px; line-height: 1.4; min-height: 0;
+    }
+    .seireki-preview:not(:empty) { min-height: 1.2em; }
+    input.era-date-box:focus, select.era-date-box:focus { outline: none; border-color: var(--accent); background: #fff; }
+    input.era-date-box.error-field, select.era-date-box.error-field { border-color: #ef4444 !important; }
+
+    .dealer-vin-confirm-box {
+      font-size: 22px; font-weight: 900; letter-spacing: 0.06em; text-align: center;
+      padding: 16px 12px; margin: 8px 0 0;
+      background: rgba(37, 99, 235, 0.08); border: 2px solid var(--accent);
+      border-radius: 12px; color: var(--text); word-break: break-all; line-height: 1.35;
+      font-family: "Helvetica Neue", Arial, sans-serif;
+    }
+    .dealer-vin-confirm-note {
+      font-size: 14px; font-weight: 800; text-align: center; margin: 16px 0 0; color: var(--text);
+    }
+
+    .privacy-notice {
+      color: var(--accent); font-size: 12.5px; font-weight: 900; text-align: center;
+      line-height: 1.4; margin: 8px 0 0;
+    }
+
+    html, body { min-height: 100dvh; }
+    body.ring-ios-kbd-open { overflow: hidden; }
+    .container { min-height: 100dvh; }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <header class="header">
+      <a id="backLink" href="#" class="back-link">◁ 戻る</a>
+      <h1 class="title">整備記録の入力</h1>
+      <a href="factory_edit_list.html" class="edit-link">✏️ 過去7日間の入力履歴を編集する</a>
+    </header>
+
+    <div class="ring-maint-tabs" role="tablist" aria-label="入力方式">
+      <button type="button" class="ring-maint-tab" id="tabQuick" role="tab" aria-selected="true" aria-controls="panel-quick" data-ring-maint-tab="quick">クイック入力</button>
+      <button type="button" class="ring-maint-tab" id="tabDetail" role="tab" aria-selected="false" aria-controls="ring-maint-detail-ocr panel-detail" data-ring-maint-tab="detail">明細入力</button>
+    </div>
+
+    <div id="ring-maint-detail-ocr" role="region" aria-label="請求書・見積書の読み取り" aria-hidden="true" hidden>
+      <section class="invoice-scan-section">
+        <p class="invoice-scan-label">請求書・見積書を撮って自動入力（最大5枚）</p>
+        <div class="invoice-slot-row" id="invoiceSlotRow"></div>
+        <input type="file" id="invoiceSlotFileInput" accept="image/*" capture="environment" hidden>
+        <button type="button" id="invoiceScanBtn" class="invoice-scan-btn" disabled>スキャンして読取開始</button>
+        <div class="discard-notice" id="discardNotice">※書類画像は保存されず破棄されます</div>
+      </section>
+    </div>
+
+    <div class="basic-info-card">
+      <div class="field">
+        <span class="label">車台番号 (VIN) ※必須</span>
+        <input id="inVin" type="text" inputmode="text" autocapitalize="characters" autocomplete="off" style="text-transform: uppercase;" placeholder="車台番号を入力" onblur="lookupVehicle(this.value)">
+        <div id="vinVehicleInfo" style="display:none; margin-top:6px; font-size:12px; font-weight:800; color:var(--accent); background:rgba(37,99,235,0.06); border-radius:8px; padding:6px 10px; line-height:1.6;"></div>
+        <div id="errVin" style="display:none; color:#dc2626; font-size:12px; font-weight:800; margin-top:4px;">⚠ 車台番号を入力してください</div>
+        <p style="font-size:11px;color:var(--muted);font-weight:700;margin:6px 0 0;line-height:1.55;">※車台番号（VIN）は車検証・記録事項の「車台番号」を入力してください。<br>左下の「車両ID」ではありません。</p>
+      </div>
+      <div class="row">
+        <div class="field">
+          <span class="label">作業日 ※必須</span>
+          <input id="inDate" type="date">
+          <div id="errDate" style="display:none; color:#dc2626; font-size:12px; font-weight:800; margin-top:4px;">⚠ 作業日を選択してください</div>
+        </div>
+        <div class="field"><span class="label">走行距離 (km)</span><input id="inMileage" type="number" min="0"></div>
+      </div>
+      <div class="field" id="shakenExpiryBlock" style="display:none;">
+        <span class="label shaken-expiry-label">車検満了日 ※必須</span>
+        <div class="era-date-row">
+          <span class="era-date-unit era-date-fixed" aria-label="車検満了日元号">令和</span>
+          <select id="expiryYear" class="era-date-box" aria-label="車検満了和暦年"></select>
+          <span class="era-date-unit">年</span>
+          <select id="expiryMonth" class="era-date-box" aria-label="車検満了月"></select>
+          <span class="era-date-unit">月</span>
+          <select id="expiryDay" class="era-date-box" aria-label="車検満了日"></select>
+          <span class="era-date-unit">日</span>
+        </div>
+        <input type="hidden" id="inExpiry">
+        <div class="seireki-preview" id="expirySeirekiPreview" aria-live="polite"></div>
+        <div id="errShaken" style="display:none; color:#dc2626; font-size:12px; font-weight:800; margin-top:4px;">⚠ 車検満了日を入力してください</div>
+      </div>
+      <div class="field">
+        <span class="label">整備区分 ※必須</span>
+        <select id="inTitle" required></select>
+        <div id="errTitle" style="display:none; color:#dc2626; font-size:12px; font-weight:800; margin-top:4px;">⚠ 整備区分を選択してください</div>
+      </div>
+    </div>
+
+    <div id="panel-quick" class="ring-maint-panel" role="tabpanel" aria-labelledby="tabQuick">
+      <div class="parent-btn" data-target="sub-oil">🛢 油脂類・フィルター</div>
+      <div id="sub-oil" class="sub-menu">
+        <div class="toggle-wrap"><div class="toggle-btn" data-detail="oil-e">エンジンオイル</div><input type="text" id="oil-e" class="detail-input" placeholder="銘柄・粘度"></div>
+        <div class="toggle-wrap"><div class="toggle-btn">オイルフィルター</div></div>
+        <div class="toggle-wrap"><div class="toggle-btn" data-detail="oil-a">ATF / CVTF</div><input type="text" id="oil-a" class="detail-input" placeholder="銘柄など"></div>
+        <div class="toggle-wrap"><div class="toggle-btn" data-detail="oil-d">デフオイル</div><input type="text" id="oil-d" class="detail-input" placeholder="銘柄など"></div>
+        <div class="toggle-wrap"><div class="toggle-btn" data-detail="oil-p">パワステオイル</div><input type="text" id="oil-p" class="detail-input" placeholder="銘柄など"></div>
+      </div>
+      <div class="parent-btn" data-target="sub-belt">⚙️ ベルト類</div>
+      <div id="sub-belt" class="sub-menu">
+        <div class="toggle-wrap"><div class="toggle-btn">ファンベルト</div></div>
+        <div class="toggle-wrap"><div class="toggle-btn">クーラーベルト</div></div>
+        <div class="toggle-wrap"><div class="toggle-btn">パワステベルト</div></div>
+      </div>
+      <div class="parent-btn" data-target="sub-batt">🔋 バッテリー</div>
+      <div id="sub-batt" class="sub-menu">
+        <div class="toggle-wrap"><div class="toggle-btn" data-detail="batt">バッテリー交換</div><input type="text" id="batt" class="detail-input" placeholder="型式 (55B24Lなど)"></div>
+      </div>
+      <div class="parent-btn" data-target="sub-tire">🛞 タイヤ</div>
+      <div id="sub-tire" class="sub-menu">
+        <div class="toggle-wrap"><div class="toggle-btn" data-detail="tire">タイヤ交換</div><input type="text" id="tire" class="detail-input" placeholder="サイズ (155/65R14など)"></div>
+        <div class="toggle-wrap"><div class="toggle-btn">タイヤローテーション</div></div>
+      </div>
+      <div class="parent-btn" data-target="sub-light">💡 灯火類</div>
+      <div id="sub-light" class="sub-menu">
+        <div class="toggle-wrap"><div class="toggle-btn">ヘッドライト球</div></div>
+        <div class="toggle-wrap"><div class="toggle-btn">スモール/車幅灯</div></div>
+        <div class="toggle-wrap"><div class="toggle-btn">ウインカー球</div></div>
+        <div class="toggle-wrap"><div class="toggle-btn">ブレーキ/テール球</div></div>
+      </div>
+      <div class="parent-btn" data-target="sub-items">📦 用品取付</div>
+      <div id="sub-items" class="sub-menu">
+        <div class="toggle-wrap"><div class="toggle-btn" data-detail="item-etc">ETC</div><input type="text" id="item-etc" class="detail-input" placeholder="メーカーや型番などを入力"></div>
+        <div class="toggle-wrap"><div class="toggle-btn" data-detail="item-spk">スピーカー</div><input type="text" id="item-spk" class="detail-input" placeholder="メーカーや型番などを入力"></div>
+        <div class="toggle-wrap"><div class="toggle-btn" data-detail="item-cam">バックカメラ</div><input type="text" id="item-cam" class="detail-input" placeholder="メーカーや型番などを入力"></div>
+        <div class="toggle-wrap"><div class="toggle-btn" data-detail="item-dvr">ドライブレコーダー</div><input type="text" id="item-dvr" class="detail-input" placeholder="メーカーや型番などを入力"></div>
+        <div class="toggle-wrap"><div class="toggle-btn" data-detail="item-nav">ナビ / オーディオ</div><input type="text" id="item-nav" class="detail-input" placeholder="メーカーや型番などを入力"></div>
+      </div>
+    </div>
+
+    <div id="panel-detail" class="ring-maint-panel" role="tabpanel" aria-labelledby="tabDetail" hidden>
+      <details style="margin-bottom:10px;">
+        <summary style="font-size:13px; font-weight:900; color:var(--muted); cursor:pointer; padding:6px 0; user-select:none;">
+          ▶ 車両詳細情報を入力する（任意）
+        </summary>
+        <div style="margin-top:10px;">
+          <div class="row">
+            <div class="field">
+              <span class="label">型式 <span style="font-size:11px; color:var(--muted);">※任意</span></span>
+              <input id="inModel" type="text" placeholder="例：DBA-GT123">
+            </div>
+            <div class="field">
+              <span class="label">原動機型式 <span style="font-size:11px; color:var(--muted);">※任意</span></span>
+              <input id="inEngine" type="text" placeholder="例：2ZR-FXE">
+            </div>
+          </div>
+          <div class="row">
+            <div class="field">
+              <span class="label">類別区分番号 <span style="font-size:11px; color:var(--muted);">※任意</span></span>
+              <input id="inClass" type="text" placeholder="例：0001">
+            </div>
+            <div class="field">
+              <span class="label">型式指定番号 <span style="font-size:11px; color:var(--muted);">※任意</span></span>
+              <input id="inTypeDesig" type="text" placeholder="例：1234">
+            </div>
+          </div>
+        </div>
+      </details>
+      <div class="field">
+        <span class="label">作業内容・交換部品</span>
+        <textarea id="inParts" class="ring-auto-grow" rows="3" placeholder="自動抽出されます"></textarea>
+        <div id="inPartsPreview" class="ring-maint-preview" aria-live="polite"></div>
+      </div>
+    </div>
+
+    <div class="shared-footer-card">
+      <div class="field">
+        <span class="label">整備メモ</span>
+        <textarea id="inMemo" class="ring-auto-grow" rows="2" placeholder="特記事項があれば入力"></textarea>
+      </div>
+      <div class="photo-btn" onclick="document.getElementById('partsPhotoInput').click()">📷 交換部品・用品の写真を追加</div>
+      <input type="file" id="partsPhotoInput" accept="image/*" hidden>
+      <img id="partsPhotoPreview" class="photo-preview" alt="">
+      <input type="hidden" id="inPartsPhotoBase64">
+    </div>
+
+    <div class="ring-sticky-save-wrap" style="margin-top: 24px;">
+      <button type="button" class="save-btn" id="saveMaintBtn">内容を確認して保存</button>
+    </div>
+    <p class="privacy-notice" id="detailPrivacyNotice" hidden>＊「この内容で登録する」前に内容を確認できます。個人情報・金額に注意！</p>
+  </div>
+
+  <script>
+    var currentProfile = null;
+    var ringMaintActiveTab = 'quick';
+
+    function ringMaintNormVin_(rawVin) {
+      return String(rawVin || '').trim().toUpperCase();
+    }
+
+    function ringMaintGetShakenValue_() {
+      if (typeof ringCarAddSyncAllDateHidden === 'function') ringCarAddSyncAllDateHidden();
+      var el = document.getElementById('inExpiry');
+      return el ? String(el.value || '').trim() : '';
+    }
+
+    function ringMaintLatestMileage_(vin) {
+      vin = ringMaintNormVin_(vin);
+      if (!vin) return null;
+      var best = null;
+      var bestTime = -1;
+      function consider(mileage, dateStr) {
+        var m = parseInt(mileage, 10);
+        if (isNaN(m)) return;
+        var t = dateStr ? new Date(dateStr).getTime() : 0;
+        if (isNaN(t)) t = 0;
+        if (best === null || t >= bestTime) { best = m; bestTime = t; }
+      }
+      try {
+        safeJsonParse(localStorage.getItem('nappy_logs_v1'), [])
+          .filter(function (l) { return ringMaintNormVin_(l.vin) === vin; })
+          .forEach(function (l) { consider(l.mileage, l.date); });
+        safeJsonParse(localStorage.getItem('inspections_v1'), [])
+          .filter(function (l) { return ringMaintNormVin_(l.vin) === vin; })
+          .forEach(function (l) { consider(l.mileage, l.date || l.createdAt); });
+      } catch (e) { /* ignore */ }
+      return best;
+    }
+
+    function ringMaintApplyVehiclePrefill_(rec, vin) {
+      if (!rec) return;
+      var expiryEl = document.getElementById('inExpiry');
+      if (rec.nextShaken && expiryEl && !expiryEl.value) {
+        if (typeof ringCarAddSetExpiryFromIso === 'function') ringCarAddSetExpiryFromIso(rec.nextShaken);
+      }
+      var mileageEl = document.getElementById('inMileage');
+      if (mileageEl && !mileageEl.value) {
+        var latest = ringMaintLatestMileage_(vin);
+        if (latest != null && !isNaN(latest)) mileageEl.value = latest;
+      }
+    }
+
+    function ringMaintUpdateVinInfoBanner_(rec) {
+      var infoEl = document.getElementById('vinVehicleInfo');
+      if (!infoEl || !rec) return;
+      var parts = [];
+      if (rec.vehicleModel || rec.model) parts.push('型式：' + (rec.vehicleModel || rec.model));
+      if (rec.engine) parts.push('原動機：' + rec.engine);
+      if (rec.classification || rec.category) parts.push('類別：' + (rec.classification || rec.category));
+      if (rec.typeDesignation) parts.push('型式指定：' + rec.typeDesignation);
+      if (parts.length) {
+        infoEl.textContent = '✅ ' + parts.join('　');
+        infoEl.style.display = 'block';
+      } else {
+        infoEl.style.display = 'none';
+      }
+    }
+
+    async function lookupVehicle(rawVin) {
+      var vin = ringMaintNormVin_(rawVin);
+      if (!vin) return;
+      var vehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
+      var rec = vehicles.find(function (v) { return ringMaintNormVin_(v.vin) === vin; });
+      var infoEl = document.getElementById('vinVehicleInfo');
+      if (rec) {
+        ringMaintApplyVehiclePrefill_(rec, vin);
+        var mEl = document.getElementById('inModel');
+        var eEl = document.getElementById('inEngine');
+        var cEl = document.getElementById('inClass');
+        var tEl = document.getElementById('inTypeDesig');
+        if (mEl) mEl.value = rec.vehicleModel || rec.model || '';
+        if (eEl) eEl.value = rec.engine || '';
+        if (cEl) cEl.value = rec.classification || rec.category || '';
+        if (tEl) tEl.value = rec.typeDesignation || '';
+        ringMaintUpdateVinInfoBanner_(rec);
+      } else {
+        if (infoEl) infoEl.style.display = 'none';
+        if (!document.getElementById('inMileage').value) {
+          var latestOnly = ringMaintLatestMileage_(vin);
+          if (latestOnly != null && !isNaN(latestOnly)) document.getElementById('inMileage').value = latestOnly;
+        }
+      }
+      if (typeof ringFetchAndApplyVehicleInfoByVin_ === 'function') {
+        await ringFetchAndApplyVehicleInfoByVin_(vin, {
+          onApplied: function (v) {
+            ringMaintApplyVehiclePrefill_(v, vin);
+            ringMaintUpdateVinInfoBanner_(v);
+          }
+        });
+      }
+    }
+
+    function ringMaintGetActiveTab_() {
+      return ringMaintActiveTab === 'detail' ? 'detail' : 'quick';
+    }
+
+    function ringMaintSetTab_(tab) {
+      tab = tab === 'detail' ? 'detail' : 'quick';
+      ringMaintActiveTab = tab;
+      var tabQuick = document.getElementById('tabQuick');
+      var tabDetail = document.getElementById('tabDetail');
+      var panelQuick = document.getElementById('panel-quick');
+      var panelDetail = document.getElementById('panel-detail');
+      var detailOcr = document.getElementById('ring-maint-detail-ocr');
+      var notice = document.getElementById('detailPrivacyNotice');
+      if (tabQuick) tabQuick.setAttribute('aria-selected', tab === 'quick' ? 'true' : 'false');
+      if (tabDetail) tabDetail.setAttribute('aria-selected', tab === 'detail' ? 'true' : 'false');
+      if (panelQuick) {
+        if (tab === 'quick') panelQuick.removeAttribute('hidden');
+        else panelQuick.setAttribute('hidden', '');
+      }
+      if (panelDetail) {
+        if (tab === 'detail') panelDetail.removeAttribute('hidden');
+        else panelDetail.setAttribute('hidden', '');
+      }
+      if (detailOcr) {
+        if (tab === 'detail') {
+          detailOcr.removeAttribute('hidden');
+          detailOcr.setAttribute('aria-hidden', 'false');
+        } else {
+          detailOcr.setAttribute('hidden', '');
+          detailOcr.setAttribute('aria-hidden', 'true');
+        }
+      }
+      if (notice) notice.hidden = tab !== 'detail';
+    }
+
+    function ringMaintPostSaveDest_(vin, logId) {
+      if (currentProfile && currentProfile.shopType === 'factory') {
+        return 'factory_history.html?vin=' + encodeURIComponent(vin);
+      }
+      return 'factory_edit_list.html?vin=' + encodeURIComponent(vin) + '&log_id=' + encodeURIComponent(logId || '');
+    }
+
+    function ringMaintBuildProfileFields_() {
+      var p = currentProfile || {};
+      return {
+        shopId: p.shopId || '',
+        shopName: p.shopName || '',
+        shopType: p.shopType || 'dealer',
+        factoryType: p.factoryType || '',
+        staffId: p.staffId || p.loginId || '',
+        staffName: p.displayName || p.realName || ''
+      };
+    }
+
+    function ringMaintBuildQuickParts_() {
+      var lines = [];
+      document.querySelectorAll('#panel-quick .toggle-btn.active').forEach(function (b) {
+        var name = b.innerText;
+        var dId = b.getAttribute('data-detail');
+        if (dId) {
+          var inp = document.getElementById(dId);
+          if (inp && inp.value) name += '(' + inp.value + ')';
+        }
+        lines.push('・' + name);
+      });
+      return lines.join('\n');
+    }
+
+    function ringMaintValidateCommon_(opts) {
+      opts = opts || {};
+      var vinEl = document.getElementById('inVin');
+      var dateEl = document.getElementById('inDate');
+      var errVin = document.getElementById('errVin');
+      var errDate = document.getElementById('errDate');
+      var vin = vinEl ? vinEl.value.trim() : '';
+      var date = dateEl ? dateEl.value : '';
+      if (errVin) errVin.style.display = 'none';
+      if (errDate) errDate.style.display = 'none';
+      var errShaken = document.getElementById('errShaken');
+      if (errShaken) errShaken.style.display = 'none';
+      if (typeof ringCarAddMarkDateFieldsError === 'function') ringCarAddMarkDateFieldsError('expiry', false);
+      var hasErr = false;
+      if (!vin) { if (errVin) errVin.style.display = 'block'; hasErr = true; }
+      if (!date) { if (errDate) errDate.style.display = 'block'; hasErr = true; }
+      if (typeof ringValidateShakenExpiryIfRequired_ === 'function' && !ringValidateShakenExpiryIfRequired_()) hasErr = true;
+      if (typeof ringValidateWorkTitleSelect === 'function' && !ringValidateWorkTitleSelect()) hasErr = true;
+      if (hasErr) return null;
+      return { vin: ringMaintNormVin_(vin), date: date, shaken: ringMaintGetShakenValue_() };
+    }
+
+    function ringMaintBuildVinConfirmBody_(vin) {
+      var safeVin = typeof escapeHtml === 'function' ? escapeHtml(vin) : vin;
+      return '<p style="font-size:13px;font-weight:800;color:var(--muted);margin:0;">入力された車台番号 (VIN)</p>' +
+        '<div class="dealer-vin-confirm-box">' + safeVin + '</div>' +
+        '<p style="font-size:11px;color:var(--muted);font-weight:700;margin:8px 0 0;line-height:1.55;">※車台番号（VIN）は車検証・記録事項の「車台番号」を入力してください。<br>左下の「車両ID」ではありません。</p>' +
+        '<p class="dealer-vin-confirm-note">間違いはありませんか？</p>';
+    }
+
+    async function ringMaintPerformQuickSave_(vin) {
+      if (window.__ringSaving) {
+        if (typeof showToast === 'function') showToast('info', '保存処理中です。完了までお待ちください。');
+        return;
+      }
+      window.__ringSaving = true;
+      try {
+        var pf = ringMaintBuildProfileFields_();
+        var logData = {
+          vin: vin,
+          date: document.getElementById('inDate').value,
+          mileage: document.getElementById('inMileage').value,
+          nextShaken: ringMaintGetShakenValue_(),
+          title: document.getElementById('inTitle').value.trim(),
+          parts: ringMaintBuildQuickParts_(),
+          memo: document.getElementById('inMemo').value,
+          partsPhoto: document.getElementById('inPartsPhotoBase64').value,
+          shopId: pf.shopId,
+          shopName: pf.shopName,
+          shopType: pf.shopType || 'dealer',
+          factoryType: pf.factoryType,
+          staffId: pf.staffId,
+          staffName: pf.staffName,
+          createdAt: new Date().toISOString()
+        };
+        showLoading('保存中', '整備記録を保存しています...');
+        var result = await saveLog(logData);
+        hideLoading();
+        var dest = ringMaintPostSaveDest_(vin, result.logId);
+        if (typeof ringAfterMaintenanceSaveComplete_ === 'function') {
+          await ringAfterMaintenanceSaveComplete_(vin, result, dest);
+        }
+      } finally {
+        window.__ringSaving = false;
+      }
+    }
+
+    async function ringMaintPerformDetailSave_() {
+      if (window.__ringSaving) {
+        if (typeof showToast === 'function') showToast('info', '保存処理中です。完了までお待ちください。');
+        return;
+      }
+      window.__ringSaving = true;
+      try {
+        var vin = ringMaintNormVin_(document.getElementById('inVin').value);
+        var pf = ringMaintBuildProfileFields_();
+        var ocrMeta = window.__ringInvoiceOcrMeta || {};
+        showLoading('保存中', '記録をデータベースに書き込んでいます...');
+        var logData = {
+          vin: vin,
+          date: document.getElementById('inDate').value,
+          mileage: document.getElementById('inMileage').value,
+          nextShaken: ringMaintGetShakenValue_(),
+          vehicleModel: document.getElementById('inModel').value,
+          engine: document.getElementById('inEngine').value,
+          classification: document.getElementById('inClass').value,
+          typeDesignation: document.getElementById('inTypeDesig').value,
+          title: document.getElementById('inTitle').value,
+          parts: document.getElementById('inParts').value,
+          memo: document.getElementById('inMemo').value,
+          partsPhoto: document.getElementById('inPartsPhotoBase64').value,
+          shopId: pf.shopId,
+          shopName: pf.shopName,
+          shopType: pf.shopType || '',
+          factoryType: pf.factoryType,
+          staffId: pf.staffId,
+          staffName: pf.staffName,
+          createdAt: new Date().toISOString(),
+          documentType: ocrMeta.documentType || '',
+          works: ocrMeta.works || [],
+          partsItems: ocrMeta.partsItems || []
+        };
+        var result = await saveLog(logData);
+        hideLoading();
+        var dest = ringMaintPostSaveDest_(vin, result.logId);
+        if (typeof ringAfterMaintenanceSaveComplete_ === 'function') {
+          await ringAfterMaintenanceSaveComplete_(vin, result, dest);
+        }
+      } finally {
+        window.__ringSaving = false;
+      }
+    }
+
+    document.getElementById('tabQuick').addEventListener('click', function () { ringMaintSetTab_('quick'); });
+    document.getElementById('tabDetail').addEventListener('click', function () { ringMaintSetTab_('detail'); });
+
+    document.querySelectorAll('#panel-quick .parent-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var targetId = btn.getAttribute('data-target');
+        var subMenu = document.getElementById(targetId);
+        if (subMenu) subMenu.classList.toggle('show');
+        btn.classList.toggle('active');
+      });
+    });
+
+    document.querySelectorAll('#panel-quick .toggle-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        btn.classList.toggle('active');
+        var dId = btn.getAttribute('data-detail');
+        if (dId) {
+          var input = document.getElementById(dId);
+          if (!input) return;
+          if (btn.classList.contains('active')) { input.classList.add('show'); input.focus(); }
+          else { input.classList.remove('show'); input.value = ''; }
+        }
+      });
+    });
+
+    document.getElementById('partsPhotoInput').addEventListener('change', function (e) {
+      var file = e.target.files[0];
+      if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function (ev) {
+        var preview = document.getElementById('partsPhotoPreview');
+        preview.src = ev.target.result;
+        preview.style.display = 'block';
+        document.getElementById('inPartsPhotoBase64').value = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    if (typeof ringInitInvoiceSlotPicker === 'function') {
+      ringInitInvoiceSlotPicker({ saveBtnId: 'saveMaintBtn' });
+    }
+
+    document.getElementById('saveMaintBtn').addEventListener('click', async function () {
+      var saveBtn = document.getElementById('saveMaintBtn');
+      var common = ringMaintValidateCommon_();
+      if (!common) return;
+      var tab = ringMaintGetActiveTab_();
+
+      if (tab === 'quick') {
+        if (typeof showRingSaveConfirm === 'function') {
+          showRingSaveConfirm({
+            title: '車台番号の最終確認',
+            lead: '',
+            bodyHtml: ringMaintBuildVinConfirmBody_(common.vin),
+            confirmLabel: 'この車台番号で保存する',
+            onConfirm: function () { runOnce(saveBtn, function () { ringMaintPerformQuickSave_(common.vin); }); }
+          });
+          return;
+        }
+        var ok = typeof showRingConfirm === 'function'
+          ? await showRingConfirm({
+              title: '車台番号の最終確認',
+              message: '入力された車台番号：\n' + common.vin + '\n\n間違いはありませんか？',
+              okLabel: 'はい、保存する',
+              cancelLabel: 'いいえ'
+            })
+          : confirm('【車台番号の最終確認】\n入力された車台番号： ' + common.vin + '\n\n間違いはありませんか？');
+        if (ok) runOnce(saveBtn, function () { ringMaintPerformQuickSave_(common.vin); });
+        return;
+      }
+
+      var vin = common.vin;
+      var date = common.date;
+      var shaken = common.shaken;
+      var mileageInput = document.getElementById('inMileage').value;
+      var currentMileage = parseInt(mileageInput, 10);
+      if (!isNaN(currentMileage)) {
+        try {
+          var logs = safeJsonParse(localStorage.getItem('nappy_logs_v1'), []);
+          var vLogs = logs.filter(function (l) { return l.vin === vin; }).sort(function (a, b) { return new Date(b.date) - new Date(a.date); });
+          if (vLogs.length > 0) {
+            var lastM = parseInt(vLogs[0].mileage, 10);
+            if (!isNaN(lastM) && currentMileage < lastM) {
+              var okM = typeof showRingConfirm === 'function'
+                ? await showRingConfirm({
+                    title: '走行距離の確認',
+                    message: '【確認】直近の記録（' + lastM + 'km）より少ないです。間違いありませんか？',
+                    okLabel: 'このまま保存',
+                    cancelLabel: '戻る'
+                  })
+                : confirm('【確認】直近の記録（' + lastM + 'km）より少ないです。間違いありませんか？');
+              if (!okM) return;
+            }
+          }
+        } catch (eM) { /* ignore */ }
+      }
+
+      var isShakenCat = typeof ringIsShakenWorkTitle_ === 'function' &&
+        ringIsShakenWorkTitle_(document.getElementById('inTitle').value);
+      var partsVal = document.getElementById('inParts').value;
+      var memoVal = document.getElementById('inMemo').value;
+      var photoOn = !!document.getElementById('inPartsPhotoBase64').value;
+      var ocrMeta = window.__ringInvoiceOcrMeta || {};
+      var bodyHtml =
+        ringConfirmRow('車台番号 (VIN)', vin) +
+        '<p style="font-size:11px;color:var(--muted);font-weight:700;margin:4px 0 8px;line-height:1.55;">※車台番号（VIN）は車検証・記録事項の「車台番号」を入力してください。<br>左下の「車両ID」ではありません。</p>' +
+        ringConfirmRow('作業日', date) +
+        (isShakenCat ? ringConfirmRow('車検満了日', shaken) : '') +
+        ringConfirmRow('整備区分', document.getElementById('inTitle').value) +
+        ringConfirmRow('走行距離(km)', mileageInput || '—') +
+        ringConfirmRow('型式', document.getElementById('inModel').value) +
+        ringConfirmRow('原動機型式', document.getElementById('inEngine').value) +
+        ringConfirmRow('類別区分番号', document.getElementById('inClass').value) +
+        ringConfirmRow('型式指定番号', document.getElementById('inTypeDesig').value) +
+        (typeof ringConfirmMaintenanceRow === 'function'
+          ? ringConfirmMaintenanceRow('作業内容・交換部品', {
+              parts: partsVal,
+              works: ocrMeta.works || [],
+              partsItems: ocrMeta.partsItems || []
+            })
+          : ringConfirmRow('作業内容・交換部品', truncateRingConfirm(partsVal, 180))) +
+        ringConfirmRow('整備メモ', truncateRingConfirm(memoVal, 180)) +
+        ringConfirmRow('写真', photoOn ? '添付あり' : '—');
+      var piiWarn = typeof ringBuildPiiWarningHtml_ === 'function'
+        ? ringBuildPiiWarningHtml_(['inParts', 'inMemo'])
+        : '';
+      showRingSaveConfirm({
+        title: '整備記録の確認',
+        lead: typeof ringGetPreSaveLeadText === 'function' ? ringGetPreSaveLeadText() : undefined,
+        piiWarningHtml: piiWarn ? escapeHtml(piiWarn) : '',
+        bodyHtml: bodyHtml,
+        confirmLabel: 'この内容で登録する',
+        onConfirm: function () { runOnce(saveBtn, ringMaintPerformDetailSave_); }
+      });
+    });
+
+    window.addEventListener('DOMContentLoaded', function () {
+      currentProfile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+      var isBiz = typeof ringIsBizProfile_ === 'function' ? ringIsBizProfile_(currentProfile) : false;
+      if (!currentProfile || !isBiz) {
+        var loginUrl = typeof ringGetLoginUrlForMode === 'function'
+          ? ringGetLoginUrlForMode(typeof ringClassifyProfile === 'function' ? ringClassifyProfile(currentProfile) : 'shop')
+          : 'login.html';
+        location.replace(loginUrl);
+        return;
+      }
+      if (currentProfile.role === 'inspector' || currentProfile.role === 'viewer') {
+        if (typeof showToast === 'function') showToast('error', '整備記録の入力権限がありません（オーナーにご確認ください）。');
+        history.back();
+        return;
+      }
+
+      var authMode = typeof ringClassifyProfile === 'function' ? ringClassifyProfile(currentProfile) : 'shop';
+      if (typeof ringBootAuthForOcrPage === 'function') ringBootAuthForOcrPage(authMode);
+
+      var backLink = document.getElementById('backLink');
+      if (backLink) {
+        var home = currentProfile.shopType === 'factory' ? 'factory_home.html' : 'dealer_home.html';
+        backLink.setAttribute('onclick', "goBackSmart('" + home + "'); return false;");
+      }
+
+      var today = new Date();
+      var offset = today.getTimezoneOffset() * 60000;
+      var localToday = new Date(today.getTime() - offset);
+      var todayStr = localToday.toISOString().split('T')[0];
+      var limitDate = new Date(localToday.getTime());
+      limitDate.setDate(limitDate.getDate() - 14);
+      var dateEl = document.getElementById('inDate');
+      dateEl.value = todayStr;
+      dateEl.min = limitDate.toISOString().split('T')[0];
+      dateEl.max = todayStr;
+
+      if (typeof ringCarAddInitDateFields === 'function') ringCarAddInitDateFields();
+      if (typeof ringInitAutoGrowTextareas === 'function') ringInitAutoGrowTextareas();
+      if (typeof ringInitIosTextareaKeyboardFix_ === 'function') ringInitIosTextareaKeyboardFix_();
+      if (typeof ringMountMaintenanceItemsPreview_ === 'function') {
+        ringMountMaintenanceItemsPreview_('inParts', 'inPartsPreview', function () {
+          return window.__ringInvoiceOcrMeta || {};
+        });
+      }
+
+      ringMaintSetTab_('quick');
+
+      var preVin = new URLSearchParams(location.search).get('vin');
+      if (preVin) {
+        var vinEl = document.getElementById('inVin');
+        vinEl.value = preVin.trim().toUpperCase();
+        vinEl.readOnly = true;
+        lookupVehicle(preVin);
+      }
+    });
+  </script>
+</body>
+</html>
