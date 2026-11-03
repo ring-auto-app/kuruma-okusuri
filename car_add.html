@@ -402,6 +402,11 @@
       if (typeof ringBootAuthForOcrPage === 'function') {
         ringBootAuthForOcrPage(isBiz ? (role === 'dealer' ? 'business' : 'shop') : 'user');
       }
+      if (isBiz && typeof ringCanEditManagedVehicles_ === 'function' && !ringCanEditManagedVehicles_(profile)) {
+        alert('管理車両の編集権限がありません。閲覧のみ可能です。');
+        goBackHome();
+        return;
+      }
       if (isBiz) {
         document.getElementById('pageTitle').textContent    = '🚙 車両の登録';
         document.getElementById('pageSubtitle').textContent = '入庫車両や在庫車の情報を登録します。';
@@ -523,12 +528,7 @@
         createdAt:         new Date().toISOString(),
         lastMaint:         '---'
       };
-      if (isBiz) {
-        newVehicle.model = nickVal;
-        newVehicle.nickname = nickVal;
-      } else {
-        newVehicle.nickname = nickVal;
-      }
+      newVehicle.nickname = nickVal;
 
       if (profile) {
         if (isBiz) {

@@ -108,6 +108,17 @@
                   '<option value="viewer"' + (role === 'viewer' ? ' selected' : '') + '>👁 閲覧のみ</option>' +
                   '</select></div>';
 
+            var canEditVeh = isMaster
+                ? '<span style="font-size:11px;font-weight:800;color:var(--muted);">常に可</span>'
+                : (function () {
+                    var on = staff.canEditManagedVehicles === true ||
+                        (staff.canEditManagedVehicles !== false && role === 'staff');
+                    return '<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:800;cursor:pointer;">' +
+                        '<input type="checkbox"' + (on ? ' checked' : '') +
+                        ' onchange="ringStaffAdminChangeVehicleEdit(\'' + eid + '\', this.checked)">' +
+                        '編集可</label>';
+                })();
+
             var deleteCell = isMaster
                 ? ''
                 : '<button class="btn-delete" onclick="ringStaffAdminDeleteStaff(\'' + eid + '\')" title="削除">🗑</button>';
@@ -118,6 +129,7 @@
                 '<td class="col-name">' + escapeHtml_(staff.realName) + '</td>' +
                 '<td class="col-name">' + escapeHtml_(staff.displayName) + '</td>' +
                 '<td>' + restrictCell + '</td>' +
+                '<td>' + canEditVeh + '</td>' +
                 '<td>' + deleteCell + '</td>';
             tbody.appendChild(tr);
         });
@@ -134,7 +146,7 @@
         if (!tbody) return;
         if (local.length === 0) {
             tbody.innerHTML =
-                '<tr><td colspan="5" class="empty-note">📡 サーバー未接続<br>' +
+                '<tr><td colspan="6" class="empty-note">📡 サーバー未接続<br>' +
                 '<span style="font-size:12px;">まだスタッフが追加されていません</span></td></tr>';
         } else {
             renderTable_(local);
@@ -184,6 +196,41 @@
             renderLocalStaff_();
         } finally {
             if (typeof hideLoading === 'function') hideLoading();
+        }
+    }
+
+    async function changeVehicleEdit_(loginId, enabled) {
+        var profile = state_.profile;
+        if (!profile) return;
+        try {
+            var res = await fetch(GAS_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain' },
+                body: JSON.stringify({
+                    action: 'update_staff_vehicle_edit',
+                    authToken: resolveAuthToken_(),
+                    shopId: profile.shopId,
+                    loginId: loginId,
+                    canEditManagedVehicles: !!enabled
+                })
+            });
+            var data = await res.json();
+            if (!data.success) throw new Error(data.error || '更新に失敗しました');
+            var key = staffLocalKey_(profile.shopId);
+            var staff = typeof safeJsonParse === 'function'
+                ? safeJsonParse(localStorage.getItem(key), [])
+                : [];
+            var idx = staff.findIndex(function (s) { return s.loginId === loginId; });
+            if (idx >= 0) {
+                staff[idx].canEditManagedVehicles = !!enabled;
+                localStorage.setItem(key, JSON.stringify(staff));
+            }
+            if (typeof showToast === 'function') showToast('success', '管理車両の編集許可を更新しました');
+        } catch (e) {
+            if (typeof showToast === 'function') {
+                showToast('error', '更新に失敗しました: ' + e.message);
+            }
+            await loadStaffList_();
         }
     }
 
@@ -334,7 +381,8 @@
                     displayName: displayName,
                     realName: realName,
                     role: 'staff',
-                    shopId: profile.shopId
+                    shopId: profile.shopId,
+                    canEditManagedVehicles: false
                 });
                 localStorage.setItem(key, JSON.stringify(staff));
             }
@@ -430,6 +478,9 @@
     global.ringStaffAdminMount_ = mount_;
     global.ringStaffAdminChangeRole = function (loginId, newRole) {
         changeRole_(loginId, newRole);
+    };
+    global.ringStaffAdminChangeVehicleEdit = function (loginId, enabled) {
+        changeVehicleEdit_(loginId, enabled);
     };
     global.ringStaffAdminDeleteStaff = function (loginId) {
         deleteStaff_(loginId);

@@ -2579,6 +2579,36 @@ function ringIsBizProfile_(profile) {
     return role === 'factory' || role === 'dealer';
 }
 
+/** 事業者: 管理車両・代車の編集可否（master 常に可。F列未設定時は role=staff のみ可＝レガシー） */
+function ringCanEditManagedVehicles_(profile) {
+    if (!profile || !ringIsBizProfile_(profile)) return true;
+    if (String(profile.role || '') === 'master') return true;
+    if (profile.canEditManagedVehicles === true) return true;
+    if (profile.canEditManagedVehicles === false) return false;
+    return String(profile.role || '') === 'staff';
+}
+
+/** 一覧用: ニックネーム等のクラウド未同期 */
+function ringVehicleCloudUnsyncPending_(car, profile) {
+    if (!car) return false;
+    if (car.nicknamePendingCloud === true) return true;
+    var vinNorm = _normalize(car.vin);
+    if (!vinNorm) return false;
+    var q = safeJsonParse(localStorage.getItem(DB_RETRY_QUEUE), []);
+    profile = profile || (typeof getCurrentProfile === 'function' ? getCurrentProfile() : null);
+    for (var qi = 0; qi < q.length; qi++) {
+        var item = q[qi];
+        if (item.action !== 'vehicle' && item.action !== 'update_vehicle') continue;
+        if (_normalize(item.payload && item.payload.vin) !== vinNorm) continue;
+        if (typeof ringRetryQueueItemMayFlush_ === 'function' && profile &&
+            !ringRetryQueueItemMayFlush_(item, profile)) {
+            continue;
+        }
+        return true;
+    }
+    return false;
+}
+
 /**
  * 一般ユーザーのローカル専用ニックネーム（レガシー: model に保存されていた値を1回だけ引き継ぐ）
  */
@@ -2594,17 +2624,80 @@ function ringResolveLocalVehicleNickname_(prev, myUserId) {
 }
 
 /**
- * マイカー一覧などの表示名（nickname 優先、なければ共有 model）
+ * ニックネーム文字列の正規化（クラウド保存対象外のプレースホルダを除外）
  */
-function ringVehicleDisplayName_(car) {
-    if (!car) return '未設定';
-    var nick = String(car.nickname || '').trim();
-    if (nick) return nick;
-    return String(car.model || '').trim() || '未設定';
+function ringNormalizeVehicleNicknameValue_(s) {
+    var t = String(s != null ? s : '').trim();
+    if (!t || t === '名称未設定') return '';
+    return t;
 }
 
 /**
- * GAS 送信用ペイロード（一般ユーザーのニックネームは model へ送らない）
+ * get_vehicles マージ後の nickname / nicknameCloud / nicknamePendingCloud
+ */
+function ringApplyMergedNicknameState_(prev, serverLoc, opts) {
+    prev = prev || {};
+    serverLoc = serverLoc || {};
+    opts = opts || {};
+    var isBiz = !!opts.isBiz;
+    var myUserId = String(opts.userId || '').trim();
+    var serverCloud = ringNormalizeVehicleNicknameValue_(
+        serverLoc.nicknameCloud != null ? serverLoc.nicknameCloud : serverLoc.nickname
+    );
+    var prevNick = ringNormalizeVehicleNicknameValue_(prev.nickname);
+    var prevCloud = ringNormalizeVehicleNicknameValue_(prev.nicknameCloud);
+    if (prev.nicknamePendingCloud === true) {
+        return {
+            nickname: prevNick,
+            nicknameCloud: prevCloud,
+            nicknamePendingCloud: true
+        };
+    }
+    if (serverCloud !== '') {
+        return {
+            nickname: serverCloud,
+            nicknameCloud: serverCloud,
+            nicknamePendingCloud: false
+        };
+    }
+    var localNick = prevNick;
+    if (!isBiz && !localNick) {
+        localNick = ringNormalizeVehicleNicknameValue_(ringResolveLocalVehicleNickname_(prev, myUserId));
+    }
+    return {
+        nickname: localNick,
+        nicknameCloud: '',
+        nicknamePendingCloud: false
+    };
+}
+
+/** get_vehicles 1行が現アカウントの車両か（GAS フィルタのクライアント側確認） */
+function ringServerVehicleRowMatchesProfile_(row, profile) {
+    if (!row || !profile) return false;
+    if (ringIsBizProfile_(profile)) {
+        var shopId = String(profile.shopId || '').trim();
+        return shopId && String(row.shopId || '').trim() === shopId;
+    }
+    var uid = String(profile.userId || '').trim();
+    return uid && String(row.userId || '').trim() === uid;
+}
+
+/**
+ * マイカー一覧などの表示名（nickname → 事業者M列 model → vehicleName）
+ */
+function ringVehicleDisplayName_(car) {
+    if (!car) return '未設定';
+    var nick = ringNormalizeVehicleNicknameValue_(car.nickname);
+    if (nick) return nick;
+    var model = String(car.model || '').trim();
+    if (model) return model;
+    var vn = String(car.vehicleName || '').trim();
+    if (vn) return vn;
+    return '未設定';
+}
+
+/**
+ * GAS 送信用ペイロード（nickname → S列。M列 model は送信しない）
  */
 function ringBuildVehicleGasPayload_(merged, profile) {
     var payload = Object.assign({}, merged);
@@ -2615,11 +2708,265 @@ function ringBuildVehicleGasPayload_(merged, profile) {
     delete payload.ownerId;
     delete payload.bodyShape;
     delete payload.updatedAt;
-    if (!ringIsBizProfile_(profile)) {
-        delete payload.nickname;
-        delete payload.model;
+    delete payload.nicknameCloud;
+    delete payload.nicknamePendingCloud;
+    delete payload.nicknameRev;
+    delete payload.nicknameBase;
+    if (Object.prototype.hasOwnProperty.call(merged, 'nickname')) {
+        payload.nickname = ringNormalizeVehicleNicknameValue_(merged.nickname);
     }
+    delete payload.model;
     return payload;
+}
+
+function ringVehicleGasPayloadIncludesNickname_(payload) {
+    return !!(payload && Object.prototype.hasOwnProperty.call(payload, 'nickname'));
+}
+
+/** GAS 応答に nickname が含まれるときのみ nicknameCloud を確定（旧 GAS 互換） */
+function ringPersistVehicleNicknameAfterGas_(vin, gasResult, payloadHadNickname) {
+    if (!payloadHadNickname) return;
+    var vinNorm = _normalize(vin);
+    if (!vinNorm) return;
+    var list = loadVehicles();
+    var i = list.findIndex(function (x) { return _normalize(x.vin) === vinNorm; });
+    if (i < 0) return;
+    var car = list[i];
+    if (gasResult && gasResult.success !== false && Object.prototype.hasOwnProperty.call(gasResult, 'nickname')) {
+        var cloud = ringNormalizeVehicleNicknameValue_(gasResult.nickname);
+        car.nicknameCloud = cloud;
+        car.nickname = cloud;
+        car.nicknamePendingCloud = false;
+    } else {
+        car.nicknamePendingCloud = true;
+    }
+    list[i] = car;
+    localStorage.setItem(DB_VEHICLES, JSON.stringify(list));
+}
+
+var RING_VEHICLE_NICK_MIGRATED_PREFIX = 'ring_vehicle_nick_migrated_v1:';
+
+function ringVehicleNickOwnerScope_(profile) {
+    if (!profile) return '';
+    if (ringIsBizProfile_(profile)) {
+        var sid = String(profile.shopId || '').trim();
+        return sid ? ('s:' + sid) : '';
+    }
+    var uid = String(profile.userId || '').trim();
+    return uid ? ('u:' + uid) : '';
+}
+
+function ringVehicleNickMigratedStorageKey_(profile, vinNorm) {
+    var scope = ringVehicleNickOwnerScope_(profile);
+    if (!scope || !vinNorm) return '';
+    return RING_VEHICLE_NICK_MIGRATED_PREFIX + scope + ':' + vinNorm;
+}
+
+function ringIsVehicleNickMigrated_(profile, vinNorm) {
+    var k = ringVehicleNickMigratedStorageKey_(profile, vinNorm);
+    if (!k) return false;
+    try {
+        return localStorage.getItem(k) === '1';
+    } catch (eM) {
+        return false;
+    }
+}
+
+function ringMarkVehicleNickMigrated_(profile, vinNorm) {
+    var k = ringVehicleNickMigratedStorageKey_(profile, vinNorm);
+    if (!k) return;
+    try {
+        localStorage.setItem(k, '1');
+    } catch (eM2) { /* ignore */ }
+}
+
+function ringGetVehicleNicknameRev_(car) {
+    var n = parseInt(car && car.nicknameRev, 10);
+    return isNaN(n) || n < 0 ? 0 : n;
+}
+
+function ringNextVehicleNicknameRev_(car) {
+    return ringGetVehicleNicknameRev_(car) + 1;
+}
+
+function ringResolveLocalNicknameForMigration_(car, profile) {
+    car = car || {};
+    profile = profile || {};
+    if (ringIsBizProfile_(profile)) {
+        return ringNormalizeVehicleNicknameValue_(car.nickname);
+    }
+    return ringNormalizeVehicleNicknameValue_(ringResolveLocalVehicleNickname_(car, profile.userId));
+}
+
+function ringBuildVehicleNicknameOnlyPayload_(vin, nickname, nicknameBase, car) {
+    var vinNorm = _normalize(vin) || String(vin || '').trim().toUpperCase();
+    return {
+        vin: vinNorm,
+        nicknameOnly: true,
+        nickname: ringNormalizeVehicleNicknameValue_(nickname),
+        nicknameBase: ringNormalizeVehicleNicknameValue_(nicknameBase != null ? nicknameBase : ''),
+        nicknameRev: ringGetVehicleNicknameRev_(car) || 1
+    };
+}
+
+function ringApplyVehicleNicknameConflictFromGas_(vin, gasJson) {
+    if (!gasJson || String(gasJson.error || '') !== 'NICKNAME_CONFLICT') return;
+    var cloud = ringNormalizeVehicleNicknameValue_(gasJson.nickname);
+    var vinNorm = _normalize(vin);
+    var list = loadVehicles();
+    var i = list.findIndex(function (x) { return _normalize(x.vin) === vinNorm; });
+    if (i < 0) return;
+    list[i].nicknameCloud = cloud;
+    list[i].nickname = cloud;
+    list[i].nicknamePendingCloud = false;
+    localStorage.setItem(DB_VEHICLES, JSON.stringify(list));
+}
+
+function enqueueRetryVehicleNickname_(payload, profile) {
+    profile = profile || (typeof getCurrentProfile === 'function' ? getCurrentProfile() : null);
+    var scope = ringVehicleNickOwnerScope_(profile);
+    var vinNorm = _normalize(payload && payload.vin);
+    if (!scope || !vinNorm) {
+        enqueueRetry('update_vehicle', payload);
+        return;
+    }
+    var queue = safeJsonParse(localStorage.getItem(DB_RETRY_QUEUE), []);
+    var stableKey = 'update_vehicle_nick:' + scope + ':' + vinNorm;
+    queue = queue.filter(function (item) { return item.key !== stableKey; });
+    var stored = JSON.parse(JSON.stringify(payload || {}));
+    delete stored.action;
+    var ownerMeta = ringRetryQueueResolveOwner_(profile);
+    var entry = {
+        key: stableKey,
+        action: 'update_vehicle',
+        payload: stored,
+        retryCount: 0,
+        queuedAt: new Date().toISOString()
+    };
+    if (ownerMeta) {
+        if (ownerMeta.queueOwnerAccountKind) entry.queueOwnerAccountKind = ownerMeta.queueOwnerAccountKind;
+        if (ownerMeta.queueOwnerMode) entry.queueOwnerMode = ownerMeta.queueOwnerMode;
+        if (ownerMeta.queueOwnerShopId) entry.queueOwnerShopId = ownerMeta.queueOwnerShopId;
+        if (ownerMeta.queueOwnerUserId) entry.queueOwnerUserId = ownerMeta.queueOwnerUserId;
+    }
+    queue.push(entry);
+    localStorage.setItem(DB_RETRY_QUEUE, JSON.stringify(queue));
+    try { ringRefreshPendingSyncBanner(); } catch (eR) { /* ignore */ }
+}
+
+/**
+ * 再送直前: ローカル rev が新しければ nicknameOnly payload を最新化。rev が古い item は破棄。
+ * @returns {object|null}
+ */
+function ringRetrySyncVehicleNicknameItem_(item) {
+    if (!item || item.action !== 'update_vehicle' || !item.payload || !item.payload.nicknameOnly) {
+        return item;
+    }
+    var vinNorm = _normalize(item.payload.vin);
+    if (!vinNorm) return null;
+    var list = loadVehicles();
+    var car = list.find(function (x) { return _normalize(x.vin) === vinNorm; });
+    if (!car) return null;
+    var localRev = ringGetVehicleNicknameRev_(car);
+    var payRev = parseInt(item.payload.nicknameRev, 10) || 0;
+    if (payRev > localRev) {
+        return null;
+    }
+    var payNick = ringNormalizeVehicleNicknameValue_(item.payload.nickname);
+    var localNick = ringNormalizeVehicleNicknameValue_(car.nickname);
+    if (payRev < localRev || payNick !== localNick) {
+        item.payload = ringBuildVehicleNicknameOnlyPayload_(
+            car.vin,
+            car.nickname,
+            car.nicknameCloud,
+            car
+        );
+    }
+    return item;
+}
+
+/**
+ * nicknameOnly で S列のみ更新（移行・再送用）
+ */
+async function updateVehicleNicknameOnly(vin, nickname, opts) {
+    opts = opts || {};
+    var profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+    if (ringIsBizProfile_(profile) && !ringCanEditManagedVehicles_(profile)) {
+        return { success: false, error: 'MANAGED_VEHICLE_EDIT_DENIED', localSaved: false, serverSaved: false };
+    }
+    var list = loadVehicles();
+    var i = list.findIndex(function (x) { return _normalize(x.vin) === _normalize(vin); });
+    if (i < 0) {
+        return { success: false, error: 'VEHICLE_NOT_FOUND_LOCAL', localSaved: false, serverSaved: false };
+    }
+    var car = list[i];
+    var payload = ringBuildVehicleNicknameOnlyPayload_(
+        vin,
+        nickname,
+        opts.nicknameBase != null ? opts.nicknameBase : car.nicknameCloud,
+        car
+    );
+    try {
+        var json = await sendToGAS_Safe('update_vehicle', payload, { silentToast: true });
+        if (json && String(json.error || '') === 'NICKNAME_CONFLICT') {
+            ringApplyVehicleNicknameConflictFromGas_(vin, json);
+            if (opts.forMigration && profile) {
+                ringMarkVehicleNickMigrated_(profile, _normalize(vin));
+            }
+            return { success: false, error: 'NICKNAME_CONFLICT', serverSaved: false, conflict: true };
+        }
+        var ok = !!(json && json.success !== false);
+        var nickEcho = !!(json && Object.prototype.hasOwnProperty.call(json, 'nickname'));
+        if (ok && nickEcho) {
+            ringPersistVehicleNicknameAfterGas_(vin, json, true);
+            if (opts.forMigration && profile) {
+                ringMarkVehicleNickMigrated_(profile, _normalize(vin));
+            }
+        } else if (ok) {
+            ringPersistVehicleNicknameAfterGas_(vin, null, true);
+        }
+        return {
+            success: ok && nickEcho,
+            localSaved: true,
+            serverSaved: ok && nickEcho,
+            queued: false
+        };
+    } catch (err) {
+        ringPersistVehicleNicknameAfterGas_(vin, null, true);
+        enqueueRetryVehicleNickname_(payload, profile);
+        return { success: false, error: err.message, queued: true, localSaved: true, serverSaved: false };
+    }
+}
+
+/**
+ * 初回同期後: ローカル nick のみクラウドへ（nicknameOnly）。S列既存値は上書きしない。
+ */
+async function ringMigrateLocalNicknamesToCloud_(profile) {
+    if (!profile || ringIsDemoGasOffline_()) return;
+    if (ringIsBizProfile_(profile) && !ringCanEditManagedVehicles_(profile)) return;
+    var list = loadVehicles().filter(function (car) {
+        return ringIsMyVehicleRecord_(car, profile);
+    });
+    for (var idx = 0; idx < list.length; idx++) {
+        var car = list[idx];
+        var vinNorm = _normalize(car.vin);
+        if (!vinNorm) continue;
+        if (ringIsVehicleNickMigrated_(profile, vinNorm)) continue;
+        var cloud = ringNormalizeVehicleNicknameValue_(car.nicknameCloud);
+        if (cloud !== '') {
+            ringMarkVehicleNickMigrated_(profile, vinNorm);
+            continue;
+        }
+        var localNick = ringResolveLocalNicknameForMigration_(car, profile);
+        if (localNick === '') {
+            ringMarkVehicleNickMigrated_(profile, vinNorm);
+            continue;
+        }
+        await updateVehicleNicknameOnly(car.vin, localNick, {
+            nicknameBase: '',
+            forMigration: true
+        });
+    }
 }
 
 /**
@@ -2628,6 +2975,7 @@ function ringBuildVehicleGasPayload_(merged, profile) {
 function mapGasVehicleRowToLocal(row) {
     if (!row || !row.vin) return null;
     const vin = String(row.vin).trim().toUpperCase();
+    var cloudNick = ringNormalizeVehicleNicknameValue_(row.nickname);
     return {
         vin,
         vClass: row.vClass || "",
@@ -2645,6 +2993,9 @@ function mapGasVehicleRowToLocal(row) {
         vehicleCategory: row.vehicleCategory || "managed",
         firstRegistration: row.firstRegistration || "",
         vehicleName: row.vehicleName || "",
+        nickname: cloudNick,
+        nicknameCloud: cloudNick,
+        nicknamePendingCloud: false,
         createdAt: row.createdAt || ""
     };
 }
@@ -2842,43 +3193,60 @@ function ringVehicleRecordSignature_(car) {
         String(car.nextShaken || '') + '|' +
         String(car.usage || '') + '|' +
         String(car.ownerType || '') + '|' +
-        String(car.inspectMonths || '');
+        String(car.inspectMonths || '') + '|' +
+        String(car.nicknameCloud != null ? car.nicknameCloud : (car.nickname || ''));
 }
 
 /**
- * ローカル nappy_vehicles_v1 とサーバ一覧を VIN 単位でマージ
+ * ローカル nappy_vehicles_v1 とサーバ一覧をマージ（現アカウントの VIN のみ上書き、他アカウント行は保持）
  */
 function mergeVehiclesLocalAndServer(localList, serverList, opts) {
     opts = opts || {};
     const myUserId = String(opts.userId || '').trim();
     const isBiz = !!opts.isBiz;
+    const profile = opts.profile || null;
+    var mineLocal = [];
+    var otherLocal = [];
+    (localList || []).forEach(function (car) {
+        if (profile && typeof ringIsMyVehicleRecord_ === 'function' && ringIsMyVehicleRecord_(car, profile)) {
+            mineLocal.push(car);
+        } else if (!profile) {
+            mineLocal.push(car);
+        } else {
+            otherLocal.push(car);
+        }
+    });
     const map = new Map();
-    (localList || []).forEach((car) => {
+    mineLocal.forEach(function (car) {
         const k = _normalize(car.vin);
         if (!k) return;
         map.set(k, { ...car });
     });
-    (serverList || []).forEach((row) => {
+    (serverList || []).forEach(function (row) {
+        if (profile && !ringServerVehicleRowMatchesProfile_(row, profile)) return;
         const loc = mapGasVehicleRowToLocal(row);
         if (!loc) return;
         const k = _normalize(loc.vin);
         const prev = map.get(k) || {};
         const sharedModel = loc.model && String(loc.model).trim() ? loc.model : '';
+        var nickState = ringApplyMergedNicknameState_(prev, loc, { isBiz: isBiz, userId: myUserId });
         const merged = {
             ...prev,
             ...loc,
-            model: sharedModel || (isBiz ? (prev.model || '') : ''),
+            model: sharedModel || (isBiz ? (prev.model || '') : (prev.model || loc.model || '')),
             lastMaint: prev.lastMaint,
-            nickname: ringResolveLocalVehicleNickname_(prev, myUserId),
-            shopName: prev.shopName,
-            shopType: prev.shopType
+            nickname: nickState.nickname,
+            nicknameCloud: nickState.nicknameCloud,
+            nicknamePendingCloud: nickState.nicknamePendingCloud,
+            shopName: prev.shopName || loc.shopName,
+            shopType: prev.shopType || loc.shopType
         };
         if (!merged.createdAt && prev.createdAt) merged.createdAt = prev.createdAt;
         if (!merged.createdAt) merged.createdAt = new Date().toISOString();
         ringApplyVehicleInspectionDerivedFields_(merged);
         map.set(k, merged);
     });
-    return Array.from(map.values());
+    return otherLocal.concat(Array.from(map.values()));
 }
 
 /**
@@ -2897,11 +3265,16 @@ async function syncVehiclesFromServer() {
         }
         const profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
         const merged = mergeVehiclesLocalAndServer(loadVehicles(), json.vehicles, {
+            profile: profile,
             userId: profile && profile.userId ? String(profile.userId) : '',
+            shopId: profile && profile.shopId ? String(profile.shopId) : '',
             isBiz: ringIsBizProfile_(profile)
         });
         localStorage.setItem(DB_VEHICLES, JSON.stringify(merged));
-        return merged;
+        try {
+            await ringMigrateLocalNicknamesToCloud_(profile);
+        } catch (eMig) { /* ignore */ }
+        return loadVehicles();
     } catch (e) {
         return loadVehicles();
     }
@@ -2923,6 +3296,17 @@ function ringIsMyVehicleRecord_(v, profile) {
 /**
  * localStorage のマイカー一覧から VIN 一致行のみ除去（サーバー通信なし）
  */
+/**
+ * GAS delete_vehicle（事業者は管理車両編集権限必須。一般ユーザーは従来どおり）
+ */
+async function ringDeleteVehicleViaGas_(vin, profile) {
+    profile = profile || (typeof getCurrentProfile === 'function' ? getCurrentProfile() : null);
+    if (ringIsBizProfile_(profile) && !ringCanEditManagedVehicles_(profile)) {
+        return { success: false, ok: false, error: 'MANAGED_VEHICLE_EDIT_DENIED' };
+    }
+    return sendToGAS_Safe('delete_vehicle', { vin: vin }, { silentToast: true });
+}
+
 function ringRemoveLocalVehicleFromList_(rawVin, profile) {
     var vinNorm = _normalize(rawVin);
     if (!vinNorm) return { removed: false, reason: 'VIN_EMPTY' };
@@ -3224,10 +3608,14 @@ function ringGuardUserVehicleLimitBeforeAdd_(vin) {
  * @param {object} v
  */
 async function addVehicle(v) {
+    var profileGuard = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+    if (ringIsBizProfile_(profileGuard) && !ringCanEditManagedVehicles_(profileGuard)) {
+        return { success: false, error: 'MANAGED_VEHICLE_EDIT_DENIED', localSaved: false, serverSaved: false, queued: false };
+    }
     const list = loadVehicles();
     const i = list.findIndex(x => _normalize(x.vin) === _normalize(v.vin));
     if (i === -1) {
-        var profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+        var profile = profileGuard;
         if (ringUserVehicleLimitBlocksNew_(profile, v.vin)) {
             return { success: false, error: 'LIMIT_REACHED', localSaved: false, serverSaved: false, queued: false };
         }
@@ -3236,12 +3624,34 @@ async function addVehicle(v) {
     merged.createdAt = merged.createdAt || new Date().toISOString();
     if (merged.vehicleName != null) merged.vehicleName = ringNormalizeVehicleSaveValue_(merged.vehicleName);
     if (merged.firstRegistration != null) merged.firstRegistration = ringNormalizeVehicleSaveValue_(merged.firstRegistration);
+    if (Object.prototype.hasOwnProperty.call(v, 'nickname')) {
+        merged.nickname = ringNormalizeVehicleNicknameValue_(v.nickname);
+        var prevNickAdd = ringNormalizeVehicleNicknameValue_(i !== -1 ? list[i].nickname : '');
+        if (merged.nickname !== prevNickAdd) {
+            merged.nicknameRev = ringNextVehicleNicknameRev_(i !== -1 ? list[i] : {});
+        } else if (i !== -1 && list[i].nicknameRev != null) {
+            merged.nicknameRev = ringGetVehicleNicknameRev_(list[i]);
+        }
+    }
     if (i !== -1) list[i] = merged; else list.push(merged);
     localStorage.setItem(DB_VEHICLES, JSON.stringify(list));
     var profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
     var gasPayload = ringBuildVehicleGasPayload_(merged, profile);
+    var payloadHadNickname = ringVehicleGasPayloadIncludesNickname_(gasPayload);
     try {
-        return await sendToGAS_Safe('vehicle', gasPayload);
+        const json = await sendToGAS_Safe('vehicle', gasPayload);
+        var ok = !!(json && json.success !== false);
+        if (ok) {
+            ringPersistVehicleNicknameAfterGas_(merged.vin, json, payloadHadNickname);
+        }
+        return {
+            success: ok,
+            vin: merged.vin,
+            error: ok ? undefined : (json && json.error),
+            localSaved: true,
+            serverSaved: ok,
+            queued: false
+        };
     } catch (err) {
         const msg = String(err.message || '');
         if (/LIMIT_REACHED/i.test(msg)) {
@@ -3262,6 +3672,7 @@ async function addVehicle(v) {
             });
             return { success: false, error: msg, localSaved: true, serverSaved: false, queued: false };
         }
+        ringPersistVehicleNicknameAfterGas_(merged.vin, null, payloadHadNickname);
         enqueueRetry('vehicle', gasPayload);
         return { success: false, error: err.message, queued: true, localSaved: true, serverSaved: false };
     }
@@ -3275,6 +3686,10 @@ async function updateVehicle(v) {
     if (!v || !v.vin) {
         return { success: false, error: 'VIN_REQUIRED', localSaved: false, serverSaved: false };
     }
+    var profileGuardUpd = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+    if (ringIsBizProfile_(profileGuardUpd) && !ringCanEditManagedVehicles_(profileGuardUpd)) {
+        return { success: false, error: 'MANAGED_VEHICLE_EDIT_DENIED', localSaved: false, serverSaved: false };
+    }
     const list = loadVehicles();
     const i = list.findIndex(x => _normalize(x.vin) === _normalize(v.vin));
     if (i < 0) {
@@ -3285,15 +3700,37 @@ async function updateVehicle(v) {
     if (merged.vehicleName != null) merged.vehicleName = ringNormalizeVehicleSaveValue_(merged.vehicleName);
     if (merged.firstRegistration != null) merged.firstRegistration = ringNormalizeVehicleSaveValue_(merged.firstRegistration);
     if (merged.nextShaken != null) merged.nextShaken = ringNormalizeVehicleSaveValue_(merged.nextShaken);
+    if (Object.prototype.hasOwnProperty.call(v, 'nickname')) {
+        merged.nickname = ringNormalizeVehicleNicknameValue_(v.nickname);
+        var prevNickUpd = ringNormalizeVehicleNicknameValue_(list[i].nickname);
+        if (merged.nickname !== prevNickUpd) {
+            merged.nicknameRev = ringNextVehicleNicknameRev_(list[i]);
+        } else if (list[i].nicknameRev != null) {
+            merged.nicknameRev = ringGetVehicleNicknameRev_(list[i]);
+        }
+    }
     merged.updatedAt = new Date().toISOString();
     list[i] = merged;
     localStorage.setItem(DB_VEHICLES, JSON.stringify(list));
 
     var profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
     var gasPayload = ringBuildVehicleGasPayload_(merged, profile);
+    var payloadHadNickname = ringVehicleGasPayloadIncludesNickname_(gasPayload);
 
     try {
-        return await sendToGAS_Safe('update_vehicle', gasPayload);
+        const json = await sendToGAS_Safe('update_vehicle', gasPayload);
+        var ok = !!(json && json.success !== false);
+        if (ok) {
+            ringPersistVehicleNicknameAfterGas_(merged.vin, json, payloadHadNickname);
+        }
+        return {
+            success: ok,
+            vin: merged.vin,
+            error: ok ? undefined : (json && json.error),
+            localSaved: true,
+            serverSaved: ok,
+            queued: false
+        };
     } catch (err) {
         const msg = String(err.message || '');
         if (/VIN_REQUIRED|VEHICLE_NOT_FOUND|VEHICLE_ACCESS_DENIED/i.test(msg)) {
@@ -3303,6 +3740,7 @@ async function updateVehicle(v) {
             });
             return { success: false, error: msg, localSaved: true, serverSaved: false, queued: false };
         }
+        ringPersistVehicleNicknameAfterGas_(merged.vin, null, payloadHadNickname);
         enqueueRetry('update_vehicle', gasPayload);
         return { success: false, error: err.message, queued: true, localSaved: true, serverSaved: false };
     }
@@ -3540,6 +3978,9 @@ async function sendToGAS_Safe(actionType, data, opts) {
         if (actionType === 'ocr_vin_search' && json && (Array.isArray(json.candidates) || /VIN_NOT_FOUND|OCR_NOT_CONFIGURED|IMAGE_REQUIRED/i.test(String(json.error || '')))) {
             return json;
         }
+        if (actionType === 'update_vehicle' && json && String(json.error || '') === 'NICKNAME_CONFLICT') {
+            return json;
+        }
         var gasErr = (json && json.error) ? String(json.error) : 'GAS保存に失敗しました';
         throw new Error(gasErr);
     }
@@ -3770,16 +4211,49 @@ async function flushRetryQueue() {
         }
         const remaining = [];
         for (const item of queue) {
-            var flushCtx = ringRetryQueueBuildFlushContext_(item);
+            var flushItem = ringRetrySyncVehicleNicknameItem_(item);
+            if (!flushItem) {
+                continue;
+            }
+            var flushCtx = ringRetryQueueBuildFlushContext_(flushItem);
             if (!flushCtx.ok) {
-                remaining.push(item);
+                remaining.push(flushItem);
                 continue;
             }
             try {
-                await sendToGAS_Safe(item.action, item.payload, { authToken: flushCtx.token });
+                var flushJson = await sendToGAS_Safe(flushItem.action, flushItem.payload, {
+                    authToken: flushCtx.token,
+                    silentToast: true
+                });
+                if (flushItem.action === 'update_vehicle' && flushItem.payload && flushItem.payload.nicknameOnly) {
+                    var flushVin = flushItem.payload.vin;
+                    if (flushJson && String(flushJson.error || '') === 'NICKNAME_CONFLICT') {
+                        ringApplyVehicleNicknameConflictFromGas_(flushVin, flushJson);
+                        var flushProfileC = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+                        if (flushProfileC) {
+                            ringMarkVehicleNickMigrated_(flushProfileC, _normalize(flushVin));
+                        }
+                        continue;
+                    }
+                    if (flushJson && flushJson.success !== false && Object.prototype.hasOwnProperty.call(flushJson, 'nickname')) {
+                        ringPersistVehicleNicknameAfterGas_(flushVin, flushJson, true);
+                        var flushProfile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+                        if (flushProfile) {
+                            ringMarkVehicleNickMigrated_(flushProfile, _normalize(flushVin));
+                        }
+                        continue;
+                    }
+                    ringPersistVehicleNicknameAfterGas_(flushVin, null, true);
+                    flushItem.retryCount = (flushItem.retryCount || 0) + 1;
+                    if (flushItem.retryCount < 5) remaining.push(flushItem);
+                    continue;
+                }
             } catch (e) {
-                item.retryCount = (item.retryCount || 0) + 1;
-                if (item.retryCount < 5) remaining.push(item);
+                if (flushItem.action === 'update_vehicle' && flushItem.payload && flushItem.payload.nicknameOnly) {
+                    ringPersistVehicleNicknameAfterGas_(flushItem.payload.vin, null, true);
+                }
+                flushItem.retryCount = (flushItem.retryCount || 0) + 1;
+                if (flushItem.retryCount < 5) remaining.push(flushItem);
             }
         }
         localStorage.setItem(DB_RETRY_QUEUE, JSON.stringify(remaining));
@@ -6242,7 +6716,10 @@ window.ringBuildInspectionScheduleDatesHtml_ = ringBuildInspectionScheduleDatesH
 window.ringUpdateInspectionSchedulePanel_ = ringUpdateInspectionSchedulePanel_;
 window.ringVehicleRecordSignature_ = ringVehicleRecordSignature_;
 window.ringIsBizProfile_ = ringIsBizProfile_;
+window.ringCanEditManagedVehicles_ = ringCanEditManagedVehicles_;
+window.ringVehicleCloudUnsyncPending_ = ringVehicleCloudUnsyncPending_;
 window.ringRemoveLocalVehicleFromList_ = ringRemoveLocalVehicleFromList_;
+window.ringDeleteVehicleViaGas_ = ringDeleteVehicleViaGas_;
 window.ringTryRemoveLocalVehicleAfterDeleteNotFound_ = ringTryRemoveLocalVehicleAfterDeleteNotFound_;
 window.syncMaintenanceHistoryForVin = syncMaintenanceHistoryForVin;
 window.ringRunPageSync_ = ringRunPageSync_;
