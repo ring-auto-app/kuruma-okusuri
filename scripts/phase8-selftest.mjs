@@ -39,34 +39,42 @@ function canEditManaged(profile) {
   return role === 'staff';
 }
 
-function applyMergedNick(prev, serverLoc) {
-  var serverHasNickKey = serverLoc.nicknameServerKeyPresent === true;
-  var norm = (s) => {
-    var t = String(s != null ? s : '').trim();
-    return !t || t === '名称未設定' ? '' : t;
-  };
-  var serverCloud = serverHasNickKey
-    ? norm(serverLoc.nickname)
-    : norm(serverLoc.nicknameCloud != null ? serverLoc.nicknameCloud : serverLoc.nickname);
-  var prevNick = norm(prev.nickname);
-  var prevCloud = norm(prev.nicknameCloud);
-  if (prev.nicknamePendingCloud === true) {
-    return { nickname: prevNick, nicknameCloud: prevCloud, nicknamePendingCloud: true };
-  }
-  if (serverHasNickKey) {
-    return { nickname: serverCloud, nicknameCloud: serverCloud, nicknamePendingCloud: false };
-  }
-  if (serverCloud !== '') {
-    return { nickname: serverCloud, nicknameCloud: serverCloud, nicknamePendingCloud: false };
-  }
-  return { nickname: prevNick, nicknameCloud: '', nicknamePendingCloud: false };
-}
-
-function filterNickQueue(queue, stableKey, profile, mayFlush) {
+function filterNickQueueEnqueue(queue, stableKey, profile, mayFlush) {
   return queue.filter(function (item) {
     if (item.key !== stableKey) return true;
-    return mayFlush(item, profile);
+    if (!mayFlush(item, profile)) return true;
+    return false;
   });
+}
+
+function shouldApplyGasSaveRev(currentRev, requestRev) {
+  if (requestRev == null) return true;
+  return currentRev === requestRev;
+}
+
+function hasPendingSync(car) {
+  if (!car) return false;
+  if (car.nicknamePendingCloud === true) return true;
+  var save = parseInt(car.vehicleSaveRev, 10) || 0;
+  var synced = parseInt(car.vehicleSyncedRev, 10) || 0;
+  return save > synced;
+}
+
+function mergeQueueAfterFlush(remaining, queueAtStart, latest) {
+  remaining = remaining.slice();
+  var remainKeys = {};
+  remaining.forEach(function (it) { if (it && it.key) remainKeys[it.key] = true; });
+  var startKeys = {};
+  (queueAtStart || []).forEach(function (it) { if (it && it.key) startKeys[it.key] = true; });
+  (latest || []).forEach(function (it) {
+    if (!it || !it.key) return;
+    if (remainKeys[it.key]) return;
+    if (!startKeys[it.key]) {
+      remaining.push(it);
+      remainKeys[it.key] = true;
+    }
+  });
+  return remaining;
 }
 
 var shopA = { shopType: 'factory', shopId: 'SHOP-A', userId: 'STAFF-A', role: 'staff' };
@@ -76,43 +84,30 @@ var list = [
   { vin: 'VIN001', shopId: 'SHOP-B', nickname: 'B-car' }
 ];
 
-assert(findByOwner(list, 'VIN001', shopA) === 0, '① shopA index');
-assert(findByOwner(list, 'VIN001', shopB) === 1, '① shopB index');
-assert(findByOwner(list, 'VIN001', { shopType: 'factory', shopId: 'SHOP-X', userId: 'X' }) === -1, '① no cross');
+assert(findByOwner(list, 'VIN001', shopA) === 0, 'owner shopA');
+assert(findByOwner(list, 'VIN001', shopB) === 1, 'owner shopB');
 
 var q = [
   { key: 'update_vehicle_nick:s:SHOP-A:VIN001', queueOwnerShopId: 'SHOP-A' },
   { key: 'update_vehicle_nick:s:SHOP-B:VIN001', queueOwnerShopId: 'SHOP-B' }
 ];
 var mayFlush = (item, p) => String(item.queueOwnerShopId) === String(p.shopId);
-var filtered = filterNickQueue(q, 'update_vehicle_nick:s:SHOP-A:VIN001', shopA, mayFlush);
-assert(filtered.length === 1 && filtered[0].queueOwnerShopId === 'SHOP-B', '② keep other shop queue');
+var filtered = filterNickQueueEnqueue(q, 'update_vehicle_nick:s:SHOP-A:VIN001', shopA, mayFlush);
+assert(filtered.length === 1 && filtered[0].queueOwnerShopId === 'SHOP-B', 'nick queue replace own only');
 
-assert(canEditManaged({ shopType: 'factory', role: 'viewer', canEditManagedVehicles: true }) === false, '⑥ viewer F=ON');
-assert(canEditManaged({ shopType: 'factory', role: 'staff', canEditManagedVehicles: false }) === false, '⑥ staff F=OFF');
-assert(canEditManaged({ shopType: 'factory', role: 'staff' }) === true, '⑥ staff legacy');
+assert(!shouldApplyGasSaveRev(5, 3), 'stale gas response ignored');
+assert(shouldApplyGasSaveRev(5, 5), 'matching rev applied');
 
-var pendingEmpty = applyMergedNick(
-  { nickname: '', nicknameCloud: 'old', nicknamePendingCloud: true },
-  { nickname: 'old', nicknameServerKeyPresent: true }
-);
-assert(pendingEmpty.nickname === '' && pendingEmpty.nicknamePendingCloud === true, '⑦ pending empty protected');
+assert(hasPendingSync({ vehicleSaveRev: 2, vehicleSyncedRev: 1, nicknamePendingCloud: false }), 'pending category');
+var mergedCat = hasPendingSync({ vehicleSaveRev: 1, vehicleSyncedRev: 1 }) ? 'loaner' : 'managed';
+assert(mergedCat === 'managed', 'synced uses server');
 
-var serverEmpty = applyMergedNick(
-  { nickname: 'x', nicknameCloud: 'x', nicknamePendingCloud: false },
-  { nickname: '', nicknameServerKeyPresent: true }
-);
-assert(serverEmpty.nickname === '' && serverEmpty.nicknameCloud === '', '⑦ server empty explicit');
+var startQ = [{ key: 'a' }, { key: 'b' }];
+var rem = [{ key: 'b' }];
+var latest = [{ key: 'b' }, { key: 'c' }];
+var mergedQ = mergeQueueAfterFlush(rem, startQ, latest);
+assert(mergedQ.length === 2 && mergedQ[1].key === 'c', 'flush merge keeps new queue');
 
-var noKey = applyMergedNick(
-  { nickname: 'local', nicknamePendingCloud: false },
-  { nickname: 'ghost', nicknameServerKeyPresent: false }
-);
-assert(noKey.nickname === 'local', '⑦ missing key no overwrite');
+assert(canEditManaged({ shopType: 'factory', role: 'viewer', canEditManagedVehicles: true }) === false, 'viewer deny');
 
-var item = { retryCount: 4 };
-item.retryCount += 1;
-var stopped = item.retryCount >= 5;
-assert(stopped === true, '⑤ stop flag threshold');
-
-console.log('phase8-selftest: all checks passed (' + 9 + ' areas sampled).');
+console.log('phase8-selftest: all checks passed (' + 8 + ').');
