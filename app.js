@@ -2646,30 +2646,87 @@ function ringVehicleHasPendingServerSync_(car) {
     return ringGetVehicleSaveRev_(car) > ringGetVehicleSyncedRev_(car);
 }
 
-/** flush 中に追加されたキュー行を remaining にマージ（別アカウント行はそのまま） */
-function ringMergeRetryQueueAfterFlush_(remaining, queueAtStart) {
-    remaining = remaining || [];
-    var remainKeys = {};
-    remaining.forEach(function (it) {
-        if (it && it.key) remainKeys[it.key] = true;
-    });
-    var latest = safeJsonParse(localStorage.getItem(DB_RETRY_QUEUE), []);
-    if (!Array.isArray(latest) || !latest.length) {
-        return remaining;
+function ringGenerateQueueItemId_() {
+    return 'qi-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+}
+
+function ringEnsureQueueItemId_(item) {
+    if (!item) return item;
+    if (!item.queueItemId) {
+        item.queueItemId = 'legacy:' + String(item.key || 'k') + ':' + String(item.queuedAt || '') + ':' + String(item.retryCount || 0);
     }
-    var startKeys = {};
-    (queueAtStart || []).forEach(function (it) {
-        if (it && it.key) startKeys[it.key] = true;
-    });
-    latest.forEach(function (it) {
-        if (!it || !it.key) return;
-        if (remainKeys[it.key]) return;
-        if (!startKeys[it.key]) {
-            remaining.push(it);
-            remainKeys[it.key] = true;
-        }
-    });
-    return remaining;
+    return item;
+}
+
+/** flush 完了後: 送信成功した itemId のみ除外し、同一 key の新規行も保持 */
+function ringFinalizeRetryQueueAfterFlush_(remaining, queueAtStart, completedItemIds) {
+    remaining = remaining || [];
+    completedItemIds = completedItemIds || {};
+    var out = [];
+    var seen = {};
+    function pushUnique(it) {
+        it = ringEnsureQueueItemId_(it);
+        if (!it || completedItemIds[it.queueItemId]) return;
+        if (seen[it.queueItemId]) return;
+        seen[it.queueItemId] = true;
+        out.push(it);
+    }
+    remaining.forEach(pushUnique);
+    var latest = safeJsonParse(localStorage.getItem(DB_RETRY_QUEUE), []);
+    if (Array.isArray(latest)) latest.forEach(pushUnique);
+    (queueAtStart || []).forEach(pushUnique);
+    return out;
+}
+
+function ringSnapshotProfileForFlush_(profile) {
+    if (!profile) return null;
+    return {
+        shopId: String(profile.shopId || ''),
+        userId: String(profile.userId || ''),
+        shopType: String(profile.shopType || ''),
+        role: String(profile.role || '')
+    };
+}
+
+function ringProfileFromFlushSnapshot_(snap) {
+    if (!snap) return null;
+    return {
+        shopId: snap.shopId,
+        userId: snap.userId,
+        shopType: snap.shopType,
+        role: snap.role
+    };
+}
+
+/** 再送応答反映: 送信開始時の所有者と現ログインが一致するときのみ */
+function ringRetryResponseApplyAllowed_(ownerSnap) {
+    if (!ownerSnap || !ownerSnap.item) return false;
+    var cur = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+    if (!cur) return false;
+    var pseudoItem = {
+        queueOwnerShopId: ownerSnap.item.shopId,
+        queueOwnerUserId: ownerSnap.item.userId,
+        queueOwnerMode: ownerSnap.item.mode,
+        queueOwnerAccountKind: ownerSnap.item.accountKind
+    };
+    if (typeof ringRetryQueueItemMayFlush_ === 'function' && !ringRetryQueueItemMayFlush_(pseudoItem, cur)) {
+        return false;
+    }
+    if (ownerSnap.profile) {
+        if (String(cur.shopId || '') !== String(ownerSnap.profile.shopId || '')) return false;
+        if (String(cur.userId || '') !== String(ownerSnap.profile.userId || '')) return false;
+    }
+    return true;
+}
+
+function ringRetryQueueOwnerSnapshotFromItem_(item) {
+    item = item || {};
+    return {
+        shopId: String(item.queueOwnerShopId || ''),
+        userId: String(item.queueOwnerUserId || ''),
+        mode: String(item.queueOwnerMode || ''),
+        accountKind: String(item.queueOwnerAccountKind || '')
+    };
 }
 
 /** 一覧用: ニックネーム等のクラウド未同期 */
@@ -2913,8 +2970,9 @@ function ringBuildVehicleNicknameOnlyPayload_(vin, nickname, nicknameBase, car) 
     };
 }
 
-function ringApplyVehicleNicknameConflictFromGas_(vin, gasJson, profile) {
+function ringApplyVehicleNicknameConflictFromGas_(vin, gasJson, profile, opts) {
     if (!gasJson || String(gasJson.error || '') !== 'NICKNAME_CONFLICT') return;
+    opts = opts || {};
     var cloud = ringNormalizeVehicleNicknameValue_(gasJson.nickname);
     var vinNorm = _normalize(vin);
     profile = profile || (typeof getCurrentProfile === 'function' ? getCurrentProfile() : null);
@@ -2923,6 +2981,9 @@ function ringApplyVehicleNicknameConflictFromGas_(vin, gasJson, profile) {
         ? ringFindLocalVehicleIndexByOwner_(list, vinNorm, profile)
         : list.findIndex(function (x) { return _normalize(x.vin) === vinNorm; });
     if (i < 0) return;
+    if (opts.requestNicknameRev != null && ringGetVehicleNicknameRev_(list[i]) !== opts.requestNicknameRev) {
+        return;
+    }
     list[i].nicknameCloud = cloud;
     list[i].nickname = cloud;
     list[i].nicknamePendingCloud = false;
@@ -2950,6 +3011,7 @@ function enqueueRetryVehicleNickname_(payload, profile) {
     var ownerMeta = ringRetryQueueResolveOwner_(profile);
     var entry = {
         key: stableKey,
+        queueItemId: ringGenerateQueueItemId_(),
         action: 'update_vehicle',
         payload: stored,
         retryCount: 0,
@@ -3090,7 +3152,9 @@ async function updateVehicleNicknameOnly(vin, nickname, opts) {
     try {
         var json = await sendToGAS_Safe('update_vehicle', payload, { silentToast: true });
         if (json && String(json.error || '') === 'NICKNAME_CONFLICT') {
-            ringApplyVehicleNicknameConflictFromGas_(vin, json, profile);
+            ringApplyVehicleNicknameConflictFromGas_(vin, json, profile, {
+                requestNicknameRev: payload.nicknameRev
+            });
             if (opts.forMigration && profile) {
                 ringMarkVehicleNickMigrated_(profile, _normalize(vin));
             }
@@ -4374,6 +4438,7 @@ function enqueueRetry(action, payload) {
     var ownerMeta = ringRetryQueueResolveOwner_(profile);
     var entry = {
         key,
+        queueItemId: ringGenerateQueueItemId_(),
         action,
         payload: stored,
         retryCount: 0,
@@ -4467,19 +4532,23 @@ async function flushRetryQueue(opts) {
         }
         const queueAtStart = JSON.parse(JSON.stringify(queue));
         let remaining = [];
-        var flushProfile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+        var completedItemIds = {};
         for (const item of queue) {
+            ringEnsureQueueItemId_(item);
             var flushCtx = ringRetryQueueBuildFlushContext_(item);
             if (!flushCtx.ok) {
                 ringRetryQueuePushOrKeep_(remaining, item);
                 continue;
             }
-            var nickPrep = ringRetrySyncVehicleNicknameItem_(item, flushProfile);
+            var sendProfile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+            var nickPrep = ringRetrySyncVehicleNicknameItem_(item, sendProfile);
             if (nickPrep.drop) {
+                completedItemIds[item.queueItemId] = true;
                 continue;
             }
-            var updPrep = ringRetrySyncVehicleUpdateItem_(nickPrep.item, flushProfile);
+            var updPrep = ringRetrySyncVehicleUpdateItem_(nickPrep.item, sendProfile);
             if (updPrep.drop) {
+                completedItemIds[updPrep.item.queueItemId] = true;
                 continue;
             }
             var flushItem = updPrep.item;
@@ -4492,45 +4561,61 @@ async function flushRetryQueue(opts) {
                 }
             }
             var flushSyncOpts = ringVehicleGasResponseSyncOpts_(flushItem.payload);
+            var flushOwnerSnap = {
+                profile: ringSnapshotProfileForFlush_(sendProfile),
+                item: ringRetryQueueOwnerSnapshotFromItem_(flushItem)
+            };
+            var sentItemId = flushItem.queueItemId;
             try {
                 var flushJson = await sendToGAS_Safe(flushItem.action, flushItem.payload, {
                     authToken: flushCtx.token,
                     silentToast: true
                 });
+                if (!ringRetryResponseApplyAllowed_(flushOwnerSnap)) {
+                    ringRetryQueuePushOrKeep_(remaining, flushItem);
+                    continue;
+                }
+                var applyProfile = ringProfileFromFlushSnapshot_(flushOwnerSnap.profile) || sendProfile;
                 var flushVin = flushItem.payload && flushItem.payload.vin;
                 var flushHadNick = ringVehicleGasPayloadIncludesNickname_(flushItem.payload);
                 if (flushItem.action === 'update_vehicle' && flushItem.payload && flushItem.payload.nicknameOnly) {
                     if (flushJson && ringIsGasVehicleHardDenyError_(String(flushJson.error || ''))) {
+                        completedItemIds[sentItemId] = true;
                         continue;
                     }
                     if (flushJson && String(flushJson.error || '') === 'NICKNAME_CONFLICT') {
-                        ringApplyVehicleNicknameConflictFromGas_(flushVin, flushJson, flushProfile);
-                        if (flushProfile) {
-                            ringMarkVehicleNickMigrated_(flushProfile, _normalize(flushVin));
+                        ringApplyVehicleNicknameConflictFromGas_(flushVin, flushJson, applyProfile, flushSyncOpts);
+                        if (applyProfile) {
+                            ringMarkVehicleNickMigrated_(applyProfile, _normalize(flushVin));
                         }
+                        completedItemIds[sentItemId] = true;
                         continue;
                     }
                     if (flushJson && flushJson.success !== false && Object.prototype.hasOwnProperty.call(flushJson, 'nickname')) {
-                        ringPersistVehicleNicknameAfterGas_(flushVin, flushJson, true, flushProfile, flushSyncOpts);
-                        if (flushProfile) {
-                            ringMarkVehicleNickMigrated_(flushProfile, _normalize(flushVin));
+                        ringPersistVehicleNicknameAfterGas_(flushVin, flushJson, true, applyProfile, flushSyncOpts);
+                        if (applyProfile) {
+                            ringMarkVehicleNickMigrated_(applyProfile, _normalize(flushVin));
                         }
+                        completedItemIds[sentItemId] = true;
                         continue;
                     }
-                    ringPersistVehicleNicknameAfterGas_(flushVin, null, true, flushProfile, flushSyncOpts);
+                    ringPersistVehicleNicknameAfterGas_(flushVin, null, true, applyProfile, flushSyncOpts);
                     ringRetryQueueRecordFailure_(flushItem);
                     ringRetryQueuePushOrKeep_(remaining, flushItem);
                     continue;
                 }
                 if ((flushItem.action === 'update_vehicle' || flushItem.action === 'vehicle') && flushJson &&
                     flushJson.success !== false) {
-                    ringMarkVehicleSyncedAfterGas_(flushVin, flushProfile, flushJson, flushHadNick, flushSyncOpts);
+                    ringMarkVehicleSyncedAfterGas_(flushVin, applyProfile, flushJson, flushHadNick, flushSyncOpts);
+                    completedItemIds[sentItemId] = true;
                     continue;
                 }
                 if (flushJson && flushJson.success !== false) {
+                    completedItemIds[sentItemId] = true;
                     continue;
                 }
                 if (flushJson && ringIsGasVehicleHardDenyError_(String(flushJson.error || ''))) {
+                    completedItemIds[sentItemId] = true;
                     continue;
                 }
                 ringRetryQueueRecordFailure_(flushItem);
@@ -4538,16 +4623,19 @@ async function flushRetryQueue(opts) {
             } catch (e) {
                 var flushErrMsg = String(e && e.message ? e.message : e || '');
                 if (ringIsGasVehicleHardDenyError_(flushErrMsg)) {
+                    completedItemIds[sentItemId] = true;
                     continue;
                 }
-                if (flushItem.action === 'update_vehicle' && flushItem.payload && flushItem.payload.nicknameOnly) {
-                    ringPersistVehicleNicknameAfterGas_(flushItem.payload.vin, null, true, flushProfile, flushSyncOpts);
+                if (ringRetryResponseApplyAllowed_(flushOwnerSnap) &&
+                    flushItem.action === 'update_vehicle' && flushItem.payload && flushItem.payload.nicknameOnly) {
+                    ringPersistVehicleNicknameAfterGas_(flushItem.payload.vin, null, true,
+                        ringProfileFromFlushSnapshot_(flushOwnerSnap.profile) || sendProfile, flushSyncOpts);
                 }
                 ringRetryQueueRecordFailure_(flushItem);
                 ringRetryQueuePushOrKeep_(remaining, flushItem);
             }
         }
-        remaining = ringMergeRetryQueueAfterFlush_(remaining, queueAtStart);
+        remaining = ringFinalizeRetryQueueAfterFlush_(remaining, queueAtStart, completedItemIds);
         localStorage.setItem(DB_RETRY_QUEUE, JSON.stringify(remaining));
         try { ringRefreshPendingSyncBanner(); } catch (eR2) { /* ignore */ }
     } finally {
