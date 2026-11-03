@@ -60,21 +60,30 @@ function hasPendingSync(car) {
   return save > synced;
 }
 
-function mergeQueueAfterFlush(remaining, queueAtStart, latest) {
-  remaining = remaining.slice();
-  var remainKeys = {};
-  remaining.forEach(function (it) { if (it && it.key) remainKeys[it.key] = true; });
-  var startKeys = {};
-  (queueAtStart || []).forEach(function (it) { if (it && it.key) startKeys[it.key] = true; });
-  (latest || []).forEach(function (it) {
-    if (!it || !it.key) return;
-    if (remainKeys[it.key]) return;
-    if (!startKeys[it.key]) {
-      remaining.push(it);
-      remainKeys[it.key] = true;
-    }
-  });
-  return remaining;
+function effectiveNickRev(car) {
+  var n = parseInt(car && car.nicknameRev, 10);
+  if (isNaN(n) || n < 0) n = 0;
+  return n > 0 ? n : 1;
+}
+
+function nickRevMatchesRequest(car, requestRev) {
+  if (requestRev == null) return true;
+  var req = parseInt(requestRev, 10);
+  if (isNaN(req) || req <= 0) return true;
+  return effectiveNickRev(car) === req;
+}
+
+function resolveQueueItemId(item) {
+  if (!item) return '';
+  if (item.queueItemId) return String(item.queueItemId);
+  return 'legacy:' + String(item.key || 'k') + ':' + String(item.queuedAt || '') + ':' + String(item.retryCount || 0);
+}
+
+function ensureQueueItemId(item, profile, mayFlush) {
+  if (!item || item.queueItemId) return item;
+  if (profile && mayFlush && !mayFlush(item, profile)) return item;
+  item.queueItemId = resolveQueueItemId(item);
+  return item;
 }
 
 var shopA = { shopType: 'factory', shopId: 'SHOP-A', userId: 'STAFF-A', role: 'staff' };
@@ -102,12 +111,19 @@ assert(hasPendingSync({ vehicleSaveRev: 2, vehicleSyncedRev: 1, nicknamePendingC
 var mergedCat = hasPendingSync({ vehicleSaveRev: 1, vehicleSyncedRev: 1 }) ? 'loaner' : 'managed';
 assert(mergedCat === 'managed', 'synced uses server');
 
-var startQ = [{ key: 'a' }, { key: 'b' }];
-var rem = [{ key: 'b' }];
-var latest = [{ key: 'b' }, { key: 'c' }];
-var mergedQ = mergeQueueAfterFlush(rem, startQ, latest);
-assert(mergedQ.length === 2 && mergedQ[1].key === 'c', 'flush merge keeps new queue');
+assert(nickRevMatchesRequest({ nicknameRev: undefined }, 1), 'legacy rev0 matches send rev1');
+assert(!nickRevMatchesRequest({ nicknameRev: 3 }, 1), 'stale conflict rev ignored');
+assert(nickRevMatchesRequest({ nicknameRev: 2 }, 2), 'explicit rev match');
+
+var foreignQ = { key: 'k:b', queueOwnerShopId: 'SHOP-B', queuedAt: 't1' };
+var cloneForeign = JSON.parse(JSON.stringify(foreignQ));
+ensureQueueItemId(cloneForeign, shopA, mayFlush);
+assert(!foreignQ.queueItemId && !cloneForeign.queueItemId, 'foreign queue not mutated');
+
+var ownQ = { key: 'k:a', queueOwnerShopId: 'SHOP-A', queuedAt: 't2' };
+ensureQueueItemId(ownQ, shopA, mayFlush);
+assert(!!ownQ.queueItemId, 'own queue may get legacy id');
 
 assert(canEditManaged({ shopType: 'factory', role: 'viewer', canEditManagedVehicles: true }) === false, 'viewer deny');
 
-console.log('phase8-selftest: all checks passed (' + 8 + ').');
+console.log('phase8-selftest: all checks passed (' + 12 + ').');

@@ -2650,26 +2650,46 @@ function ringGenerateQueueItemId_() {
     return 'qi-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
 }
 
-function ringEnsureQueueItemId_(item) {
-    if (!item) return item;
-    if (!item.queueItemId) {
-        item.queueItemId = 'legacy:' + String(item.key || 'k') + ':' + String(item.queuedAt || '') + ':' + String(item.retryCount || 0);
+function ringResolveQueueItemId_(item) {
+    if (!item) return '';
+    if (item.queueItemId) return String(item.queueItemId);
+    return 'legacy:' + String(item.key || 'k') + ':' + String(item.queuedAt || '') + ':' + String(item.retryCount || 0);
+}
+
+/** 現ログイン所有者のキュー行のみ queueItemId を付与（他アカウント行は不変） */
+function ringEnsureQueueItemId_(item, profile) {
+    if (!item || item.queueItemId) return item;
+    if (profile && typeof ringRetryQueueItemMayFlush_ === 'function' &&
+        !ringRetryQueueItemMayFlush_(item, profile)) {
+        return item;
     }
+    item.queueItemId = ringResolveQueueItemId_(item);
     return item;
 }
 
+function ringRetryQueueItemIsForeign_(item, profile) {
+    if (!item || !profile || typeof ringRetryQueueItemMayFlush_ !== 'function') return false;
+    return !ringRetryQueueItemMayFlush_(item, profile);
+}
+
 /** flush 完了後: 送信成功した itemId のみ除外し、同一 key の新規行も保持 */
-function ringFinalizeRetryQueueAfterFlush_(remaining, queueAtStart, completedItemIds) {
+function ringFinalizeRetryQueueAfterFlush_(remaining, queueAtStart, completedItemIds, profile) {
     remaining = remaining || [];
     completedItemIds = completedItemIds || {};
     var out = [];
     var seen = {};
     function pushUnique(it) {
-        it = ringEnsureQueueItemId_(it);
-        if (!it || completedItemIds[it.queueItemId]) return;
-        if (seen[it.queueItemId]) return;
-        seen[it.queueItemId] = true;
-        out.push(it);
+        if (!it) return;
+        var foreign = ringRetryQueueItemIsForeign_(it, profile);
+        var stored = foreign ? JSON.parse(JSON.stringify(it)) : it;
+        if (!foreign) {
+            ringEnsureQueueItemId_(stored, profile);
+        }
+        var id = ringResolveQueueItemId_(stored);
+        if (completedItemIds[id]) return;
+        if (seen[id]) return;
+        seen[id] = true;
+        out.push(stored);
     }
     remaining.forEach(pushUnique);
     var latest = safeJsonParse(localStorage.getItem(DB_RETRY_QUEUE), []);
@@ -2890,7 +2910,7 @@ function ringPersistVehicleNicknameAfterGas_(vin, gasResult, payloadHadNickname,
         : list.findIndex(function (x) { return _normalize(x.vin) === vinNorm; });
     if (i < 0) return;
     var car = list[i];
-    if (opts.requestNicknameRev != null && ringGetVehicleNicknameRev_(car) !== opts.requestNicknameRev) {
+    if (!ringVehicleNicknameRevMatchesRequest_(car, opts.requestNicknameRev)) {
         return;
     }
     if (gasResult && gasResult.success !== false && Object.prototype.hasOwnProperty.call(gasResult, 'nickname')) {
@@ -2946,6 +2966,19 @@ function ringGetVehicleNicknameRev_(car) {
     return isNaN(n) || n < 0 ? 0 : n;
 }
 
+/** 未設定(0)は GAS 送信・応答判定とも 1 として扱う（旧形式車両） */
+function ringEffectiveVehicleNicknameRev_(car) {
+    var n = ringGetVehicleNicknameRev_(car);
+    return n > 0 ? n : 1;
+}
+
+function ringVehicleNicknameRevMatchesRequest_(car, requestRev) {
+    if (requestRev == null) return true;
+    var req = parseInt(requestRev, 10);
+    if (isNaN(req) || req <= 0) return true;
+    return ringEffectiveVehicleNicknameRev_(car) === req;
+}
+
 function ringNextVehicleNicknameRev_(car) {
     return ringGetVehicleNicknameRev_(car) + 1;
 }
@@ -2966,7 +2999,7 @@ function ringBuildVehicleNicknameOnlyPayload_(vin, nickname, nicknameBase, car) 
         nicknameOnly: true,
         nickname: ringNormalizeVehicleNicknameValue_(nickname),
         nicknameBase: ringNormalizeVehicleNicknameValue_(nicknameBase != null ? nicknameBase : ''),
-        nicknameRev: ringGetVehicleNicknameRev_(car) || 1
+        nicknameRev: ringEffectiveVehicleNicknameRev_(car)
     };
 }
 
@@ -2981,7 +3014,7 @@ function ringApplyVehicleNicknameConflictFromGas_(vin, gasJson, profile, opts) {
         ? ringFindLocalVehicleIndexByOwner_(list, vinNorm, profile)
         : list.findIndex(function (x) { return _normalize(x.vin) === vinNorm; });
     if (i < 0) return;
-    if (opts.requestNicknameRev != null && ringGetVehicleNicknameRev_(list[i]) !== opts.requestNicknameRev) {
+    if (!ringVehicleNicknameRevMatchesRequest_(list[i], opts.requestNicknameRev)) {
         return;
     }
     list[i].nicknameCloud = cloud;
@@ -3045,8 +3078,9 @@ function ringRetrySyncVehicleNicknameItem_(item, profile) {
     if (!vinNorm) return { item: item, drop: false };
     var car = ringFindLocalVehicleByOwner_(vinNorm, profile);
     if (!car) return { item: item, drop: false };
-    var localRev = ringGetVehicleNicknameRev_(car);
+    var localRev = ringEffectiveVehicleNicknameRev_(car);
     var payRev = parseInt(item.payload.nicknameRev, 10) || 0;
+    if (payRev <= 0) payRev = 1;
     if (payRev > localRev) {
         return { item: item, drop: true };
     }
@@ -3105,7 +3139,8 @@ function ringVehicleGasResponseSyncOpts_(payload) {
         o.requestVehicleSaveRev = parseInt(payload.vehicleSaveRev, 10) || 0;
     }
     if (payload.nicknameRev != null) {
-        o.requestNicknameRev = parseInt(payload.nicknameRev, 10) || 0;
+        var nickReq = parseInt(payload.nicknameRev, 10);
+        o.requestNicknameRev = (isNaN(nickReq) || nickReq <= 0) ? 1 : nickReq;
     }
     return o;
 }
@@ -4533,8 +4568,12 @@ async function flushRetryQueue(opts) {
         const queueAtStart = JSON.parse(JSON.stringify(queue));
         let remaining = [];
         var completedItemIds = {};
+        var flushProfileAtStart = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
         for (const item of queue) {
-            ringEnsureQueueItemId_(item);
+            if (ringRetryQueueItemIsForeign_(item, flushProfileAtStart)) {
+                continue;
+            }
+            ringEnsureQueueItemId_(item, flushProfileAtStart);
             var flushCtx = ringRetryQueueBuildFlushContext_(item);
             if (!flushCtx.ok) {
                 ringRetryQueuePushOrKeep_(remaining, item);
@@ -4543,15 +4582,16 @@ async function flushRetryQueue(opts) {
             var sendProfile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
             var nickPrep = ringRetrySyncVehicleNicknameItem_(item, sendProfile);
             if (nickPrep.drop) {
-                completedItemIds[item.queueItemId] = true;
+                completedItemIds[ringResolveQueueItemId_(item)] = true;
                 continue;
             }
             var updPrep = ringRetrySyncVehicleUpdateItem_(nickPrep.item, sendProfile);
             if (updPrep.drop) {
-                completedItemIds[updPrep.item.queueItemId] = true;
+                completedItemIds[ringResolveQueueItemId_(updPrep.item)] = true;
                 continue;
             }
             var flushItem = updPrep.item;
+            ringEnsureQueueItemId_(flushItem, sendProfile);
             if (flushItem.retryStopped) {
                 if (opts.resumeStopped) {
                     flushItem.retryStopped = false;
@@ -4565,7 +4605,7 @@ async function flushRetryQueue(opts) {
                 profile: ringSnapshotProfileForFlush_(sendProfile),
                 item: ringRetryQueueOwnerSnapshotFromItem_(flushItem)
             };
-            var sentItemId = flushItem.queueItemId;
+            var sentItemId = ringResolveQueueItemId_(flushItem);
             try {
                 var flushJson = await sendToGAS_Safe(flushItem.action, flushItem.payload, {
                     authToken: flushCtx.token,
@@ -4635,7 +4675,7 @@ async function flushRetryQueue(opts) {
                 ringRetryQueuePushOrKeep_(remaining, flushItem);
             }
         }
-        remaining = ringFinalizeRetryQueueAfterFlush_(remaining, queueAtStart, completedItemIds);
+        remaining = ringFinalizeRetryQueueAfterFlush_(remaining, queueAtStart, completedItemIds, flushProfileAtStart);
         localStorage.setItem(DB_RETRY_QUEUE, JSON.stringify(remaining));
         try { ringRefreshPendingSyncBanner(); } catch (eR2) { /* ignore */ }
     } finally {
