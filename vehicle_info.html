@@ -477,6 +477,26 @@
       populateVehicleFormFromCar_(car, prof, isBizInfo);
       updateSchedule();
 
+      var canEditVehInfo = !isBizInfo || (typeof ringCanEditManagedVehicles_ === 'function' && ringCanEditManagedVehicles_(prof));
+      if (!canEditVehInfo) {
+        document.querySelectorAll('input, select, textarea, button.save-btn').forEach(function (el) {
+          el.disabled = true;
+        });
+        var saveBtnRo = document.getElementById('saveBtn');
+        if (saveBtnRo) {
+          saveBtnRo.style.display = 'none';
+        }
+        var deleteBtnRo = document.getElementById('deleteBtn');
+        if (deleteBtnRo) {
+          deleteBtnRo.style.display = 'none';
+        }
+        var roNote = document.createElement('p');
+        roNote.style.cssText = 'font-size:12px;font-weight:800;color:var(--muted);text-align:center;margin:12px 0 0;';
+        roNote.textContent = '閲覧のみ（管理車両の編集権限がありません）';
+        var saveArea = document.querySelector('.save-area');
+        if (saveArea) saveArea.insertBefore(roNote, saveArea.firstChild);
+      }
+
       vehicleInfoCacheKey = 'vehicle_info:' + targetVin + ':' + ((prof && (prof.userId || prof.shopId)) || 'unknown');
       if (typeof ringRunPageSync_ === 'function') {
         ringRunPageSync_(buildVehicleInfoSyncOpts('最新データ取得中…'));
@@ -504,6 +524,12 @@
 
     /* ── 保存処理 ── */
     async function execSave() {
+      var profSave = (typeof getCurrentProfile === 'function') ? getCurrentProfile() : null;
+      var isBizSave = profSave && (profSave.shopType === 'factory' || profSave.shopType === 'dealer');
+      if (isBizSave && typeof ringCanEditManagedVehicles_ === 'function' && !ringCanEditManagedVehicles_(profSave)) {
+        alert('管理車両の編集権限がありません。');
+        return;
+      }
       // 分割UI（元号・年月日）→ hidden 西暦へ必ず同期してから読み取る
       var dates = { firstRegistration: '', nextShaken: '' };
       if (typeof ringCarAddCollectDatesForSave === 'function') {
@@ -588,11 +614,7 @@
           inspectMonths:    months,
           vehicleCategory:  newCategory
         };
-        if (isBizSave) {
-          updatePayload.model = nickVal;
-        } else {
-          updatePayload.model = vehicles[idx].model || '';
-        }
+        updatePayload.model = vehicles[idx].model || '';
 
         let res;
         if (typeof updateVehicle === 'function') {
@@ -641,6 +663,15 @@
 
     /* ── 削除処理 ── */
     async function deleteVehicle() {
+      const profileDel = (typeof getCurrentProfile === 'function')
+        ? getCurrentProfile()
+        : safeJsonParse(localStorage.getItem('nappy_current_user') || localStorage.getItem('nappy_profile_v1'), null);
+      var isBizDel = profileDel && (profileDel.shopType === 'factory' || profileDel.shopType === 'dealer');
+      if (isBizDel && typeof ringCanEditManagedVehicles_ === 'function' && !ringCanEditManagedVehicles_(profileDel)) {
+        alert('管理車両の編集権限がありません。削除できません。');
+        return;
+      }
+
       const ok = typeof showRingConfirm === 'function'
         ? await showRingConfirm({
             title: '車両の削除',
@@ -664,7 +695,9 @@
 
       try {
         if (typeof showLoading === 'function') showLoading('削除中', 'サーバーから削除しています...');
-        const response = await sendToGAS_Safe('delete_vehicle', { vin: targetVin }, { silentToast: true });
+        const response = typeof ringDeleteVehicleViaGas_ === 'function'
+          ? await ringDeleteVehicleViaGas_(targetVin, profile)
+          : await sendToGAS_Safe('delete_vehicle', { vin: targetVin }, { silentToast: true });
         if (response && response.ok === true) {
           if (typeof ringRemoveLocalVehicleFromList_ === 'function') {
             ringRemoveLocalVehicleFromList_(targetVin, profile);

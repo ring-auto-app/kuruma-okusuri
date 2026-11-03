@@ -73,6 +73,11 @@
     .car-card:nth-child(odd) { background: var(--sticky-odd); }
     .car-card:nth-child(even) { background: var(--sticky-even); }
     .car-header { margin-bottom: 8px; border-bottom: 1px dashed rgba(0,0,0,0.15); padding-bottom: 6px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .ring-cloud-unsync-badge {
+      display: inline-block; font-size: 10px; font-weight: 900; color: #92400e;
+      background: #fef3c7; border: 1px solid #fbbf24; border-radius: 999px;
+      padding: 2px 8px; margin-left: 6px; vertical-align: middle; white-space: nowrap;
+    }
     .car-info-btn {
       min-height: var(--tap-min); padding: 0 14px;
       display: inline-flex; align-items: center; justify-content: center;
@@ -312,10 +317,15 @@
 
       // 登録ボタンの飛び先（一般ユーザーは台数上限を先にチェック）
       if (addBtn) {
-        addBtn.onclick = function () {
-          if (typeof ringGuardUserVehicleLimitBeforeAdd_ === 'function' && !ringGuardUserVehicleLimitBeforeAdd_('')) return;
-          location.href = 'car_add.html';
-        };
+        var canEditBizVeh = !isBizMode || (typeof ringCanEditManagedVehicles_ === 'function' && ringCanEditManagedVehicles_(profile));
+        if (!canEditBizVeh) {
+          addBtn.style.display = 'none';
+        } else {
+          addBtn.onclick = function () {
+            if (typeof ringGuardUserVehicleLimitBeforeAdd_ === 'function' && !ringGuardUserVehicleLimitBeforeAdd_('')) return;
+            location.href = 'car_add.html';
+          };
+        }
       }
       updateUserVehicleCountLabel();
 
@@ -475,10 +485,16 @@
             else if (days <= 30) { inspectStyle = 'color:#f59e0b;font-weight:900;'; urgentBadge = ' <span style="font-size:10px;background:#f59e0b;color:#fff;padding:1px 5px;border-radius:99px;font-weight:900;">あと' + days + '日</span>'; }
           }
 
+          var displayName = typeof ringVehicleDisplayName_ === 'function'
+            ? ringVehicleDisplayName_(car) : (car.nickname || car.model || '未設定');
+          var unsyncBadge = (typeof ringVehicleCloudUnsyncPending_ === 'function' &&
+            ringVehicleCloudUnsyncPending_(car, profile))
+            ? '<span class="ring-cloud-unsync-badge" title="クラウド未同期">☁️未同期</span>' : '';
+
           html += `
             <div class="car-card">
               <div class="car-header">
-                <h2 class="car-model">${escapeHtml(typeof ringVehicleDisplayName_ === 'function' ? ringVehicleDisplayName_(car) : (car.nickname || car.model || '未設定'))}</h2>
+                <h2 class="car-model">${escapeHtml(displayName)}${unsyncBadge}</h2>
                 <a href="vehicle_info.html?vin=${encodeURIComponent(car.vin)}" class="car-info-btn">📋 車両情報</a>
               </div>
               <div class="car-info-grid">
