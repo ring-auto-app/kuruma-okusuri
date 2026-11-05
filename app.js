@@ -1118,6 +1118,8 @@ function ringDemoGasStubResponse_(actionType) {
     if (actionType === 'get_shop_maintenance_history') return { success: true, logs: [] };
     if (actionType === 'delete_log') return { success: true, log_id: '' };
     if (actionType === 'delete_vehicle') return { success: true, ok: true };
+    if (actionType === 'list_trashed_vehicles') return { success: true, items: [] };
+    if (actionType === 'restore_vehicle') return { success: false, error: 'TRASH_NOT_FOUND' };
     if (actionType === 'update_log') return { success: true, log_id: '', updatedAt: new Date().toISOString() };
     if (actionType === 'ocr_vin') return { success: true, partial: true, demo: true };
     if (actionType === 'ocr_vin_search') {
@@ -3617,6 +3619,71 @@ async function ringDeleteVehicleViaGas_(vin, profile) {
     return sendToGAS_Safe('delete_vehicle', { vin: vin }, { silentToast: true });
 }
 
+/** 削除済み車両向け: 当該所有者の vehicle/update_vehicle 再送キューを除去 */
+function ringDropRetryQueueForVehicleOwner_(vin, profile) {
+    var vinNorm = _normalize(vin);
+    if (!vinNorm) return;
+    profile = profile || (typeof getCurrentProfile === 'function' ? getCurrentProfile() : null);
+    var q = safeJsonParse(localStorage.getItem(DB_RETRY_QUEUE), []);
+    if (!Array.isArray(q) || !q.length) return;
+    var next = q.filter(function (item) {
+        if (!item || (item.action !== 'vehicle' && item.action !== 'update_vehicle')) return true;
+        if (_normalize(item.payload && item.payload.vin) !== vinNorm) return true;
+        if (typeof ringRetryQueueItemMayFlush_ === 'function' && profile &&
+            !ringRetryQueueItemMayFlush_(item, profile)) {
+            return true;
+        }
+        return false;
+    });
+    if (next.length !== q.length) {
+        localStorage.setItem(DB_RETRY_QUEUE, JSON.stringify(next));
+        try { ringRefreshPendingSyncBanner(); } catch (eQ) { /* ignore */ }
+    }
+}
+
+async function ringListTrashedVehiclesFromGas_() {
+    try {
+        var json = await sendToGAS_Safe('list_trashed_vehicles', {}, { silentToast: true });
+        if (!json || json.success === false) {
+            return { ok: false, items: [], error: json && json.error };
+        }
+        return { ok: true, items: Array.isArray(json.items) ? json.items : [] };
+    } catch (eList) {
+        return { ok: false, items: [], error: String(eList.message || eList) };
+    }
+}
+
+async function ringRestoreVehicleViaGas_(trashId, profile) {
+    profile = profile || (typeof getCurrentProfile === 'function' ? getCurrentProfile() : null);
+    if (ringIsBizProfile_(profile) && !ringCanEditManagedVehicles_(profile)) {
+        return { success: false, error: 'MANAGED_VEHICLE_EDIT_DENIED' };
+    }
+    var id = String(trashId || '').trim();
+    if (!id) return { success: false, error: 'TRASH_ID_REQUIRED' };
+    try {
+        return await sendToGAS_Safe('restore_vehicle', { trashId: id }, { silentToast: true });
+    } catch (eRes) {
+        return { success: false, error: String(eRes.message || eRes) };
+    }
+}
+
+async function ringSyncAfterVehicleRestore_(vin) {
+    if (typeof syncVehiclesFromServer === 'function') {
+        await syncVehiclesFromServer();
+    }
+    var vinNorm = _normalize(vin);
+    if (vinNorm && typeof syncMaintenanceHistoryForVin === 'function') {
+        try {
+            await syncMaintenanceHistoryForVin(vinNorm);
+        } catch (eM) { /* ignore */ }
+    }
+    if (vinNorm && typeof fetchDailyHistoryFromGas === 'function') {
+        try {
+            await fetchDailyHistoryFromGas(vinNorm);
+        } catch (eD) { /* ignore */ }
+    }
+}
+
 function ringRemoveLocalVehicleFromList_(rawVin, profile) {
     var vinNorm = _normalize(rawVin);
     if (!vinNorm) return { removed: false, reason: 'VIN_EMPTY' };
@@ -3628,6 +3695,9 @@ function ringRemoveLocalVehicleFromList_(rawVin, profile) {
     });
     if (updated.length === list.length) return { removed: false, reason: 'NOT_IN_LOCAL' };
     localStorage.setItem(DB_VEHICLES, JSON.stringify(updated));
+    if (typeof ringDropRetryQueueForVehicleOwner_ === 'function') {
+        ringDropRetryQueueForVehicleOwner_(rawVin, profile);
+    }
     return { removed: true };
 }
 
@@ -7140,6 +7210,10 @@ window.ringCanEditManagedVehicles_ = ringCanEditManagedVehicles_;
 window.ringVehicleCloudUnsyncPending_ = ringVehicleCloudUnsyncPending_;
 window.ringRemoveLocalVehicleFromList_ = ringRemoveLocalVehicleFromList_;
 window.ringDeleteVehicleViaGas_ = ringDeleteVehicleViaGas_;
+window.ringListTrashedVehiclesFromGas_ = ringListTrashedVehiclesFromGas_;
+window.ringRestoreVehicleViaGas_ = ringRestoreVehicleViaGas_;
+window.ringSyncAfterVehicleRestore_ = ringSyncAfterVehicleRestore_;
+window.ringDropRetryQueueForVehicleOwner_ = ringDropRetryQueueForVehicleOwner_;
 window.ringTryRemoveLocalVehicleAfterDeleteNotFound_ = ringTryRemoveLocalVehicleAfterDeleteNotFound_;
 window.syncMaintenanceHistoryForVin = syncMaintenanceHistoryForVin;
 window.ringRunPageSync_ = ringRunPageSync_;

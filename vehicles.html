@@ -113,6 +113,31 @@
     .vc-btn:active { transform: scale(0.98); }
     .empty-msg { text-align: center; color: var(--muted); font-weight: 800; margin-top: 68px; line-height: 34px; }
     .add-car-btn { display: block; width: 100%; min-height: var(--tap-primary); padding: 14px; text-align: center; background: var(--paper); color: var(--accent); border: 2px dashed var(--accent); border-radius: 12px; font-size: 16px; font-weight: 900; text-decoration: none; margin-top: 34px; cursor: pointer; box-sizing: border-box; }
+    .trash-entry-link {
+      display: inline-block; margin: 0 0 12px; font-size: 14px; font-weight: 800;
+      color: var(--muted); background: none; border: none; cursor: pointer; padding: 0;
+      min-height: var(--tap-min); line-height: var(--tap-min);
+      -webkit-tap-highlight-color: transparent;
+    }
+    .trash-entry-link:active { opacity: 0.7; }
+    .trash-panel-title { font-size: 18px; font-weight: 900; margin: 0 0 8px; color: var(--text-main); }
+    .trash-panel-note { font-size: 12px; font-weight: 700; color: var(--muted); margin: 0 0 16px; line-height: 1.5; }
+    .trash-card {
+      padding: 12px 14px; margin-bottom: 12px; border-radius: 12px;
+      background: #f1f5f9; border: 2px solid #cbd5e1; line-height: 1.45;
+    }
+    .trash-card-name { font-size: 16px; font-weight: 900; margin: 0 0 4px; }
+    .trash-card-meta { font-size: 12px; font-weight: 700; color: var(--muted); margin: 0 0 10px; }
+    .trash-restore-btn {
+      width: 100%; min-height: var(--tap-min); border: none; border-radius: 10px;
+      background: var(--accent); color: #fff; font-size: 15px; font-weight: 900; cursor: pointer;
+    }
+    .trash-restore-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+    .trash-back-btn {
+      display: inline-block; margin-bottom: 12px; font-size: 14px; font-weight: 800;
+      color: var(--accent); background: none; border: none; cursor: pointer; padding: 0;
+      min-height: var(--tap-min); line-height: var(--tap-min);
+    }
   </style>
 </head>
 <body>
@@ -130,7 +155,9 @@
       </div>
       <div id="ringVehiclesSyncStatus" style="display:none;"></div>
       <p id="userVehicleCountLabel" style="display:none;font-size:13px;font-weight:800;color:var(--muted);margin:8px 0 0;"></p>
+      <button type="button" id="openTrashBtn" class="trash-entry-link">🗑 削除した車両（30日以内に復元）</button>
     </div>
+    <div id="mainListBlock">
     <!-- 車両区分タブ（工場・事業者のみ JS で表示） -->
     <div class="cat-tabs" id="categoryTabs" style="display:none;">
       <button class="cat-tab active" id="tabManaged" onclick="setTab('managed')">
@@ -158,6 +185,13 @@
     </div>
     <div id="carListArea"></div>
     <a id="addBtn" class="add-car-btn">＋ 新しい車両を登録する</a>
+    </div>
+    <div id="trashPanel" style="display:none;">
+      <button type="button" id="trashBackBtn" class="trash-back-btn">◁ 車両一覧へ戻る</button>
+      <h2 class="trash-panel-title">削除した車両</h2>
+      <p class="trash-panel-note">削除から30日以内なら、このアカウントで復元できます。整備履歴・日常点検は削除されていません。</p>
+      <div id="trashListArea"></div>
+    </div>
   </div>
 
   <script>
@@ -168,6 +202,8 @@
     // 現在選択中の車両区分タブ（工場・事業者のみ使用）
     let currentCategoryTab = 'managed';
     let vehiclesCacheKey = '';
+    var trashViewActive_ = false;
+    var trashRestoreBusyId_ = '';
     var vehicleSearchDebounceTimer_ = null;
     var VEHICLE_SEARCH_DEBOUNCE_MS_ = 250;
 
@@ -353,8 +389,142 @@
         searchClear.addEventListener('click', function () { clearVehicleSearch_(true); });
       }
 
+      var openTrashBtn = document.getElementById('openTrashBtn');
+      if (openTrashBtn) {
+        var canTrashBiz = !isBizMode || (typeof ringCanEditManagedVehicles_ === 'function' && ringCanEditManagedVehicles_(profile));
+        if (!canTrashBiz) {
+          openTrashBtn.style.display = 'none';
+        } else {
+          openTrashBtn.onclick = function () { openTrashView_(true); };
+        }
+      }
+      var trashBackBtn = document.getElementById('trashBackBtn');
+      if (trashBackBtn) {
+        trashBackBtn.onclick = function () { openTrashView_(false); };
+      }
+
       loadAndRenderVehicles(false);
     });
+
+    function setMainListVisible_(visible) {
+      var block = document.getElementById('mainListBlock');
+      var trash = document.getElementById('trashPanel');
+      var openLink = document.getElementById('openTrashBtn');
+      if (block) block.style.display = visible ? '' : 'none';
+      if (trash) trash.style.display = visible ? 'none' : '';
+      if (openLink) openLink.style.display = visible ? '' : 'none';
+    }
+
+    function formatTrashDeletedDate_(iso) {
+      if (!iso) return '---';
+      if (typeof ringFormatDateLocal_ === 'function') {
+        return ringFormatDateLocal_(iso, false);
+      }
+      var d = new Date(iso);
+      if (isNaN(d)) return '---';
+      return d.getFullYear() + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + String(d.getDate()).padStart(2, '0');
+    }
+
+    function trashRestoreErrorMessage_(code) {
+      var c = String(code || '');
+      if (c === 'RESTORE_CONFLICT_REREGISTERED') {
+        return '同じ車台番号の車両が既に登録されています。一覧の車両をご利用ください。';
+      }
+      if (c === 'LIMIT_REACHED') return '登録上限（5台）のため復元できません。';
+      if (c === 'TRASH_EXPIRED') return '復元期限（30日）を過ぎています。';
+      if (c === 'MANAGED_VEHICLE_EDIT_DENIED') return '管理車両の編集権限がありません。';
+      if (c === 'TRASH_ACCESS_DENIED' || c === 'TRASH_NOT_FOUND') return '復元できませんでした。';
+      return '復元に失敗しました。';
+    }
+
+    async function openTrashView_(showTrash) {
+      trashViewActive_ = !!showTrash;
+      setMainListVisible_(!trashViewActive_);
+      if (!trashViewActive_) {
+        renderCars(false, window.scrollY);
+        return;
+      }
+      await loadAndRenderTrashList_();
+    }
+
+    async function loadAndRenderTrashList_() {
+      var area = document.getElementById('trashListArea');
+      if (!area) return;
+      area.innerHTML = '<div class="empty-msg">読込中…</div>';
+      if (typeof ringListTrashedVehiclesFromGas_ !== 'function') {
+        area.innerHTML = '<div class="empty-msg">ゴミ箱機能を利用できません。</div>';
+        return;
+      }
+      var res = await ringListTrashedVehiclesFromGas_();
+      if (!res.ok) {
+        area.innerHTML = '<div class="empty-msg">取得に失敗しました。</div>';
+        return;
+      }
+      var items = res.items || [];
+      if (!items.length) {
+        area.innerHTML = '<div class="empty-msg">削除した車両はありません。</div>';
+        return;
+      }
+      var html = '';
+      items.forEach(function (it) {
+        var name = it.displayName || it.nickname || it.vehicleName || it.vin || '車両';
+        var days = typeof it.daysRemaining === 'number' ? it.daysRemaining : 0;
+        var daysLabel = days > 0 ? ('残り ' + days + ' 日') : '期限切れ';
+        var btnDisabled = (!it.restorable || trashRestoreBusyId_ === it.trashId) ? ' disabled' : '';
+        var btnLabel = trashRestoreBusyId_ === it.trashId ? '復元中…' : '復元する';
+        html += '<div class="trash-card">' +
+          '<p class="trash-card-name">' + escapeHtml(name) + '</p>' +
+          '<p class="trash-card-meta">車台番号：' + escapeHtml(it.vin || '') + '<br>' +
+          '削除日：' + escapeHtml(formatTrashDeletedDate_(it.deletedAt)) + '　' + escapeHtml(daysLabel) + '</p>' +
+          '<button type="button" class="trash-restore-btn" data-trash-id="' + escapeHtml(it.trashId) + '"' + btnDisabled + '>' + btnLabel + '</button>' +
+          '</div>';
+      });
+      area.innerHTML = html;
+      area.querySelectorAll('.trash-restore-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var tid = btn.getAttribute('data-trash-id');
+          if (tid) restoreTrashVehicle_(tid);
+        });
+      });
+    }
+
+    async function restoreTrashVehicle_(trashId) {
+      if (trashRestoreBusyId_) return;
+      if (typeof ringRestoreVehicleViaGas_ !== 'function') {
+        if (typeof showToast === 'function') showToast('error', '復元できません');
+        return;
+      }
+      trashRestoreBusyId_ = trashId;
+      loadAndRenderTrashList_();
+      if (typeof showLoading === 'function') showLoading('復元中', '車両を復元しています…');
+      try {
+        var json = await ringRestoreVehicleViaGas_(trashId, profile);
+        if (json && json.success === true && json.vin) {
+          if (typeof ringSyncAfterVehicleRestore_ === 'function') {
+            await ringSyncAfterVehicleRestore_(json.vin);
+          } else if (typeof syncVehiclesFromServer === 'function') {
+            await syncVehiclesFromServer();
+          }
+          if (typeof hideLoading === 'function') hideLoading();
+          if (typeof showToast === 'function') showToast('success', '車両を復元しました');
+          trashRestoreBusyId_ = '';
+          openTrashView_(false);
+          if (typeof loadAndRenderVehicles === 'function') {
+            await loadAndRenderVehicles(true);
+          }
+          return;
+        }
+        if (typeof hideLoading === 'function') hideLoading();
+        if (typeof showToast === 'function') {
+          showToast('error', trashRestoreErrorMessage_(json && json.error));
+        }
+      } catch (eRes) {
+        if (typeof hideLoading === 'function') hideLoading();
+        if (typeof showToast === 'function') showToast('error', '復元に失敗しました');
+      }
+      trashRestoreBusyId_ = '';
+      loadAndRenderTrashList_();
+    }
 
     /* ── 車両区分タブ切替 ── */
     function setTab(tab) {
