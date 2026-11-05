@@ -2625,6 +2625,37 @@ function ringGetVehicleSyncedRev_(car) {
 }
 
 var RING_RETRY_MAX_ATTEMPTS = 5;
+var DB_RETRY_QUEUE_TOMBSTONES = 'ring_retry_queue_tombstones_v1';
+var __ringRetryFlushVoidItemIds = null;
+
+function ringLoadRetryQueueTombstones_() {
+    return safeJsonParse(localStorage.getItem(DB_RETRY_QUEUE_TOMBSTONES), {});
+}
+
+function ringPersistRetryQueueTombstone_(itemId) {
+    if (!itemId) return;
+    var map = ringLoadRetryQueueTombstones_();
+    map[String(itemId)] = Date.now();
+    localStorage.setItem(DB_RETRY_QUEUE_TOMBSTONES, JSON.stringify(map));
+}
+
+function ringIsRetryQueueItemTombstoned_(itemId) {
+    if (!itemId) return false;
+    if (__ringRetryFlushVoidItemIds && __ringRetryFlushVoidItemIds[String(itemId)]) return true;
+    var map = ringLoadRetryQueueTombstones_();
+    return !!map[String(itemId)];
+}
+
+function ringVoidRetryQueueItems_(items) {
+    if (!items || !items.length) return;
+    if (!__ringRetryFlushVoidItemIds) __ringRetryFlushVoidItemIds = {};
+    for (var vi = 0; vi < items.length; vi++) {
+        var id = ringResolveQueueItemId_(items[vi]);
+        if (!id) continue;
+        __ringRetryFlushVoidItemIds[id] = true;
+        ringPersistRetryQueueTombstone_(id);
+    }
+}
 
 function ringRetryQueuePushOrKeep_(remaining, item) {
     remaining.push(item);
@@ -2689,6 +2720,7 @@ function ringFinalizeRetryQueueAfterFlush_(remaining, queueAtStart, completedIte
         }
         var id = ringResolveQueueItemId_(stored);
         if (completedItemIds[id]) return;
+        if (ringIsRetryQueueItemTombstoned_(id)) return;
         if (seen[id]) return;
         seen[id] = true;
         out.push(stored);
@@ -3678,6 +3710,7 @@ function ringAbandonRetryQueueForVehicleOwner_(vin, profile) {
     profile = profile || (typeof getCurrentProfile === 'function' ? getCurrentProfile() : null);
     var q = safeJsonParse(localStorage.getItem(DB_RETRY_QUEUE), []);
     if (!Array.isArray(q) || !q.length) return;
+    var removed = [];
     var next = q.filter(function (item) {
         if (!item || (item.action !== 'vehicle' && item.action !== 'update_vehicle')) return true;
         if (_normalize(item.payload && item.payload.vin) !== vinNorm) return true;
@@ -3685,12 +3718,39 @@ function ringAbandonRetryQueueForVehicleOwner_(vin, profile) {
             !ringRetryQueueItemMayFlush_(item, profile)) {
             return true;
         }
+        removed.push(item);
         return false;
     });
     if (next.length !== q.length) {
+        ringVoidRetryQueueItems_(removed);
         localStorage.setItem(DB_RETRY_QUEUE, JSON.stringify(next));
         try { ringRefreshPendingSyncBanner(); } catch (eQ) { /* ignore */ }
     }
+}
+
+function ringVehicleOwnerHasPendingVehicleChanges_(vin, profile) {
+    if (ringVehicleOwnerHasPendingVehicleQueue_(vin, profile)) return true;
+    profile = profile || (typeof getCurrentProfile === 'function' ? getCurrentProfile() : null);
+    var car = typeof ringFindLocalVehicleByOwner_ === 'function'
+        ? ringFindLocalVehicleByOwner_(vin, profile)
+        : null;
+    if (!car) return false;
+    return typeof ringVehicleHasPendingServerSync_ === 'function' && ringVehicleHasPendingServerSync_(car);
+}
+
+function ringClearLocalVehiclePendingForRestore_(vin, profile) {
+    var vinNorm = _normalize(vin);
+    if (!vinNorm) return;
+    profile = profile || (typeof getCurrentProfile === 'function' ? getCurrentProfile() : null);
+    var list = loadVehicles();
+    var i = typeof ringFindLocalVehicleIndexByOwner_ === 'function'
+        ? ringFindLocalVehicleIndexByOwner_(list, vin, profile)
+        : -1;
+    if (i < 0) return;
+    list[i].nicknamePendingCloud = false;
+    var saveRev = ringGetVehicleSaveRev_(list[i]);
+    list[i].vehicleSyncedRev = saveRev;
+    saveVehicles(list);
 }
 
 async function ringDeleteVehicleViaGas_(vin, profile, opts) {
@@ -3700,12 +3760,14 @@ async function ringDeleteVehicleViaGas_(vin, profile, opts) {
         return { success: false, ok: false, error: 'MANAGED_VEHICLE_EDIT_DENIED' };
     }
     var pendingN = ringCountVehicleOwnerPendingQueue_(vin, profile);
-    if (pendingN > 0 && !opts.abandonPendingVehicleQueue) {
+    var pendingChanges = typeof ringVehicleOwnerHasPendingVehicleChanges_ === 'function' &&
+        ringVehicleOwnerHasPendingVehicleChanges_(vin, profile);
+    if ((pendingN > 0 || pendingChanges) && !opts.abandonPendingVehicleQueue) {
         return {
             success: false,
             ok: false,
             error: 'PENDING_SYNC_BLOCKS_DELETE',
-            pendingCount: pendingN
+            pendingCount: pendingN > 0 ? pendingN : 1
         };
     }
     var response = await sendToGAS_Safe('delete_vehicle', { vin: vin }, { silentToast: true });
@@ -3742,6 +3804,10 @@ async function ringRestoreVehicleViaGas_(trashId, profile) {
 }
 
 async function ringSyncAfterVehicleRestore_(vin) {
+    var profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+    if (typeof ringClearLocalVehiclePendingForRestore_ === 'function') {
+        ringClearLocalVehiclePendingForRestore_(vin, profile);
+    }
     if (typeof syncVehiclesFromServer === 'function') {
         await syncVehiclesFromServer();
     }
@@ -4701,6 +4767,11 @@ async function flushRetryQueue(opts) {
     if (__ringRetryFlushBusy) return;
     __ringRetryFlushBusy = true;
     try {
+        var tombMapAtFlush = ringLoadRetryQueueTombstones_();
+        __ringRetryFlushVoidItemIds = {};
+        Object.keys(tombMapAtFlush).forEach(function (tk) {
+            __ringRetryFlushVoidItemIds[tk] = true;
+        });
         const queue = safeJsonParse(localStorage.getItem(DB_RETRY_QUEUE), []);
         if (!queue.length) {
             try { ringRefreshPendingSyncBanner(); } catch (eEmpty) { /* ignore */ }
@@ -4715,6 +4786,11 @@ async function flushRetryQueue(opts) {
                 continue;
             }
             ringEnsureQueueItemId_(item, flushProfileAtStart);
+            var tombIdEarly = ringResolveQueueItemId_(item);
+            if (ringIsRetryQueueItemTombstoned_(tombIdEarly)) {
+                completedItemIds[tombIdEarly] = true;
+                continue;
+            }
             var flushCtx = ringRetryQueueBuildFlushContext_(item);
             if (!flushCtx.ok) {
                 ringRetryQueuePushOrKeep_(remaining, item);
@@ -4820,6 +4896,7 @@ async function flushRetryQueue(opts) {
         localStorage.setItem(DB_RETRY_QUEUE, JSON.stringify(remaining));
         try { ringRefreshPendingSyncBanner(); } catch (eR2) { /* ignore */ }
     } finally {
+        __ringRetryFlushVoidItemIds = null;
         __ringRetryFlushBusy = false;
     }
 }

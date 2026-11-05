@@ -43,7 +43,9 @@ function loadGasLogic() {
     'pseudoSessionFromOwnerKeys_',
     'vehicleTrashRowOwnerMatchesSession_',
     'vehicleExistsForOwnerVin_',
-    'hasActiveVehicleTrashForOwnerVin_'
+    'hasActiveVehicleTrashForOwnerVin_',
+    'hasVehicleDeleteGuardForOwnerVin_',
+    'sessionMayCallQrVehicleList_'
   ];
   let bundle = [
     'function normalizeVehicleVinForSheet_(v) {',
@@ -52,6 +54,19 @@ function loadGasLogic() {
     'var VEHICLE_TRASH_SHEET_NAME_ = "Vehicle_Trash";',
     'var VEHICLE_TRASH_STATUS_ACTIVE_ = "active";',
     'var VEHICLE_TRASH_COLS_ = 12;',
+    'var VEHICLE_DELETE_GUARD_COLS_ = 7;',
+    'function sheetDataRowCountFromLastRow_(lastRow, startRow) {',
+    '  startRow = startRow || 2;',
+    '  if (lastRow < startRow) return 0;',
+    '  return lastRow - startRow + 1;',
+    '}',
+    'function readSheetDataFromRow2_(sheet, numCols, lastRowOpt) {',
+    '  var lastRow = lastRowOpt != null ? lastRowOpt : sheet.getLastRow();',
+    '  var n = sheetDataRowCountFromLastRow_(lastRow, 2);',
+    '  if (n < 1) return [];',
+    '  numCols = numCols || 1;',
+    '  return sheet.getRange(2, 1, n, numCols).getValues();',
+    '}',
     'var Utilities = { formatDate: function(d, tz, fmt) {',
     '  d = d || new Date();',
     '  var y = d.getFullYear();',
@@ -74,11 +89,15 @@ function loadAppQueueLogic() {
   const appPath = path.join(__dirname, '..', 'app.js');
   const app = fs.readFileSync(appPath, 'utf8');
   const names = ['ringCountVehicleOwnerPendingQueue_'];
+  const localStorageMock = {
+    _d: {},
+    getItem: function (k) { return this._d[k] || null; },
+    setItem: function (k, v) { this._d[k] = v; }
+  };
   let bundle = [
     'function safeJsonParse(s, fb) { try { return JSON.parse(s); } catch (e) { return fb; } }',
     'function _normalize(v) { return String(v||"").trim().toUpperCase().replace(/[^A-Z0-9]/g,""); }',
     'var DB_RETRY_QUEUE = "ring_retry_queue_v1";',
-    'var localStorage = { _d: {}, getItem: function(k){ return this._d[k]||null; }, setItem: function(k,v){ this._d[k]=v; } };',
     'function ringRetryQueueItemMayFlush_(item, profile) {',
     '  var shop = String(item.queueOwnerShopId||"");',
     '  if (shop) return String(profile.shopId||"") === shop;',
@@ -89,9 +108,21 @@ function loadAppQueueLogic() {
   names.forEach(function (n) {
     bundle += '\n' + extractFunctionSource(app, n);
   });
-  const sandbox = { localStorage, safeJsonParse, _normalize, DB_RETRY_QUEUE, ringRetryQueueItemMayFlush_ };
+  const sandbox = {
+    localStorage: localStorageMock,
+    safeJsonParse: function (s, fb) { try { return JSON.parse(s); } catch (e) { return fb; } },
+    _normalize: function (v) { return String(v || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, ''); },
+    DB_RETRY_QUEUE: 'ring_retry_queue_v1',
+    ringRetryQueueItemMayFlush_: function (item, profile) {
+      var shop = String(item.queueOwnerShopId || '');
+      if (shop) return String(profile.shopId || '') === shop;
+      var uid = String(item.queueOwnerUserId || '');
+      return uid && String(profile.userId || '') === uid;
+    }
+  };
   vm.createContext(sandbox);
   vm.runInContext(bundle, sandbox);
+  sandbox.localStorage = localStorageMock;
   return sandbox;
 }
 
@@ -139,6 +170,24 @@ var trashSheet = {
 };
 assert(gas.hasActiveVehicleTrashForOwnerVin_(trashSheet, 'VIN1', userA), '3 trash blocks recreate');
 assert(!gas.hasActiveVehicleTrashForOwnerVin_(trashSheet, 'VIN1', userB), '3b trash hidden');
+
+var guardSheet = {
+  getLastRow: function () { return 3; },
+  getRange: function () {
+    return {
+      getValues: function () {
+        return [[
+          'g1', 'VIN2', 'U-A', '', '2026-01-01', '2027-01-01', 't-old'
+        ]];
+      }
+    };
+  }
+};
+assert(gas.hasVehicleDeleteGuardForOwnerVin_(guardSheet, 'VIN2', userA), '3c guard blocks stale recreate');
+assert(!gas.hasVehicleDeleteGuardForOwnerVin_(guardSheet, 'VIN2', userB), '3d guard owner scope');
+
+assert(gas.sessionMayCallQrVehicleList_(shopA), 'QR caller factory');
+assert(!gas.sessionMayCallQrVehicleList_(userA), 'QR deny end user');
 
 var today = gas.ringJstDateString_(new Date('2026-06-01'));
 var exp = gas.ringJstDateAddDays_(today, 30);
