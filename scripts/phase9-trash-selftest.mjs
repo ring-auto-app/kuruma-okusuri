@@ -10,6 +10,7 @@ import vm from 'vm';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const GAS_PATH = path.join(__dirname, '..', 'ads', 'gas-complete-Code.gs');
+const DB_RETRY_QUEUE = 'ring_retry_queue_v1';
 
 function assert(cond, msg) {
   if (!cond) throw new Error('FAIL: ' + msg);
@@ -200,5 +201,46 @@ appQ.localStorage.setItem(DB_RETRY_QUEUE, JSON.stringify([
 ]));
 assert(appQ.ringCountVehicleOwnerPendingQueue_('VIN001', shopA) === 1, '18 shop queue only vehicle');
 assert(appQ.ringCountVehicleOwnerPendingQueue_('VIN002', userA) === 1, '18b user vehicle queue counted');
+
+function loadRestorePendingLogic() {
+  const appPath = path.join(__dirname, '..', 'app.js');
+  const app = fs.readFileSync(appPath, 'utf8');
+  const names = [
+    'ringGetVehicleSaveRev_',
+    'ringFindLocalVehicleIndexByOwner_',
+    'ringIsMyVehicleRecord_',
+    'ringClearLocalVehiclePendingForRestore_'
+  ];
+  const ls = {
+    _d: { nappy_vehicles_v1: JSON.stringify([
+      { vin: 'VIN-R', userId: 'U-A', nicknamePendingCloud: true, vehicleSaveRev: 3, vehicleSyncedRev: 1 }
+    ]) },
+    getItem: function (k) { return this._d[k] || null; },
+    setItem: function (k, v) { this._d[k] = v; }
+  };
+  let bundle = [
+    'var DB_VEHICLES = "nappy_vehicles_v1";',
+    'function safeJsonParse(s, fb) { try { return JSON.parse(s); } catch (e) { return fb; } }',
+    'function _normalize(v) { return String(v||"").trim().toUpperCase().replace(/[^A-Z0-9]/g,""); }',
+    'function loadVehicles() { return safeJsonParse(localStorage.getItem(DB_VEHICLES), []); }',
+    'function getCurrentProfile() { return { userId: "U-A", shopId: "", shopType: "user", role: "user" }; }',
+    'function ringIsMyVehicleRecord_(car, profile) {',
+    '  return String(car.userId||"") === String(profile.userId||"");',
+    '}'
+  ].join('\n');
+  names.forEach(function (n) {
+    bundle += '\n' + extractFunctionSource(app, n);
+  });
+  const sandbox = { localStorage: ls };
+  vm.createContext(sandbox);
+  vm.runInContext(bundle, sandbox);
+  return sandbox;
+}
+
+var restoreSandbox = loadRestorePendingLogic();
+restoreSandbox.ringClearLocalVehiclePendingForRestore_('VIN-R', { userId: 'U-A', shopType: 'user' });
+var afterList = JSON.parse(restoreSandbox.localStorage.getItem('nappy_vehicles_v1'));
+assert(afterList[0].nicknamePendingCloud === false, 'restore clears pending nick');
+assert(afterList[0].vehicleSyncedRev === 3, 'restore aligns synced rev');
 
 console.log('phase9-trash-selftest: passed (GAS logic loaded from ' + GAS_PATH + ').');

@@ -3750,7 +3750,7 @@ function ringClearLocalVehiclePendingForRestore_(vin, profile) {
     list[i].nicknamePendingCloud = false;
     var saveRev = ringGetVehicleSaveRev_(list[i]);
     list[i].vehicleSyncedRev = saveRev;
-    saveVehicles(list);
+    localStorage.setItem(DB_VEHICLES, JSON.stringify(list));
 }
 
 async function ringDeleteVehicleViaGas_(vin, profile, opts) {
