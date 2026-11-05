@@ -1,165 +1,155 @@
 /**
- * Phase9.0 ゴミ箱・復元ロジック自己テスト（モックのみ・本番非接触）
+ * Phase9.0 自己テスト — ads/gas-complete-Code.gs から所有者・ゴミ箱ロジックを読み込んで検証
  * 実行: node scripts/phase9-trash-selftest.mjs
  */
+
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import vm from 'vm';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const GAS_PATH = path.join(__dirname, '..', 'ads', 'gas-complete-Code.gs');
 
 function assert(cond, msg) {
   if (!cond) throw new Error('FAIL: ' + msg);
 }
 
-function normalizeVin(v) {
-  return String(v || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-}
-
-function jstDateString(d) {
-  d = d || new Date();
-  var y = d.getFullYear();
-  var m = String(d.getMonth() + 1).padStart(2, '0');
-  var day = String(d.getDate()).padStart(2, '0');
-  return y + '-' + m + '-' + day;
-}
-
-function jstDateAddDays(dateStr, days) {
-  var p = String(dateStr).split('-');
-  var dt = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
-  dt.setDate(dt.getDate() + days);
-  return jstDateString(dt);
-}
-
-function parseStaffCanEdit(role, cell) {
-  var r = String(role || '').toLowerCase();
-  if (r === 'master') return true;
-  if (r === 'inspector' || r === 'viewer') return false;
-  if (cell == null || String(cell).trim() === '') return r === 'staff';
-  var s = String(cell).trim().toLowerCase();
-  if (s === '0' || s === 'false') return false;
-  return s === '1' || s === 'true';
-}
-
-function trashOwnerMatches(row, session) {
-  var rowUid = String(row.userId || '').trim();
-  var rowShop = String(row.shopId || '').trim();
-  var myUid = String(session.userId || '').trim();
-  var myShop = String(session.shopId || '').trim();
-  if (myShop && rowShop === myShop) return true;
-  if (myUid && rowUid === myUid && String(session.shopType || '') === 'user') return true;
-  return false;
-}
-
-function vehicleExists(vehicles, vin, userId, shopId) {
-  var n = normalizeVin(vin);
-  return vehicles.some(function (v) {
-    if (normalizeVin(v.vin) !== n) return false;
-    if (shopId && String(v.shopId) === String(shopId)) return true;
-    if (userId && String(v.userId) === String(userId) && !shopId) return true;
-    return false;
-  });
-}
-
-function listTrash(trashRows, session, todayJst) {
-  return trashRows.filter(function (r) {
-    if (r.status !== 'active') return false;
-    if (!trashOwnerMatches(r, session)) return false;
-    if (String(r.expiresAt) < todayJst) return false;
-    return true;
-  });
-}
-
-function canRestoreTrash(row, session, vehicles, todayJst, userVehicleCount) {
-  if (!trashOwnerMatches(row, session)) return { ok: false, error: 'TRASH_ACCESS_DENIED' };
-  if (row.status !== 'active') return { ok: false, error: 'TRASH_NOT_ACTIVE' };
-  if (String(row.expiresAt) < todayJst) return { ok: false, error: 'TRASH_EXPIRED' };
-  if (vehicleExists(vehicles, row.vin, row.userId, row.shopId)) {
-    return { ok: false, error: 'RESTORE_CONFLICT_REREGISTERED' };
+function extractFunctionSource(src, fnName) {
+  const needle = 'function ' + fnName + '(';
+  const start = src.indexOf(needle);
+  if (start < 0) throw new Error('Missing function in GAS: ' + fnName);
+  let depth = 0;
+  let i = src.indexOf('{', start);
+  if (i < 0) throw new Error('Malformed function: ' + fnName);
+  const begin = start;
+  for (; i < src.length; i++) {
+    const ch = src[i];
+    if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) return src.slice(begin, i + 1);
+    }
   }
-  if (String(session.shopType) === 'user' && String(session.role) === 'user' && !session.shopId) {
-    if (userVehicleCount >= 5) return { ok: false, error: 'LIMIT_REACHED' };
+  throw new Error('Unclosed function: ' + fnName);
+}
+
+function loadGasLogic() {
+  const gas = fs.readFileSync(GAS_PATH, 'utf8');
+  const names = [
+    'ringJstDateString_',
+    'ringJstDateAddDays_',
+    'vehicleRowOwnerMatchesSession_',
+    'pseudoSessionFromOwnerKeys_',
+    'vehicleTrashRowOwnerMatchesSession_',
+    'vehicleExistsForOwnerVin_',
+    'hasActiveVehicleTrashForOwnerVin_'
+  ];
+  let bundle = [
+    'function normalizeVehicleVinForSheet_(v) {',
+    '  return String(v || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");',
+    '}',
+    'var VEHICLE_TRASH_SHEET_NAME_ = "Vehicle_Trash";',
+    'var VEHICLE_TRASH_STATUS_ACTIVE_ = "active";',
+    'var VEHICLE_TRASH_COLS_ = 12;',
+    'var Utilities = { formatDate: function(d, tz, fmt) {',
+    '  d = d || new Date();',
+    '  var y = d.getFullYear();',
+    '  var m = String(d.getMonth() + 1).padStart(2, "0");',
+    '  var day = String(d.getDate()).padStart(2, "0");',
+    '  if (fmt === "yyyy-MM-dd") return y + "-" + m + "-" + day;',
+    '  return y + "-" + m + "-" + day;',
+    '}};'
+  ].join('\n');
+  names.forEach(function (n) {
+    bundle += '\n' + extractFunctionSource(gas, n);
+  });
+  const sandbox = {};
+  vm.createContext(sandbox);
+  vm.runInContext(bundle, sandbox);
+  return sandbox;
+}
+
+function loadAppQueueLogic() {
+  const appPath = path.join(__dirname, '..', 'app.js');
+  const app = fs.readFileSync(appPath, 'utf8');
+  const names = ['ringCountVehicleOwnerPendingQueue_'];
+  let bundle = [
+    'function safeJsonParse(s, fb) { try { return JSON.parse(s); } catch (e) { return fb; } }',
+    'function _normalize(v) { return String(v||"").trim().toUpperCase().replace(/[^A-Z0-9]/g,""); }',
+    'var DB_RETRY_QUEUE = "ring_retry_queue_v1";',
+    'var localStorage = { _d: {}, getItem: function(k){ return this._d[k]||null; }, setItem: function(k,v){ this._d[k]=v; } };',
+    'function ringRetryQueueItemMayFlush_(item, profile) {',
+    '  var shop = String(item.queueOwnerShopId||"");',
+    '  if (shop) return String(profile.shopId||"") === shop;',
+    '  var uid = String(item.queueOwnerUserId||"");',
+    '  return uid && String(profile.userId||"") === uid;',
+    '}'
+  ].join('\n');
+  names.forEach(function (n) {
+    bundle += '\n' + extractFunctionSource(app, n);
+  });
+  const sandbox = { localStorage, safeJsonParse, _normalize, DB_RETRY_QUEUE, ringRetryQueueItemMayFlush_ };
+  vm.createContext(sandbox);
+  vm.runInContext(bundle, sandbox);
+  return sandbox;
+}
+
+const gas = loadGasLogic();
+const appQ = loadAppQueueLogic();
+
+const userA = { userId: 'U-A', shopId: '', shopType: 'user', role: 'user' };
+const userB = { userId: 'U-B', shopId: '', shopType: 'user', role: 'user' };
+const shopA = { userId: 'ST-A', shopId: 'SHOP-A', shopType: 'factory', role: 'staff' };
+
+assert(!gas.vehicleRowOwnerMatchesSession_('', '', userA), '1 leak: empty row not mine');
+assert(gas.vehicleRowOwnerMatchesSession_('U-A', '', userA), '1 user A row');
+assert(!gas.vehicleRowOwnerMatchesSession_('U-B', '', userA), '2 other user');
+assert(gas.vehicleRowOwnerMatchesSession_('', 'SHOP-A', shopA), '4 shop row');
+assert(!gas.vehicleRowOwnerMatchesSession_('', 'SHOP-B', shopA), '4b other shop');
+assert(!gas.vehicleRowOwnerMatchesSession_('U-A', '', userB), '5 user B isolation');
+
+var mockSheet = {
+  getLastRow: function () { return 3; },
+  getRange: function () {
+    return {
+      getValues: function () {
+        return [
+          ['V1', '', '', '', '', '', 'U-A', ''],
+          ['V2', '', '', '', '', '', 'U-B', '']
+        ];
+      }
+    };
   }
-  return { ok: true };
-}
-
-function purgeTrash(trashRows, todayJst, dryRun) {
-  var purged = 0;
-  var skipped = 0;
-  var remain = trashRows.filter(function (r) {
-    if (r.status !== 'active') { skipped++; return true; }
-    if (String(r.expiresAt) >= todayJst) { skipped++; return true; }
-    purged++;
-    return dryRun;
-  });
-  return { purged: purged, skipped: skipped, remain: remain };
-}
-
-function dropRetryQueue(queue, vin, session, mayFlush) {
-  var n = normalizeVin(vin);
-  return queue.filter(function (item) {
-    if (item.action !== 'vehicle' && item.action !== 'update_vehicle') return true;
-    if (normalizeVin(item.payload && item.payload.vin) !== n) return true;
-    if (!mayFlush(item, session)) return true;
-    return false;
-  });
-}
-
-// --- tests ---
-var shopA = { shopType: 'factory', shopId: 'SHOP-A', userId: 'STAFF-A', role: 'staff' };
-var shopB = { shopType: 'factory', shopId: 'SHOP-B', userId: 'STAFF-B', role: 'staff' };
-var user1 = { shopType: 'user', userId: 'U1', role: 'user' };
-var viewer = { shopType: 'factory', shopId: 'SHOP-A', userId: 'V1', role: 'viewer' };
-
-var today = '2026-06-01';
-var trashA = {
-  trashId: 't1', vin: 'VIN001', userId: '', shopId: 'SHOP-A',
-  deletedAt: '2026-05-20T00:00:00.000Z', expiresAt: jstDateAddDays(today, 10),
-  status: 'active', rowJson: JSON.stringify(['VIN001', '', '', '', '', '', '', 'SHOP-A'])
 };
-var trashB = {
-  trashId: 't2', vin: 'VIN001', userId: '', shopId: 'SHOP-B',
-  deletedAt: '2026-05-20T00:00:00.000Z', expiresAt: jstDateAddDays(today, 10),
-  status: 'active', rowJson: '[]'
+assert(gas.vehicleExistsForOwnerVin_(mockSheet, 'V1', 'U-A', ''), '1 exists own');
+assert(!gas.vehicleExistsForOwnerVin_(mockSheet, 'V2', 'U-A', ''), '2 not other vin owner');
+
+var trashSheet = {
+  getLastRow: function () { return 3; },
+  getRange: function () {
+    return {
+      getValues: function () {
+        return [[
+          't1', 'VIN1', 'U-A', '', '2026-01-01', '2026-12-31', '', '', '', 'active', '', '[]'
+        ]];
+      }
+    };
+  }
 };
-var trashUser = {
-  trashId: 't3', vin: 'VIN002', userId: 'U1', shopId: '',
-  deletedAt: '2026-05-01', expiresAt: jstDateAddDays(today, 5),
-  status: 'active', rowJson: '[]'
-};
+assert(gas.hasActiveVehicleTrashForOwnerVin_(trashSheet, 'VIN1', userA), '3 trash blocks recreate');
+assert(!gas.hasActiveVehicleTrashForOwnerVin_(trashSheet, 'VIN1', userB), '3b trash hidden');
 
-assert(listTrash([trashA, trashB], shopA, today).length === 1, '1 own trash list');
-assert(listTrash([trashA, trashB], shopB, today).length === 1, '2 other shop list');
-assert(listTrash([trashUser], user1, today).length === 1, '5 user trash');
+var today = gas.ringJstDateString_(new Date('2026-06-01'));
+var exp = gas.ringJstDateAddDays_(today, 30);
+assert(exp === '2026-07-01', '10 30-day expiry');
 
-assert(!canRestoreTrash(trashB, shopA, [], today, 0).ok, '3 cannot restore other shop');
-assert(canRestoreTrash(trashA, shopA, [], today, 0).ok, '1 restore own');
-assert(!canRestoreTrash(trashA, shopA, [{ vin: 'VIN001', shopId: 'SHOP-A' }], today, 0).ok, '9 conflict');
-assert(!canRestoreTrash(trashUser, user1, [], today, 5).ok, '8 limit');
-
-assert(!parseStaffCanEdit('viewer', '1'), '6 viewer deny');
-assert(parseStaffCanEdit('staff', '1'), '7 staff F on');
-assert(!parseStaffCanEdit('staff', '0'), '7 staff F off');
-
-var expired = { status: 'active', expiresAt: '2026-05-01', userId: 'U1', shopId: '', vin: 'X' };
-assert(!canRestoreTrash(expired, user1, [], today, 0).ok, '11 expired restore');
-
-var p = purgeTrash([trashUser, { status: 'active', expiresAt: '2026-05-01', userId: 'U1', shopId: '', vin: 'OLD' }], today, false);
-assert(p.purged === 1 && p.remain.length === 1, '12 purge only expired');
-
-var pSafe = purgeTrash([trashA], today, true);
-assert(pSafe.purged === 0 && pSafe.remain.length === 1, '12b dryRun keeps active');
-
-var vehicles = [{ vin: 'VIN001', shopId: 'SHOP-A' }, { vin: 'VIN001', shopId: 'SHOP-B' }];
-assert(vehicleExists(vehicles, 'VIN001', '', 'SHOP-A'), '4 vin split shopA');
-assert(!vehicleExists(vehicles, 'VIN001', '', 'SHOP-C'), '4b no cross');
-
-var rowJson = JSON.parse(trashA.rowJson);
-assert(Array.isArray(rowJson) && rowJson[0] === 'VIN001', '16 rowJson vin');
-
-var q = [
+appQ.localStorage.setItem(DB_RETRY_QUEUE, JSON.stringify([
   { action: 'update_vehicle', payload: { vin: 'VIN001' }, queueOwnerShopId: 'SHOP-A' },
-  { action: 'update_vehicle', payload: { vin: 'VIN001' }, queueOwnerShopId: 'SHOP-B' }
-];
-var mayFlush = (it, s) => String(it.queueOwnerShopId) === String(s.shopId);
-var q2 = dropRetryQueue(q, 'VIN001', shopA, mayFlush);
-assert(q2.length === 1 && q2[0].queueOwnerShopId === 'SHOP-B', '18 queue drop own vin only');
+  { action: 'save_inspection', payload: { vin: 'VIN001' } },
+  { action: 'vehicle', payload: { vin: 'VIN002' }, queueOwnerUserId: 'U-A' }
+]));
+assert(appQ.ringCountVehicleOwnerPendingQueue_('VIN001', shopA) === 1, '18 shop queue only vehicle');
+assert(appQ.ringCountVehicleOwnerPendingQueue_('VIN002', userA) === 1, '18b user vehicle queue counted');
 
-assert(jstDateAddDays('2026-06-01', 30) === '2026-07-01', '10 retention days math');
-
-console.log('phase9-trash-selftest: all checks passed (18 scenarios).');
+console.log('phase9-trash-selftest: passed (GAS logic loaded from ' + GAS_PATH + ').');

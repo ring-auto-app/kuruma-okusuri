@@ -695,9 +695,25 @@
 
       try {
         if (typeof showLoading === 'function') showLoading('削除中', 'サーバーから削除しています...');
-        const response = typeof ringDeleteVehicleViaGas_ === 'function'
-          ? await ringDeleteVehicleViaGas_(targetVin, profile)
+        var deleteOpts = {};
+        var response = typeof ringDeleteVehicleViaGas_ === 'function'
+          ? await ringDeleteVehicleViaGas_(targetVin, profile, deleteOpts)
           : await sendToGAS_Safe('delete_vehicle', { vin: targetVin }, { silentToast: true });
+        if (response && response.error === 'PENDING_SYNC_BLOCKS_DELETE') {
+          if (typeof hideLoading === 'function') hideLoading();
+          var abandonOk = typeof showRingConfirm === 'function'
+            ? await showRingConfirm({
+                title: '未送信の変更があります',
+                message: 'クラウド未送信の車両変更が' + (response.pendingCount || '') + '件あります。\n削除すると未送信データは使えなくなります。先に同期するか、破棄して削除してください。',
+                okLabel: '破棄して削除',
+                cancelLabel: 'キャンセル',
+                danger: true
+              })
+            : confirm('未送信の車両変更があります。破棄して削除しますか？');
+          if (!abandonOk) return;
+          if (typeof showLoading === 'function') showLoading('削除中', 'サーバーから削除しています...');
+          response = await ringDeleteVehicleViaGas_(targetVin, profile, { abandonPendingVehicleQueue: true });
+        }
         if (response && response.ok === true) {
           if (typeof ringRemoveLocalVehicleFromList_ === 'function') {
             ringRemoveLocalVehicleFromList_(targetVin, profile);

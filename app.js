@@ -2639,7 +2639,7 @@ function ringRetryQueueRecordFailure_(item) {
 }
 
 function ringIsGasVehicleHardDenyError_(msg) {
-    return /VEHICLE_ACCESS_DENIED|MANAGED_VEHICLE_EDIT_DENIED/i.test(String(msg || ''));
+    return /VEHICLE_ACCESS_DENIED|MANAGED_VEHICLE_EDIT_DENIED|VEHICLE_IN_TRASH/i.test(String(msg || ''));
 }
 
 function ringVehicleHasPendingServerSync_(car) {
@@ -3558,6 +3558,27 @@ function mergeVehiclesLocalAndServer(localList, serverList, opts) {
         ringApplyVehicleInspectionDerivedFields_(merged);
         map.set(k, merged);
     });
+    var serverVinSet = {};
+    (serverList || []).forEach(function (row) {
+        if (profile && typeof ringServerVehicleRowMatchesProfile_ === 'function' &&
+            !ringServerVehicleRowMatchesProfile_(row, profile)) {
+            return;
+        }
+        var sk = _normalize(row.vin);
+        if (sk) serverVinSet[sk] = true;
+    });
+    map.forEach(function (car, k) {
+        if (serverVinSet[k]) return;
+        var pendingLocal = typeof ringVehicleHasPendingServerSync_ === 'function' &&
+            ringVehicleHasPendingServerSync_(car);
+        var pendingNick = typeof ringVehicleCloudUnsyncPending_ === 'function' &&
+            ringVehicleCloudUnsyncPending_(car, profile);
+        var pendingQueue = typeof ringVehicleOwnerHasPendingVehicleQueue_ === 'function' &&
+            ringVehicleOwnerHasPendingVehicleQueue_(car.vin, profile);
+        if (!pendingLocal && !pendingNick && !pendingQueue) {
+            map.delete(k);
+        }
+    });
     return otherLocal.concat(Array.from(map.values()));
 }
 
@@ -3611,16 +3632,47 @@ function ringIsMyVehicleRecord_(v, profile) {
 /**
  * GAS delete_vehicle（事業者は管理車両編集権限必須。一般ユーザーは従来どおり）
  */
-async function ringDeleteVehicleViaGas_(vin, profile) {
+/** 当該所有者の vehicle / update_vehicle 未送信キュー件数（整備・点検キューは除外） */
+function ringVehicleOwnerHasPendingVehicleQueue_(vin, profile) {
+    var vinNorm = _normalize(vin);
+    if (!vinNorm) return false;
     profile = profile || (typeof getCurrentProfile === 'function' ? getCurrentProfile() : null);
-    if (ringIsBizProfile_(profile) && !ringCanEditManagedVehicles_(profile)) {
-        return { success: false, ok: false, error: 'MANAGED_VEHICLE_EDIT_DENIED' };
+    var q = safeJsonParse(localStorage.getItem(DB_RETRY_QUEUE), []);
+    if (!Array.isArray(q) || !q.length) return false;
+    for (var i = 0; i < q.length; i++) {
+        var item = q[i];
+        if (!item || (item.action !== 'vehicle' && item.action !== 'update_vehicle')) continue;
+        if (_normalize(item.payload && item.payload.vin) !== vinNorm) continue;
+        if (typeof ringRetryQueueItemMayFlush_ === 'function' && profile &&
+            !ringRetryQueueItemMayFlush_(item, profile)) {
+            continue;
+        }
+        return true;
     }
-    return sendToGAS_Safe('delete_vehicle', { vin: vin }, { silentToast: true });
+    return false;
 }
 
-/** 削除済み車両向け: 当該所有者の vehicle/update_vehicle 再送キューを除去 */
-function ringDropRetryQueueForVehicleOwner_(vin, profile) {
+function ringCountVehicleOwnerPendingQueue_(vin, profile) {
+    var vinNorm = _normalize(vin);
+    if (!vinNorm) return 0;
+    profile = profile || (typeof getCurrentProfile === 'function' ? getCurrentProfile() : null);
+    var q = safeJsonParse(localStorage.getItem(DB_RETRY_QUEUE), []);
+    if (!Array.isArray(q)) return 0;
+    var n = 0;
+    q.forEach(function (item) {
+        if (!item || (item.action !== 'vehicle' && item.action !== 'update_vehicle')) return;
+        if (_normalize(item.payload && item.payload.vin) !== vinNorm) return;
+        if (typeof ringRetryQueueItemMayFlush_ === 'function' && profile &&
+            !ringRetryQueueItemMayFlush_(item, profile)) {
+            return;
+        }
+        n++;
+    });
+    return n;
+}
+
+/** 削除確定時のみ: 明示 abandon 後に当該 VIN の車両キューを除去 */
+function ringAbandonRetryQueueForVehicleOwner_(vin, profile) {
     var vinNorm = _normalize(vin);
     if (!vinNorm) return;
     profile = profile || (typeof getCurrentProfile === 'function' ? getCurrentProfile() : null);
@@ -3639,6 +3691,28 @@ function ringDropRetryQueueForVehicleOwner_(vin, profile) {
         localStorage.setItem(DB_RETRY_QUEUE, JSON.stringify(next));
         try { ringRefreshPendingSyncBanner(); } catch (eQ) { /* ignore */ }
     }
+}
+
+async function ringDeleteVehicleViaGas_(vin, profile, opts) {
+    opts = opts || {};
+    profile = profile || (typeof getCurrentProfile === 'function' ? getCurrentProfile() : null);
+    if (ringIsBizProfile_(profile) && !ringCanEditManagedVehicles_(profile)) {
+        return { success: false, ok: false, error: 'MANAGED_VEHICLE_EDIT_DENIED' };
+    }
+    var pendingN = ringCountVehicleOwnerPendingQueue_(vin, profile);
+    if (pendingN > 0 && !opts.abandonPendingVehicleQueue) {
+        return {
+            success: false,
+            ok: false,
+            error: 'PENDING_SYNC_BLOCKS_DELETE',
+            pendingCount: pendingN
+        };
+    }
+    var response = await sendToGAS_Safe('delete_vehicle', { vin: vin }, { silentToast: true });
+    if (response && response.ok === true && opts.abandonPendingVehicleQueue) {
+        ringAbandonRetryQueueForVehicleOwner_(vin, profile);
+    }
+    return response;
 }
 
 async function ringListTrashedVehiclesFromGas_() {
@@ -3695,9 +3769,6 @@ function ringRemoveLocalVehicleFromList_(rawVin, profile) {
     });
     if (updated.length === list.length) return { removed: false, reason: 'NOT_IN_LOCAL' };
     localStorage.setItem(DB_VEHICLES, JSON.stringify(updated));
-    if (typeof ringDropRetryQueueForVehicleOwner_ === 'function') {
-        ringDropRetryQueueForVehicleOwner_(rawVin, profile);
-    }
     return { removed: true };
 }
 
@@ -7213,7 +7284,8 @@ window.ringDeleteVehicleViaGas_ = ringDeleteVehicleViaGas_;
 window.ringListTrashedVehiclesFromGas_ = ringListTrashedVehiclesFromGas_;
 window.ringRestoreVehicleViaGas_ = ringRestoreVehicleViaGas_;
 window.ringSyncAfterVehicleRestore_ = ringSyncAfterVehicleRestore_;
-window.ringDropRetryQueueForVehicleOwner_ = ringDropRetryQueueForVehicleOwner_;
+window.ringVehicleOwnerHasPendingVehicleQueue_ = ringVehicleOwnerHasPendingVehicleQueue_;
+window.ringAbandonRetryQueueForVehicleOwner_ = ringAbandonRetryQueueForVehicleOwner_;
 window.ringTryRemoveLocalVehicleAfterDeleteNotFound_ = ringTryRemoveLocalVehicleAfterDeleteNotFound_;
 window.syncMaintenanceHistoryForVin = syncMaintenanceHistoryForVin;
 window.ringRunPageSync_ = ringRunPageSync_;
