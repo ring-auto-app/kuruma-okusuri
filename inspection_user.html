@@ -342,7 +342,10 @@
 
         hideLoading();
         if (gasResult.hardFail) {
-          showToast('error', 'サーバー上でこの車両が確認できません。車両登録後に再度お試しください。');
+          var hardMsgUser = typeof ringGasPermanentErrorMessage_ === 'function' &&
+            !/VEHICLE_NOT_REGISTERED/.test(String(gasResult.error || ''))
+            ? ringGasPermanentErrorMessage_(gasResult.error) : null;
+          showToast('error', hardMsgUser || 'サーバー上でこの車両が確認できません。車両登録後に再度お試しください。');
           return;
         }
         const dest = targetVin ? `user_inspection_history.html?vin=${encodeURIComponent(targetVin)}` : "user_home.html";

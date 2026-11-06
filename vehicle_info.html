@@ -625,6 +625,11 @@
           res = { success: true, localSaved: true };
         }
 
+        if (res && res.conflict) {
+          window.addEventListener('ring:vehicle-conflict-resolved', function () { location.reload(); }, { once: true });
+          return;
+        }
+
         if (res && res.success === false && !res.queued) {
           if (typeof showToast === 'function') {
             showToast('error', '更新に失敗しました: ' + (res.error || ''));

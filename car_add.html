@@ -554,6 +554,13 @@
           vehRes = { success: true };
         }
 
+        if (vehRes && vehRes.conflict) {
+          if (typeof hideLoading === 'function') hideLoading();
+          btn.disabled = false;
+          window.addEventListener('ring:vehicle-conflict-resolved', function () { goBackHome(); }, { once: true });
+          return;
+        }
+
         if (vehRes && vehRes.success === false && !vehRes.queued) {
           if (typeof hideLoading === 'function') hideLoading();
           btn.disabled = false;

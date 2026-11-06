@@ -466,6 +466,13 @@
           : await saveInspectionToGasWithRetry(gasPayload);
 
         hideLoading();
+        var hardMsgBiz = gasResult.hardFail && typeof ringGasPermanentErrorMessage_ === 'function' &&
+          !/VEHICLE_NOT_REGISTERED/.test(String(gasResult.error || ''))
+          ? ringGasPermanentErrorMessage_(gasResult.error) : null;
+        if (gasResult.hardFail && hardMsgBiz) {
+          showToast('error', hardMsgBiz);
+          return;
+        }
         if (gasResult.hardFail) {
           showToast('error', isEdit
             ? '点検記録の更新に失敗しました。'

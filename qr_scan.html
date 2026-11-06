@@ -286,6 +286,10 @@
             createdAt: new Date().toISOString()
           });
           if (typeof hideLoading === 'function') hideLoading();
+          if (res && res.conflict) {
+            btn.disabled = false;
+            return;
+          }
           if (res && res.success === false && !res.queued) {
             btn.disabled = false;
             var cardErr = btn.closest('.veh-card');
