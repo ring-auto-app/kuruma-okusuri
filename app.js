@@ -3026,6 +3026,7 @@ function ringBuildVehicleGasPayload_(merged, profile) {
     delete payload.serverRev;
     delete payload.vehicleConflict;
     delete payload.nicknameConflict;
+    delete payload.serverBase;
     if (Object.prototype.hasOwnProperty.call(merged, 'nickname')) {
         payload.nickname = ringNormalizeVehicleNicknameValue_(merged.nickname);
     }
@@ -3059,6 +3060,7 @@ function ringPersistVehicleNicknameAfterGas_(vin, gasResult, payloadHadNickname,
         car.nicknameCloud = cloud;
         car.nickname = cloud;
         car.nicknamePendingCloud = false;
+        if (car.serverBase && typeof car.serverBase === 'object') car.serverBase.nickname = cloud;
         if (car.nicknameConflict &&
             ringNormalizeVehicleNicknameValue_(car.nicknameConflict.local) === cloud) {
             delete car.nicknameConflict;
@@ -3296,6 +3298,7 @@ function ringVehicleGasResponseSyncOpts_(payload) {
         var nickReq = parseInt(payload.nicknameRev, 10);
         o.requestNicknameRev = (isNaN(nickReq) || nickReq <= 0) ? 1 : nickReq;
     }
+    if (!payload.nicknameOnly) o.requestSnapshot = ringPickVehicleConflictSnapshot_(payload);
     return o;
 }
 
@@ -3308,6 +3311,9 @@ function ringMarkVehicleSyncedAfterGas_(vin, profile, gasJson, payloadHadNicknam
     if (i < 0) return;
     if (gasJson && gasJson.success !== false) {
         var dirty = ringAdvanceVehicleServerRev_(list[i], gasJson.serverRev);
+        var savedSnap = gasJson.vehicle && typeof gasJson.vehicle === 'object'
+            ? gasJson.vehicle : opts.requestSnapshot;
+        if (dirty && savedSnap) ringSetVehicleServerBase_(list[i], savedSnap);
         if (list[i].vehicleConflict) {
             delete list[i].vehicleConflict;
             dirty = true;
@@ -3330,7 +3336,8 @@ function ringMarkVehicleSyncedAfterGas_(vin, profile, gasJson, payloadHadNicknam
 }
 
 /**
- * nicknameOnly は行全体の世代を照合しないため、自分の書き込み 1 回分（+1）のときだけ基準を進める。
+ * nicknameOnly は行全体の世代を照合しないため、書き込み直前のサーバー世代（previousServerRev）が
+ * 端末の基準と一致したときだけ基準を進める（旧GASは previousServerRev なし → +1 のときのみ）。
  * 間に他端末・整備記録の更新が挟まっていれば次の車両更新で VEHICLE_CONFLICT として検出させる。
  */
 function ringAdvanceServerRevAfterNicknameOnly_(vin, profile, gasJson) {
@@ -3342,7 +3349,10 @@ function ringAdvanceServerRevAfterNicknameOnly_(vin, profile, gasJson) {
     var i = ringFindLocalVehicleIndexByOwner_(list, vin, profile);
     if (i < 0) return;
     var cur = ringParseServerRev_(list[i].serverRev);
-    if (cur == null || next !== cur + 1) return;
+    if (cur == null) return;
+    var prev = ringParseServerRev_(gasJson.previousServerRev);
+    var matches = prev != null ? prev === cur : next === cur + 1;
+    if (!matches || next === cur) return;
     list[i].serverRev = next;
     localStorage.setItem(DB_VEHICLES, JSON.stringify(list));
 }
@@ -3416,9 +3426,107 @@ function ringPickVehicleConflictSnapshot_(vehicle) {
 }
 
 /**
+ * serverBase = この端末が最後に確認したサーバーの項目値（競合時の 3 者比較の基準）。
+ * 端末内だけに保持し GAS へは送らない。snap にない項目は前回の基準を残す。
+ */
+function ringSetVehicleServerBase_(car, snap) {
+    if (!car) return;
+    var picked = ringPickVehicleConflictSnapshot_(snap);
+    if (!picked) return;
+    var prev = car.serverBase && typeof car.serverBase === 'object' ? car.serverBase : {};
+    car.serverBase = Object.assign({}, prev, picked);
+}
+
+/**
+ * 端末・サーバー・基準（serverBase）の 3 者比較。
+ * 端末だけが変えた項目は端末の値、サーバーだけが変わった項目はサーバーの値を使う。
+ * 両方が別々の値に変えた項目、または基準がなく食い違う項目は conflicts（利用者に確認）。
+ */
+function ringPlanVehicleConflictMerge_(car, server) {
+    car = car || {};
+    server = server || {};
+    var base = car.serverBase && typeof car.serverBase === 'object' ? car.serverBase : null;
+    var hasOwn = Object.prototype.hasOwnProperty;
+    var plan = { takeServer: [], keepLocal: [], conflicts: [] };
+    RING_VEHICLE_CONFLICT_FIELDS_.forEach(function (f) {
+        if (!hasOwn.call(server, f.key)) return;
+        var lv = ringVehicleConflictComparable_(f, ringVehicleConflictLocalValue_(car, f.key));
+        var sv = ringVehicleConflictComparable_(f, server[f.key]);
+        if (lv === sv) return;
+        var hasBase = !!base && hasOwn.call(base, f.key);
+        var bv = hasBase ? ringVehicleConflictComparable_(f, base[f.key]) : null;
+        if (hasBase && lv === bv) {
+            plan.takeServer.push(f.key);
+        } else if (hasBase && sv === bv) {
+            plan.keepLocal.push(f.key);
+        } else {
+            plan.conflicts.push({ key: f.key, label: f.label, local: lv, server: sv });
+        }
+    });
+    return plan;
+}
+
+/**
+ * 端末の車両とサーバー行が同じ登録か（削除→再登録された別の登録には自動で重ねない）。
+ * 登録日時（createdAt）が両方読めて 1 秒以上ずれていれば別登録とみなす。
+ */
+function ringVehicleSameRegistration_(car, serverVehicle) {
+    if (!car || !serverVehicle) return true;
+    var a = Date.parse(String(car.createdAt || ''));
+    var b = Date.parse(String(serverVehicle.createdAt || ''));
+    if (isNaN(a) || isNaN(b)) return true;
+    return Math.abs(a - b) < 1000;
+}
+
+/** plan に従い、サーバー側を採る項目だけ端末の車両へ反映する。choices: { key: 'local'|'server' } */
+function ringApplyVehicleConflictMerge_(car, server, plan, choices) {
+    choices = choices || {};
+    var fromServer = {};
+    plan.takeServer.forEach(function (k) { fromServer[k] = server[k]; });
+    plan.conflicts.forEach(function (d) {
+        if (choices[d.key] === 'server') fromServer[d.key] = server[d.key];
+    });
+    if (Object.keys(fromServer).length) ringApplyVehicleServerSnapshot_(car, fromServer);
+}
+
+/**
+ * 競合した車両を「端末の変更＋最新サーバー」で合成し、再送できる状態にする（送信はしない）。
+ * 未回答の両方変更項目があれば何も変えず needsChoice を返す。
+ * @returns {{ ok: boolean, needsChoice?: boolean, conflicts?: Array, error?: string }}
+ */
+function ringPrepareVehicleConflictMerge_(vin, profile, choices) {
+    profile = profile || (typeof getCurrentProfile === 'function' ? getCurrentProfile() : null);
+    var list = loadVehicles();
+    var i = ringFindLocalVehicleIndexByOwner_(list, vin, profile);
+    if (i < 0) return { ok: false, error: 'VEHICLE_NOT_FOUND_LOCAL' };
+    var car = list[i];
+    var c = car.vehicleConflict || {};
+    if (!c.server) return { ok: false, error: 'VEHICLE_CONFLICT_SERVER_UNKNOWN' };
+    var plan = ringPlanVehicleConflictMerge_(car, c.server);
+    choices = choices || {};
+    var missing = plan.conflicts.filter(function (d) {
+        return choices[d.key] !== 'local' && choices[d.key] !== 'server';
+    });
+    if (missing.length) return { ok: false, needsChoice: true, conflicts: plan.conflicts };
+    ringApplyVehicleConflictMerge_(car, c.server, plan, choices);
+    var rev = ringParseServerRev_(c.serverRev);
+    if (rev != null) car.serverRev = rev;
+    ringSetVehicleServerBase_(car, c.server);
+    if (Object.prototype.hasOwnProperty.call(c.server, 'nickname')) {
+        car.nicknameCloud = ringNormalizeVehicleNicknameValue_(c.server.nickname);
+    }
+    car.vehicleSaveRev = ringNextVehicleSaveRev_(car);
+    delete car.vehicleConflict;
+    list[i] = car;
+    localStorage.setItem(DB_VEHICLES, JSON.stringify(list));
+    return { ok: true, conflicts: plan.conflicts };
+}
+
+/**
  * VEHICLE_CONFLICT / VEHICLE_BASE_REV_REQUIRED を端末に記録する。端末の変更は消さず未送信のまま残す。
  * サーバー内容が端末と同一なら（自分の整備記録で世代だけ進んだ等）競合扱いせず同期済みにする。
- * @returns {'identical'|'conflict'|'none'}
+ * opts.allowAutoMerge: 両方が同じ項目を変えていなければ、端末の変更だけを最新サーバー値へ重ねて 'merged'（再送待ち）。
+ * @returns {'identical'|'merged'|'conflict'|'none'}
  */
 function ringRecordVehicleConflictFromGas_(vin, gasJson, profile, opts) {
     opts = opts || {};
@@ -3438,6 +3546,7 @@ function ringRecordVehicleConflictFromGas_(vin, gasJson, profile, opts) {
             car.nicknameCloud = ringNormalizeVehicleNicknameValue_(snap.nickname);
             car.nicknamePendingCloud = false;
         }
+        ringSetVehicleServerBase_(car, snap);
         delete car.vehicleConflict;
         localStorage.setItem(DB_VEHICLES, JSON.stringify(list));
         return 'identical';
@@ -3449,16 +3558,24 @@ function ringRecordVehicleConflictFromGas_(vin, gasJson, profile, opts) {
         at: new Date().toISOString()
     };
     localStorage.setItem(DB_VEHICLES, JSON.stringify(list));
+    if (opts.allowAutoMerge && snap && rev != null &&
+        ringVehicleSameRegistration_(car, gasJson && gasJson.vehicle) &&
+        ringPlanVehicleConflictMerge_(car, snap).conflicts.length === 0 &&
+        ringPrepareVehicleConflictMerge_(vin, profile, {}).ok) {
+        return 'merged';
+    }
     return 'conflict';
 }
 
 /**
  * 画面が開いた時点の車両コピー（v）で端末側の同期状態を巻き戻さない。
  * serverRev は画面表示時と端末保存値の古い方を基準にし、表示後に取り込んだ他端末の更新を上書きしない。
+ * 画面コピーの方が古い場合は、競合時の 3 者比較の基準（serverBase）も画面コピー側を使う
+ * （画面で触っていない古い値を「端末で変更した値」と誤判定しない）。
  */
 function ringKeepDeviceVehicleSyncState_(merged, cur, v) {
     cur = cur || {};
-    ['vehicleConflict', 'nicknameConflict'].forEach(function (k) {
+    ['vehicleConflict', 'nicknameConflict', 'serverBase'].forEach(function (k) {
         if (cur[k] != null) merged[k] = cur[k];
         else delete merged[k];
     });
@@ -3466,6 +3583,10 @@ function ringKeepDeviceVehicleSyncState_(merged, cur, v) {
     var viewRev = ringParseServerRev_(v && v.serverRev);
     if (curRev == null) delete merged.serverRev;
     else merged.serverRev = viewRev != null ? Math.min(curRev, viewRev) : curRev;
+    if (curRev != null && viewRev != null && viewRev < curRev) {
+        if (v.serverBase && typeof v.serverBase === 'object') merged.serverBase = v.serverBase;
+        else delete merged.serverBase;
+    }
 }
 
 /**
@@ -3877,8 +3998,9 @@ function mergeVehiclesLocalAndServer(localList, serverList, opts) {
             } else if (prev.serverRev != null) {
                 merged.serverRev = prev.serverRev;
             }
-        } else if (merged.vehicleConflict) {
-            delete merged.vehicleConflict;
+        } else {
+            if (merged.vehicleConflict) delete merged.vehicleConflict;
+            ringSetVehicleServerBase_(merged, row);
         }
         if (!merged.createdAt && prev.createdAt) merged.createdAt = prev.createdAt;
         if (!merged.createdAt) merged.createdAt = new Date().toISOString();
@@ -4419,11 +4541,19 @@ function ringGuardUserVehicleLimitBeforeAdd_(vin) {
 /**
  * 画面からの保存が VEHICLE_CONFLICT になったとき。端末の変更は未送信のまま残し、利用者に選んでもらう。
  */
-function ringHandleForegroundVehicleConflict_(vin, err, profile, gasPayload, gasAction) {
+function ringHandleForegroundVehicleConflict_(vin, err, profile, gasPayload, gasAction, opts) {
+    opts = opts || {};
+    var depth = parseInt(opts.autoMergeDepth, 10) || 0;
     var state = ringRecordVehicleConflictFromGas_(vin, err && err.gasResponse, profile,
-        ringVehicleGasResponseSyncOpts_(gasPayload));
+        Object.assign(ringVehicleGasResponseSyncOpts_(gasPayload), { allowAutoMerge: depth < 2 }));
     if (state === 'identical') {
         return { success: true, vin: vin, localSaved: true, serverSaved: true, queued: false, alreadyUpToDate: true };
+    }
+    if (state === 'merged') {
+        return updateVehicle({ vin: vin }, { autoMergeDepth: depth + 1 }).then(function (r) {
+            if (r && r.success) r.autoMerged = true;
+            return r;
+        });
     }
     ringLogSystemEvent('SAVE_FAIL', {
         error_message: String(err && err.message || 'VEHICLE_CONFLICT'),
@@ -4446,7 +4576,7 @@ function ringHandleForegroundVehicleConflict_(vin, err, profile, gasPayload, gas
  * 車両の追加・更新
  * @param {object} v
  */
-async function addVehicle(v) {
+async function addVehicle(v, opts) {
     var profileGuard = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
     if (ringIsBizProfile_(profileGuard) && !ringCanEditManagedVehicles_(profileGuard)) {
         return { success: false, error: 'MANAGED_VEHICLE_EDIT_DENIED', localSaved: false, serverSaved: false, queued: false };
@@ -4499,7 +4629,7 @@ async function addVehicle(v) {
     } catch (err) {
         const msg = String(err.message || '');
         if (ringIsGasVehicleConflictError_(msg)) {
-            return ringHandleForegroundVehicleConflict_(merged.vin, err, profile, gasPayload, 'vehicle');
+            return ringHandleForegroundVehicleConflict_(merged.vin, err, profile, gasPayload, 'vehicle', opts);
         }
         if (/LIMIT_REACHED/i.test(msg)) {
             if (i === -1) {
@@ -4546,7 +4676,7 @@ async function addVehicle(v) {
  * 既存車両の編集更新（GAS update_vehicle — シート行上書き専用、画像なし）
  * @param {object} v
  */
-async function updateVehicle(v) {
+async function updateVehicle(v, opts) {
     if (!v || !v.vin) {
         return { success: false, error: 'VIN_REQUIRED', localSaved: false, serverSaved: false };
     }
@@ -4603,7 +4733,7 @@ async function updateVehicle(v) {
     } catch (err) {
         const msg = String(err.message || '');
         if (ringIsGasVehicleConflictError_(msg)) {
-            return ringHandleForegroundVehicleConflict_(merged.vin, err, profile, gasPayload, 'update_vehicle');
+            return ringHandleForegroundVehicleConflict_(merged.vin, err, profile, gasPayload, 'update_vehicle', opts);
         }
         if (ringIsGasVehicleHardDenyError_(msg)) {
             var revList = loadVehicles();
@@ -5231,12 +5361,18 @@ async function flushRetryQueue(opts) {
                 var flushErrKind = ringClassifyRetryQueueGasError_(flushItem, flushErrMsg, sendProfile);
                 if (flushErrKind === 'conflict') {
                     if (ringRetryResponseApplyAllowed_(flushOwnerSnap)) {
+                        var autoMerges = parseInt(flushItem.autoMergeCount, 10) || 0;
                         var conflictState = ringRecordVehicleConflictFromGas_(flushItem.payload.vin,
                             e && e.gasResponse,
                             ringProfileFromFlushSnapshot_(flushOwnerSnap.profile) || sendProfile,
-                            flushSyncOpts);
+                            Object.assign({}, flushSyncOpts, { allowAutoMerge: autoMerges < 2 }));
                         if (conflictState === 'identical') {
                             completedItemIds[sentItemId] = true;
+                            continue;
+                        }
+                        if (conflictState === 'merged') {
+                            flushItem.autoMergeCount = autoMerges + 1;
+                            queue.push(flushItem);
                             continue;
                         }
                     }
@@ -5478,6 +5614,7 @@ async function ringResolveVehicleConflictUseServer_(vin, profile) {
     if (c.server) {
         ringApplyVehicleServerSnapshot_(car, c.server);
         ringAdvanceVehicleServerRev_(car, c.serverRev);
+        ringSetVehicleServerBase_(car, c.server);
     }
     car.vehicleSyncedRev = ringGetVehicleSaveRev_(car);
     car.nicknamePendingCloud = false;
@@ -5491,18 +5628,24 @@ async function ringResolveVehicleConflictUseServer_(vin, profile) {
     return { success: true };
 }
 
-/** 競合解決: サーバーの最新世代を確認したうえで、この端末の内容で上書き保存する */
-async function ringResolveVehicleConflictKeepLocal_(vin, profile) {
+/**
+ * 競合解決: この端末で変更した項目だけを最新サーバー内容へ重ねて保存する。
+ * 他の端末・整備記録だけが変えた項目はサーバーの値を残す。両方が変えた項目は choices（key → 'local'|'server'）で指定。
+ * 未指定の両方変更項目があれば送信せず needsChoice と conflicts を返す。
+ */
+async function ringResolveVehicleConflictKeepLocal_(vin, profile, choices) {
     profile = profile || (typeof getCurrentProfile === 'function' ? getCurrentProfile() : null);
-    var list = loadVehicles();
-    var i = ringFindLocalVehicleIndexByOwner_(list, vin, profile);
-    if (i < 0) return { success: false, error: 'VEHICLE_NOT_FOUND_LOCAL' };
-    var car = list[i];
-    var c = car.vehicleConflict || {};
-    ringAdvanceVehicleServerRev_(car, c.serverRev);
-    delete car.vehicleConflict;
-    list[i] = car;
-    localStorage.setItem(DB_VEHICLES, JSON.stringify(list));
+    var car = ringFindLocalVehicleByOwner_(vin, profile);
+    if (!car) return { success: false, error: 'VEHICLE_NOT_FOUND_LOCAL' };
+    var prep = ringPrepareVehicleConflictMerge_(vin, profile, choices);
+    if (!prep.ok) {
+        return {
+            success: false,
+            error: prep.needsChoice ? 'VEHICLE_CONFLICT_CHOICE_REQUIRED' : prep.error,
+            needsChoice: !!prep.needsChoice,
+            conflicts: prep.conflicts || []
+        };
+    }
     ringAbandonRetryQueueForVehicleOwner_(vin, profile);
     return await updateVehicle({ vin: car.vin });
 }
@@ -5598,19 +5741,53 @@ function ringBuildVehicleConflictBodyHtml_(car) {
     if (!diffs.length) {
         return html + '<p ' + p + '>' + escapeHtml('表示できる項目に違いはありません。') + '</p>';
     }
+    var plan = ringPlanVehicleConflictMerge_(car, c.server);
     var cell = 'style="text-align:left;padding:4px 6px;border-top:1px solid rgba(0,0,0,0.08);vertical-align:top"';
     var rows = diffs.map(function (d) {
+        var use = plan.takeServer.indexOf(d.key) >= 0 ? 'サーバー'
+            : (plan.keepLocal.indexOf(d.key) >= 0 ? 'この端末' : '確認');
         return '<tr><th ' + cell + '>' + escapeHtml(d.label) + '</th>' +
             '<td ' + cell + '>' + escapeHtml(ringVehicleConflictDisplayValue_(d.key, d.local)) + '</td>' +
-            '<td ' + cell + '>' + escapeHtml(ringVehicleConflictDisplayValue_(d.key, d.server)) + '</td></tr>';
+            '<td ' + cell + '>' + escapeHtml(ringVehicleConflictDisplayValue_(d.key, d.server)) + '</td>' +
+            '<td ' + cell + '>' + escapeHtml(use) + '</td></tr>';
     }).join('');
     html += '<table style="width:100%;border-collapse:collapse;font-size:13px;margin:4px 0 8px">' +
-        '<thead><tr><th ' + cell + '></th><th ' + cell + '>この端末</th><th ' + cell + '>サーバー</th></tr></thead>' +
+        '<thead><tr><th ' + cell + '></th><th ' + cell + '>この端末</th><th ' + cell + '>サーバー</th>' +
+        '<th ' + cell + '>保存時</th></tr></thead>' +
         '<tbody>' + rows + '</tbody></table>';
+    html += '<p ' + p + '>' + escapeHtml(
+        '「この端末の変更を反映して保存」では、この端末で変更した項目だけを保存し、' +
+        '他の端末や整備記録で更新された項目はサーバーの値を残します。' +
+        (plan.conflicts.length ? '\n「確認」の項目は両方で変更されているため、保存前にどちらを使うか確認します。' : '')) + '</p>';
     if (diffs.some(function (d) { return d.key === 'nextShaken'; })) {
         html += '<p ' + p + '>' + escapeHtml('車検満了日は、整備工場の記録によって更新された可能性があります。') + '</p>';
     }
     return html;
+}
+
+/** 両方で変更された項目ごとに、どちらの値を使うか確認する。途中でやめたら null */
+async function ringAskVehicleConflictFieldChoices_(conflicts) {
+    var picks = {};
+    var p = 'class="ring-save-confirm__lead" style="margin-top:0;white-space:pre-line"';
+    for (var n = 0; n < (conflicts || []).length; n++) {
+        var d = conflicts[n];
+        var ch = await ringShowChoiceDialog_({
+            id: 'ring-vehicle-conflict-field',
+            title: '「' + d.label + '」が両方で変更されています',
+            bodyHtml: '<p ' + p + '>' + escapeHtml(
+                'この端末: ' + ringVehicleConflictDisplayValue_(d.key, d.local) + '\n' +
+                'サーバー: ' + ringVehicleConflictDisplayValue_(d.key, d.server) + '\n\n' +
+                'どちらの値で保存しますか？') + '</p>',
+            choices: [
+                { id: 'local', label: 'この端末の値', primary: true },
+                { id: 'server', label: 'サーバーの値' },
+                { id: 'cancel', label: 'やめる' }
+            ]
+        });
+        if (ch !== 'local' && ch !== 'server') return null;
+        picks[d.key] = ch;
+    }
+    return picks;
 }
 
 var __ringVehicleConflictDialogOpen = false;
@@ -5635,7 +5812,7 @@ async function ringShowVehicleConflictDialog_(vin) {
             bodyHtml: ringBuildVehicleConflictBodyHtml_(car),
             choices: [
                 { id: 'server', label: 'サーバーの最新情報を使う' },
-                { id: 'local', label: 'この端末の内容で保存' },
+                { id: 'local', label: 'この端末の変更を反映して保存' },
                 { id: 'later', label: 'あとで決める' }
             ]
         });
@@ -5657,8 +5834,13 @@ async function ringShowVehicleConflictDialog_(vin) {
             }
         } else if (choice === 'local') {
             var res = await ringResolveVehicleConflictKeepLocal_(vin, profile);
-            if (typeof showToast === 'function') {
-                if (res && res.success) showToast('success', 'この端末の内容で保存しました');
+            if (res && res.needsChoice) {
+                var picks = await ringAskVehicleConflictFieldChoices_(res.conflicts);
+                res = picks ? await ringResolveVehicleConflictKeepLocal_(vin, profile, picks) : null;
+                if (!picks) choice = 'later';
+            }
+            if (choice === 'local' && typeof showToast === 'function') {
+                if (res && res.success) showToast('success', 'この端末の変更を保存しました');
                 else if (res && res.queued) showToast('info', '端末に保存しました。オンライン復帰時にサーバーへ反映します。');
                 else if (!(res && res.conflict)) showToast('error', '保存できませんでした。時間をおいて再度お試しください。');
             }

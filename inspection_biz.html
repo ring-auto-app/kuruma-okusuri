@@ -441,6 +441,9 @@
         }
         localStorage.setItem('inspections_v1', JSON.stringify(inspections));
 
+        /** 整備履歴への追加結果: null=対象外 / 'saved' / 'queued' / 'failed'（日常点検の保存結果とは別に判定） */
+        let maintState = null;
+        let maintError = '';
         if (hasIssue && !isEdit) {
           const itemMap = {};
           inspectionData.forEach(g => g.items.forEach(i => { itemMap[i.id] = i.name; }));
@@ -448,8 +451,29 @@
             .filter(([, v]) => v !== '良' && v !== '無')
             .map(([k, v]) => `${itemMap[k] || k}：${v}`);
           logData.parts = ngItems.length > 0 ? ngItems.join(' / ') : "日常点検（指摘事項あり）";
-          if (typeof saveLog === "function") await saveLog(logData);
+          if (typeof saveLog === "function") {
+            let maintResult = null;
+            try {
+              maintResult = await saveLog(logData);
+            } catch (eMaint) {
+              maintResult = { serverSaved: false, queued: false, error: String(eMaint && eMaint.message || eMaint || '') };
+            }
+            if (maintResult && maintResult.serverSaved) maintState = 'saved';
+            else if (maintResult && maintResult.queued) maintState = 'queued';
+            else {
+              maintState = 'failed';
+              maintError = String(maintResult && maintResult.error || '');
+            }
+          } else {
+            maintState = 'failed';
+          }
         }
+        const maintFailMsg = maintState === 'failed'
+          ? '整備履歴への追加に失敗しました' +
+            ((typeof ringGasPermanentErrorMessage_ === 'function' && ringGasPermanentErrorMessage_(maintError))
+              ? '（' + ringGasPermanentErrorMessage_(maintError) + '）' : '') +
+            '。内容は端末に残っています。必要に応じて整備記録から登録してください。'
+          : '';
 
         var staffDisp = profile ? (profile.displayName || profile.realName || profile.staffName || '').trim() : '';
         if (!staffDisp && profile && profile.representativeName) staffDisp = String(profile.representativeName).trim();
@@ -469,23 +493,37 @@
         var hardMsgBiz = gasResult.hardFail && typeof ringGasPermanentErrorMessage_ === 'function' &&
           !/VEHICLE_NOT_REGISTERED/.test(String(gasResult.error || ''))
           ? ringGasPermanentErrorMessage_(gasResult.error) : null;
+        const maintNote = maintState === 'saved' ? '\n整備履歴には追加しました。'
+          : (maintState === 'queued' ? '\n整備履歴は端末に保存し、回線復旧後に送信します。'
+            : (maintState === 'failed' ? '\n' + maintFailMsg : ''));
         if (gasResult.hardFail && hardMsgBiz) {
-          showToast('error', hardMsgBiz);
+          showToast('error', hardMsgBiz + maintNote);
           return;
         }
         if (gasResult.hardFail) {
-          showToast('error', isEdit
+          showToast('error', (isEdit
             ? '点検記録の更新に失敗しました。'
-            : 'この車両はサーバーに登録されていないため、点検を保存できませんでした。車両一覧を確認してください。');
+            : 'この車両はサーバーに登録されていないため、点検を保存できませんでした。車両一覧を確認してください。') + maintNote);
           return;
         }
         const dest = isEdit
           ? ('daily_history.html?vin=' + encodeURIComponent(vin))
           : 'vehicles.html';
+        if (maintState === 'failed') {
+          showToast('warning', (gasResult.queued
+            ? '点検は端末に保存しました（回線復旧後に送信します）。'
+            : '点検は保存しました。') + maintFailMsg, 4000);
+          setTimeout(() => location.replace(dest), 4000);
+          return;
+        }
         const variant = gasResult.queued ? 'queued' : 'success';
         const okMsg = isEdit
           ? '点検記録を更新しました'
-          : (hasIssue ? '点検を保存しました（整備履歴にも追加）' : '正常に登録されました');
+          : (maintState === 'saved'
+            ? '点検を保存しました（整備履歴にも追加しました）'
+            : (maintState === 'queued'
+              ? '点検を保存しました（整備履歴は回線復旧後に送信します）'
+              : '正常に登録されました'));
         if (typeof showRingSavedSplash === 'function') {
           showRingSavedSplash({
             variant,

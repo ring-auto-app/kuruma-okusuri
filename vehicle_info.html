@@ -343,10 +343,65 @@
     // from パラメータで戻り先を切り替え
     const fromPage  = urlParams.get('from') || '';
     var vehicleInfoCacheKey = '';
+    /** 画面に表示した時点の車両項目（未変更の項目を保存時に端末の最新値へ戻すための基準） */
+    var vehicleFormBase_ = null;
+
+    /** 同一VINでも所有者・管理店舗が違う行は別車両。ログイン中の所有者の行だけを返す（VIN先頭一致は使わない） */
+    function findOwnVehicleIndex_(vehicles, prof) {
+      if (typeof ringFindLocalVehicleIndexByOwner_ === 'function') {
+        return ringFindLocalVehicleIndexByOwner_(vehicles, targetVin, prof);
+      }
+      prof = prof || {};
+      var shopId = String(prof.shopId || '').trim();
+      var userId = String(prof.userId || '').trim();
+      var i;
+      for (i = 0; i < vehicles.length; i++) {
+        var v = vehicles[i];
+        if (String(v.vin || '') !== String(targetVin || '')) continue;
+        if (shopId) {
+          if (String(v.shopId || '') === shopId) return i;
+        } else if (userId) {
+          if ((String(v.userId || '') === userId || String(v.ownerId || '') === userId) &&
+              !String(v.shopId || '').trim()) {
+            return i;
+          }
+        }
+      }
+      return -1;
+    }
 
     function getCarFromLocal_() {
       var vehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
-      return vehicles.find(function (v) { return v.vin === targetVin; }) || null;
+      var idx = findOwnVehicleIndex_(vehicles, profile);
+      return idx >= 0 ? vehicles[idx] : null;
+    }
+
+    function rememberVehicleFormBase_(car) {
+      if (!car || typeof ringPickVehicleConflictSnapshot_ !== 'function') {
+        vehicleFormBase_ = null;
+        return;
+      }
+      vehicleFormBase_ = ringPickVehicleConflictSnapshot_(Object.assign({}, car, {
+        classification: car.classification || car.category || ''
+      }));
+    }
+
+    /** 画面で変更していない項目は送らず、端末の最新値（表示後に同期された他端末の更新）を使う */
+    function dropUnchangedVehicleFormFields_(payload) {
+      if (!vehicleFormBase_ || typeof RING_VEHICLE_CONFLICT_FIELDS_ === 'undefined' ||
+          typeof ringVehicleConflictComparable_ !== 'function') {
+        return payload;
+      }
+      RING_VEHICLE_CONFLICT_FIELDS_.forEach(function (f) {
+        if (!Object.prototype.hasOwnProperty.call(vehicleFormBase_, f.key)) return;
+        if (ringVehicleConflictComparable_(f, payload[f.key]) !==
+            ringVehicleConflictComparable_(f, vehicleFormBase_[f.key])) {
+          return;
+        }
+        delete payload[f.key];
+        if (f.key === 'classification') delete payload.category;
+      });
+      return payload;
     }
 
     function getVehicleInfoSignature_() {
@@ -379,6 +434,7 @@
         } else if (expiryHidden) {
           expiryHidden.value = nextExpiry;
         }
+        if (vehicleFormBase_) vehicleFormBase_.nextShaken = nextExpiry;
       }
       updateSchedule();
     }
@@ -475,6 +531,7 @@
 
       document.getElementById('vinDisplay').textContent = targetVin;
       populateVehicleFormFromCar_(car, prof, isBizInfo);
+      rememberVehicleFormBase_(car);
       updateSchedule();
 
       var canEditVehInfo = !isBizInfo || (typeof ringCanEditManagedVehicles_ === 'function' && ringCanEditManagedVehicles_(prof));
@@ -576,7 +633,8 @@
           : { months: 12 };
         const months = cycle.months;
         const vehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
-        const idx = vehicles.findIndex(v => v.vin === targetVin);
+        const idx = findOwnVehicleIndex_(vehicles,
+          (typeof getCurrentProfile === 'function' ? getCurrentProfile() : null) || profile);
 
         if (idx < 0) {
           alert('車両データが見つかりません。');
@@ -615,6 +673,7 @@
           vehicleCategory:  newCategory
         };
         updatePayload.model = vehicles[idx].model || '';
+        dropUnchangedVehicleFormFields_(updatePayload);
 
         let res;
         if (typeof updateVehicle === 'function') {
@@ -642,6 +701,8 @@
         if (typeof showToast === 'function') {
           if (res && res.queued) {
             showToast('info', '端末に保存しました。オンライン復帰時にサーバーへ反映します。');
+          } else if (res && res.autoMerged) {
+            showToast('success', '他の端末での更新と合わせて保存しました');
           } else {
             showToast('success', '車両情報を更新しました');
           }
