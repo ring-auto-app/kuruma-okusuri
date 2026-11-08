@@ -4082,9 +4082,10 @@ function ringIsMyVehicleRecord_(v, profile) {
         if (!myShopId) return false;
         return String(v.shopId || '').trim() === myShopId;
     }
-    return String(v.userId || '') === myUserId ||
-        String(v.ownerId || '') === myUserId ||
-        String(v.shopId || '') === myUserId;
+    if (!myUserId) return false;
+    if (String(v.shopId || '').trim()) return false;
+    return String(v.userId || '').trim() === myUserId ||
+        String(v.ownerId || '').trim() === myUserId;
 }
 
 /**
