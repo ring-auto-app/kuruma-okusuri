@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
@@ -13,7 +13,7 @@
     <title>車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20260528-v26"></script>
+  <script src="app.js?v=20261108-v33"></script>
   <script src="theme.js"></script>
   
   <style>
@@ -143,6 +143,19 @@
     const params = new URLSearchParams(location.search);
     const targetVin = params.get("vin");
 
+    /** ログイン中の所有者／店舗に紐づく管理車両行のみ（VIN単独の先頭一致は使わない） */
+    function resolveOwnVehicleForDetail_(vehicles, vin, prof) {
+      if (!prof || !vin) return null;
+      if (typeof ringFindLocalVehicleByOwner_ === "function") {
+        return ringFindLocalVehicleByOwner_(vin, prof);
+      }
+      if (typeof ringFindLocalVehicleIndexByOwner_ === "function") {
+        var idx = ringFindLocalVehicleIndexByOwner_(vehicles, vin, prof);
+        return idx >= 0 ? vehicles[idx] : null;
+      }
+      return null;
+    }
+
     /**
      * 車両および履歴の表示
      */
@@ -158,8 +171,13 @@
       }
 
       setTimeout(() => {
+        if (!profile) {
+          hideLoading();
+          if (typeof showToast === "function") showToast("warning", "ログイン情報を確認できません。再ログインしてください。");
+          return;
+        }
         const vehicles = safeJsonParse(localStorage.getItem("nappy_vehicles_v1"), []);
-        const vehicle = vehicles.find(v => v.vin === targetVin);
+        const vehicle = resolveOwnVehicleForDetail_(vehicles, targetVin, profile);
         const allLogs = safeJsonParse(localStorage.getItem("nappy_logs_v1"), []);
         const logs = allLogs.filter(l => l.vin === targetVin).sort((a, b) => new Date(b.date) - new Date(a.date));
         
@@ -186,7 +204,7 @@
     function ringVehicleDetailHasCache_() {
       if (!targetVin) return false;
       var vehicles = safeJsonParse(localStorage.getItem("nappy_vehicles_v1"), []);
-      var hasVehicle = vehicles.some(function (v) { return v.vin === targetVin; });
+      var hasVehicle = !!(profile && resolveOwnVehicleForDetail_(vehicles, targetVin, profile));
       var allLogs = safeJsonParse(localStorage.getItem("nappy_logs_v1"), []);
       var hasLogs = allLogs.some(function (l) { return l.vin === targetVin; });
       return hasVehicle || hasLogs;

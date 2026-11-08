@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.json">
     <title>車のお薬手帳</title>
   <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20260528-v26"></script>
+  <script src="app.js?v=20261108-v33"></script>
   <script src="theme.js"></script>
   <style>
     body {
@@ -159,6 +159,20 @@
     const vin   = params.get("vin");
     const logId = params.get("log_id");
 
+    /** 管理車両補足表示用：ログイン所有者の行のみ（log の VIN / log_id 取得とは別） */
+    function ringDetailResolveOwnVehicle_(vehicles, vinRaw) {
+      const prof = (typeof getCurrentProfile === 'function') ? getCurrentProfile() : null;
+      if (!prof || !vinRaw) return null;
+      if (typeof ringFindLocalVehicleByOwner_ === 'function') {
+        return ringFindLocalVehicleByOwner_(vinRaw, prof);
+      }
+      if (typeof ringFindLocalVehicleIndexByOwner_ === 'function') {
+        const idx = ringFindLocalVehicleIndexByOwner_(vehicles, vinRaw, prof);
+        return idx >= 0 ? vehicles[idx] : null;
+      }
+      return null;
+    }
+
     function init() {
       if (!vin || !logId) { alert("データが見つかりません。"); location.href = "index.html"; return; }
 
@@ -183,9 +197,10 @@
         document.getElementById("logDate").textContent   = '作業日: ' + (log.date || '---');
         document.getElementById("logMileage").textContent = log.mileage ? log.mileage + ' km' : '未記入';
 
-        // 車両情報（nappy_vehicles_v1 から VIN で引き当て）
+        // 車両情報（自店舗・自ユーザーの管理車両行のみ。履歴本文は log から表示）
         const vehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
-        const vRec = vehicles.find(v => v.vin === vin || v.vin === log.vin);
+        const vinForVehicle = vin || log.vin;
+        const vRec = ringDetailResolveOwnVehicle_(vehicles, vinForVehicle);
         if (vRec && (vRec.vehicleModel || vRec.engine || vRec.category || vRec.classification || vRec.typeDesignation)) {
           const lines = [];
           if (vRec.vehicleModel) lines.push('型式：' + vRec.vehicleModel);

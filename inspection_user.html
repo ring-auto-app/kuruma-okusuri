@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.json">
     <title>車のお薬手帳</title>
   <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20260528-v26"></script>
+  <script src="app.js?v=20261108-v33"></script>
   <script src="theme.js"></script>
   <style>
     /* 掟1適用：緑の直書きを撤廃し、ログイン状態（theme.js）で色が切り替わるように修正 */
@@ -342,7 +342,10 @@
 
         hideLoading();
         if (gasResult.hardFail) {
-          showToast('error', 'サーバー上でこの車両が確認できません。車両登録後に再度お試しください。');
+          var hardMsgUser = typeof ringGasPermanentErrorMessage_ === 'function' &&
+            !/VEHICLE_NOT_REGISTERED/.test(String(gasResult.error || ''))
+            ? ringGasPermanentErrorMessage_(gasResult.error) : null;
+          showToast('error', hardMsgUser || 'サーバー上でこの車両が確認できません。車両登録後に再度お試しください。');
           return;
         }
         const dest = targetVin ? `user_inspection_history.html?vin=${encodeURIComponent(targetVin)}` : "user_home.html";

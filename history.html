@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
@@ -13,7 +13,7 @@
     <title>車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20260528-v26"></script>
+  <script src="app.js?v=20261108-v33"></script>
   <script src="theme.js"></script>
   
   <style>
@@ -291,11 +291,25 @@
       }).catch(function () { /* ignore */ });
     }
 
+    /** 管理車両ヘッダ用：ログイン所有者の行のみ（履歴の VIN 検索とは別） */
+    function ringHistoryResolveOwnVehicle_(vehicles, vinRaw) {
+      const prof = (typeof getCurrentProfile === 'function') ? getCurrentProfile() : null;
+      if (!prof || !vinRaw) return null;
+      if (typeof ringFindLocalVehicleByOwner_ === 'function') {
+        return ringFindLocalVehicleByOwner_(vinRaw, prof);
+      }
+      if (typeof ringFindLocalVehicleIndexByOwner_ === 'function') {
+        const idx = ringFindLocalVehicleIndexByOwner_(vehicles, vinRaw, prof);
+        return idx >= 0 ? vehicles[idx] : null;
+      }
+      return null;
+    }
+
     function init() {
       if (!vin) { location.replace("index.html"); return; }
       
       const vehicles = loadVehicles();
-      const car = vehicles.find(v => v.vin === vin);
+      const car = ringHistoryResolveOwnVehicle_(vehicles, vin);
       if (car) {
         document.getElementById("carNickname").innerText = car.nickname || "マイカー";
         document.getElementById("carVin").innerText = car.vin;

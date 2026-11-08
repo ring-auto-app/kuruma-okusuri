@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
@@ -13,7 +13,7 @@
   <title>車のお薬手帳</title>
 
   <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20261102-v32"></script>
+  <script src="app.js?v=20261108-v33"></script>
   <script src="theme.js"></script>
   <script src="gemini-ocr.js"></script>
   <script src="gemini-invoice-ocr.js"></script>
@@ -398,6 +398,19 @@
       }
     }
 
+    /** ログイン中の店舗／所有者に紐づく管理車両行のみ（VIN単独の先頭一致は使わない） */
+    function ringMaintResolveOwnVehicle_(vehicles, vin, prof) {
+      if (!prof || !vin) return null;
+      if (typeof ringFindLocalVehicleByOwner_ === 'function') {
+        return ringFindLocalVehicleByOwner_(vin, prof);
+      }
+      if (typeof ringFindLocalVehicleIndexByOwner_ === 'function') {
+        var idx = ringFindLocalVehicleIndexByOwner_(vehicles, vin, prof);
+        return idx >= 0 ? vehicles[idx] : null;
+      }
+      return null;
+    }
+
     function ringMaintUpdateVinInfoBanner_(rec) {
       var infoEl = document.getElementById('vinVehicleInfo');
       if (!infoEl || !rec) return;
@@ -417,9 +430,17 @@
     async function lookupVehicle(rawVin) {
       var vin = ringMaintNormVin_(rawVin);
       if (!vin) return;
-      var vehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
-      var rec = vehicles.find(function (v) { return ringMaintNormVin_(v.vin) === vin; });
+      var prof = currentProfile || (typeof getCurrentProfile === 'function' ? getCurrentProfile() : null);
       var infoEl = document.getElementById('vinVehicleInfo');
+      if (!prof) {
+        if (infoEl) infoEl.style.display = 'none';
+        if (typeof showToast === 'function') {
+          showToast('warning', 'ログイン情報を確認できません。再ログインしてください。');
+        }
+        return;
+      }
+      var vehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
+      var rec = ringMaintResolveOwnVehicle_(vehicles, vin, prof);
       if (rec) {
         ringMaintApplyVehiclePrefill_(rec, vin);
         var mEl = document.getElementById('inModel');
@@ -441,8 +462,12 @@
       if (typeof ringFetchAndApplyVehicleInfoByVin_ === 'function') {
         await ringFetchAndApplyVehicleInfoByVin_(vin, {
           onApplied: function (v) {
-            ringMaintApplyVehiclePrefill_(v, vin);
-            ringMaintUpdateVinInfoBanner_(v);
+            if (rec) {
+              ringMaintApplyVehiclePrefill_(v, vin);
+              ringMaintUpdateVinInfoBanner_(v);
+            } else if (v) {
+              ringMaintApplyVehiclePrefill_(v, vin);
+            }
           }
         });
       }
