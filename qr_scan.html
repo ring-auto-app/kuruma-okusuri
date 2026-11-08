@@ -201,131 +201,20 @@
         showResult(title || '', '<p class="empty-msg">通信エラーが発生しました</p>');
       }
 
-      function isVinAlreadyManagedLocally(vin, profile) {
-        if (!vin || !profile || typeof loadVehicles !== 'function' || typeof _normalize !== 'function') return false;
-        var shopId = String(profile.shopId || '').trim();
-        var norm = _normalize(vin);
-        return loadVehicles().some(function (v) {
-          return _normalize(v.vin) === norm && String(v.shopId || '').trim() === shopId;
-        });
+      function isAppIntroQr(parsed) {
+        var p = parsed.params;
+        if (String(p.get('shop') || '').trim()) return false;
+        var action = String(p.get('action') || '').trim().toLowerCase();
+        if (action === 'user') return true;
+        var raw = String(parsed.raw || '').toLowerCase();
+        return /index\.html(\?|$|#)/.test(raw) || /\/index\.html/.test(raw);
       }
 
-      async function fetchUserVehiclesForQr(uid) {
-        var payload = { action: 'get_user_vehicles_for_qr', uid: uid };
-        if (typeof ringResolveActiveAuthToken === 'function') {
-          var authToken = ringResolveActiveAuthToken();
-          if (authToken) payload.authToken = authToken;
-        }
-        var res = await fetch(GAS_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain' },
-          body: JSON.stringify(payload)
-        });
-        return res.json();
-      }
-
-      async function handleUserShareQr(uid) {
-        showResult('車両一覧', '<p class="status-msg">読み込み中...</p>');
-        try {
-          var json = await fetchUserVehiclesForQr(uid);
-          var vehicles = (json && json.success === true && Array.isArray(json.vehicles)) ? json.vehicles : [];
-          if (!json || json.success === false || !vehicles.length) {
-            showResult('車両一覧', '<p class="empty-msg">車両情報が見つかりませんでした</p>');
-            return;
-          }
-          var profile = getProfile();
-          var html = '';
-          vehicles.forEach(function (v, idx) {
-            var label = v.carName || v.vehicleName || v.vin || '車両';
-            var sub = [v.vehicleName, v.vin].filter(Boolean).join(' / ');
-            html += '<div class="veh-card">' +
-              '<div class="veh-name">' + esc(label) + '</div>' +
-              '<div class="veh-meta">' + esc(sub) + '</div>';
-            if (isVinAlreadyManagedLocally(v.vin, profile)) {
-              html += '<p class="empty-msg">すでに管理車両に登録されています</p>';
-            } else {
-              html += '<button type="button" class="btn-action" data-vin="' + esc(v.vin) + '" data-idx="' + idx + '">管理車両に追加</button>';
-            }
-            html += '</div>';
-          });
-          showResult('車両一覧', html);
-          document.querySelectorAll('.btn-action[data-vin]').forEach(function (btn) {
-            btn.addEventListener('click', function () { onAddManagedVehicle(btn, vehicles[Number(btn.getAttribute('data-idx'))]); });
-          });
-        } catch (e) {
-          showCommError('車両一覧');
-        }
-      }
-
-      async function onAddManagedVehicle(btn, vehicle) {
-        if (!vehicle || !vehicle.vin) return;
-        var profile = getProfile();
-        if (!profile || String(profile.shopType || '') === 'user') return;
-        if (isVinAlreadyManagedLocally(vehicle.vin, profile)) {
-          btn.style.display = 'none';
-          var cardDup = btn.closest('.veh-card');
-          if (cardDup && !cardDup.querySelector('.dup-msg')) {
-            var dupNote = document.createElement('p');
-            dupNote.className = 'empty-msg dup-msg';
-            dupNote.textContent = 'すでに管理車両に登録されています';
-            cardDup.appendChild(dupNote);
-          }
-          return;
-        }
-        btn.disabled = true;
-        if (typeof showLoading === 'function') showLoading('登録中', '読み込み中...');
-        try {
-          var res = await addVehicle({
-            vin: vehicle.vin,
-            model: vehicle.carName || vehicle.vehicleName || '名称未設定',
-            vehicleName: vehicle.vehicleName || '',
-            vehicleCategory: 'managed',
-            shopId: profile.shopId || '',
-            shopName: profile.shopName || '',
-            shopType: profile.shopType || '',
-            createdAt: new Date().toISOString()
-          });
-          if (typeof hideLoading === 'function') hideLoading();
-          if (res && res.conflict) {
-            btn.disabled = false;
-            return;
-          }
-          if (res && res.success === false && !res.queued) {
-            btn.disabled = false;
-            var cardErr = btn.closest('.veh-card');
-            if (cardErr && !cardErr.querySelector('.comm-err-msg')) {
-              var errNote = document.createElement('p');
-              errNote.className = 'empty-msg comm-err-msg';
-              errNote.textContent = '通信エラーが発生しました';
-              cardErr.appendChild(errNote);
-            }
-            return;
-          }
-          btn.textContent = '追加済み';
-          var card = btn.closest('.veh-card');
-          if (card) {
-            var note = card.querySelector('.add-done-msg');
-            if (!note) {
-              note = document.createElement('p');
-              note.className = 'status-msg success add-done-msg';
-              note.textContent = '管理車両へ追加しました';
-              card.appendChild(note);
-            }
-          }
-          if (typeof showToast === 'function' && res && res.queued) {
-            showToast('info', '端末に保存しました（同期待ち）');
-          }
-        } catch (err) {
-          if (typeof hideLoading === 'function') hideLoading();
-          btn.disabled = false;
-          var cardCatch = btn.closest('.veh-card');
-          if (cardCatch && !cardCatch.querySelector('.comm-err-msg')) {
-            var catchNote = document.createElement('p');
-            catchNote.className = 'empty-msg comm-err-msg';
-            catchNote.textContent = '通信エラーが発生しました';
-            cardCatch.appendChild(catchNote);
-          }
-        }
+      function handleUserIntroQr() {
+        showResult('RinG-Auto（車のお薬手帳）',
+          '<p class="status-msg">アプリのご紹介です</p>' +
+          '<p class="empty-msg">お客様向けの記録・共有アプリです。利用を始めるには下のボタンからどうぞ。</p>' +
+          '<a class="btn-action" href="index.html" style="display:block;text-align:center;text-decoration:none;box-sizing:border-box;">アプリ紹介・はじめる</a>');
       }
 
       async function handleShopQr(shopId) {
@@ -366,16 +255,16 @@
           var profile = getProfile();
           var shopType = profile ? String(profile.shopType || '') : '';
 
-          if (action === 'user' && uid) {
-            if (shopType !== 'user') {
-              await handleUserShareQr(uid);
-            } else {
-              showResult('', '<p class="empty-msg">このQRは工場・事業者向けです。お店のスタッフに読み取ってもらってください。</p>');
-            }
-            return;
-          }
           if (shopId) {
             await handleShopQr(shopId);
+            return;
+          }
+          if (isAppIntroQr(parsed) || (action === 'user' && uid)) {
+            if (shopType === 'user') {
+              showResult('', '<p class="empty-msg">このQRはお店のスタッフに見せる紹介用です。</p>');
+            } else {
+              handleUserIntroQr();
+            }
             return;
           }
           showResult('', '<p class="empty-msg">対応していないQRコードです。</p>');

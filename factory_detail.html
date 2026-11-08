@@ -185,7 +185,14 @@
     function paintFactoryDetail_(vinParam, logIdParam, backUrl) {
       const vehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
       const logs = safeJsonParse(localStorage.getItem('nappy_logs_v1'), []);
-      const vehicle = vehicles.find(v => v.vin.toUpperCase() === vinParam.toUpperCase());
+      const currentProfile = typeof getCurrentProfile === "function" ? getCurrentProfile() : null;
+      let vehicle = null;
+      if (currentProfile && typeof ringFindLocalVehicleByOwner_ === "function") {
+        vehicle = ringFindLocalVehicleByOwner_(vinParam, currentProfile);
+      } else if (currentProfile && typeof ringFindLocalVehicleIndexByOwner_ === "function") {
+        const idx = ringFindLocalVehicleIndexByOwner_(vehicles, vinParam, currentProfile);
+        vehicle = idx >= 0 ? vehicles[idx] : null;
+      }
       const log = logs.find(l => l.log_id === logIdParam);
 
       if (!log) return false;
@@ -241,7 +248,6 @@
       const editArea = document.getElementById('editArea');
       const createdAt = log.createdAt || log.date;
       const diffDays = (new Date() - new Date(createdAt)) / (1000 * 60 * 60 * 24);
-      const currentProfile = typeof getCurrentProfile === "function" ? getCurrentProfile() : null;
       const isSameShop = currentProfile && log.shopId && log.shopId === currentProfile.shopId;
 
       if (diffDays < 7 && isSameShop) {

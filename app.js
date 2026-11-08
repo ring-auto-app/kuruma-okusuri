@@ -2605,6 +2605,12 @@ function ringFindLocalVehicleIndexByOwner_(list, vin, profile) {
     return -1;
 }
 
+/** profile 必須の車両行インデックス（欠落時は VIN-only フォールバックしない） */
+function ringFindLocalVehicleIndexForProfile_(list, vin, profile) {
+    if (!profile) return -1;
+    return ringFindLocalVehicleIndexByOwner_(list, vin, profile);
+}
+
 function ringFindLocalVehicleByOwner_(vin, profile) {
     var list = loadVehicles();
     var i = ringFindLocalVehicleIndexByOwner_(list, vin, profile);
@@ -2784,6 +2790,11 @@ function ringVehicleHasPendingServerSync_(car) {
 
 function ringGenerateQueueItemId_() {
     return 'qi-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+}
+
+/** 整備履歴 log_id（同一ミリ秒の衝突を避ける。再送時は既存 log_id を渡す） */
+function ringGenerateMaintenanceLogId_() {
+    return 'LOG-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
 }
 
 function ringResolveQueueItemId_(item) {
@@ -3047,9 +3058,7 @@ function ringPersistVehicleNicknameAfterGas_(vin, gasResult, payloadHadNickname,
     if (!vinNorm) return;
     profile = profile || (typeof getCurrentProfile === 'function' ? getCurrentProfile() : null);
     var list = loadVehicles();
-    var i = profile
-        ? ringFindLocalVehicleIndexByOwner_(list, vinNorm, profile)
-        : list.findIndex(function (x) { return _normalize(x.vin) === vinNorm; });
+    var i = ringFindLocalVehicleIndexForProfile_(list, vinNorm, profile);
     if (i < 0) return;
     var car = list[i];
     if (!ringVehicleNicknameRevMatchesRequest_(car, opts.requestNicknameRev)) {
@@ -3157,9 +3166,7 @@ function ringApplyVehicleNicknameConflictFromGas_(vin, gasJson, profile, opts) {
     var vinNorm = _normalize(vin);
     profile = profile || (typeof getCurrentProfile === 'function' ? getCurrentProfile() : null);
     var list = loadVehicles();
-    var i = profile
-        ? ringFindLocalVehicleIndexByOwner_(list, vinNorm, profile)
-        : list.findIndex(function (x) { return _normalize(x.vin) === vinNorm; });
+    var i = ringFindLocalVehicleIndexForProfile_(list, vinNorm, profile);
     if (i < 0) return;
     if (!ringVehicleNicknameRevMatchesRequest_(list[i], opts.requestNicknameRev)) {
         return;
@@ -4067,12 +4074,17 @@ async function syncVehiclesFromServer() {
  */
 function ringIsMyVehicleRecord_(v, profile) {
     if (!v || !profile) return false;
-    var myShopId = String(profile.shopId || '');
-    var myUserId = String(profile.userId || '');
-    return (myShopId && String(v.shopId || '') === myShopId) ||
-        String(v.shopId || '') === myUserId ||
-        String(v.userId || '') === myUserId ||
-        String(v.ownerId || '') === myUserId;
+    var myShopId = String(profile.shopId || '').trim();
+    var myUserId = String(profile.userId || '').trim();
+    var shopType = String(profile.shopType || '').trim();
+    var isBiz = shopType && shopType !== 'user';
+    if (isBiz) {
+        if (!myShopId) return false;
+        return String(v.shopId || '').trim() === myShopId;
+    }
+    return String(v.userId || '') === myUserId ||
+        String(v.ownerId || '') === myUserId ||
+        String(v.shopId || '') === myUserId;
 }
 
 /**
@@ -4766,7 +4778,7 @@ async function updateVehicle(v, opts) {
  */
 async function saveLog(d) {
     const list = readLogsArray();
-    const newLogId = d.log_id || `LOG-${Date.now()}`;
+    const newLogId = String(d.log_id || d.logId || '').trim() || ringGenerateMaintenanceLogId_();
     const profile = getCurrentProfile() || {};
     const cleanVin = (d.vin || "").toUpperCase();
 
@@ -5463,17 +5475,17 @@ function ringRefreshPendingSyncBanner() {
           '<span class="ring-pending-sync-banner__n">' + n + '</span> 件 … ネットワーク回復後に自動送信されます'
         : null;
     ringRenderPendingSyncBannerRow_(el, 'pending', label, 'ring-pending-sync-send', '今すぐ再送', function (btn) {
-        btn.disabled = true;
+                    btn.disabled = true;
         flushRetryQueue({ resumeStopped: true }).finally(function () {
-            btn.disabled = false;
-            ringRefreshPendingSyncBanner();
-            var left = getPendingRetryCount();
-            if (typeof showToast === 'function') {
-                showToast(left ? 'warning' : 'success',
-                    left ? '一部がまだ未送信です。通信状況をご確認ください。' : '再送を試みました。');
-            }
-        });
-    });
+                        btn.disabled = false;
+                        ringRefreshPendingSyncBanner();
+                        var left = getPendingRetryCount();
+                        if (typeof showToast === 'function') {
+                            showToast(left ? 'warning' : 'success',
+                                left ? '一部がまだ未送信です。通信状況をご確認ください。' : '再送を試みました。');
+                        }
+                    });
+                });
     var attnLabel = attn
         ? '<strong class="ring-pending-sync-banner__badge">要確認</strong> ' +
           '他の端末との食い違い・送信できないデータが <span class="ring-pending-sync-banner__n">' + attn + '</span> 件あります'
@@ -5710,8 +5722,8 @@ function ringShowChoiceDialog_(opts) {
             var t = ev.target && ev.target.closest ? ev.target.closest('[data-choice]') : null;
             if (t) {
                 finish(t.getAttribute('data-choice'));
-                return;
-            }
+        return;
+    }
             if (ev.target && ev.target.classList && ev.target.classList.contains('ring-save-confirm__backdrop')) finish(null);
         });
     });
@@ -8012,15 +8024,15 @@ function createGlobalUI() {
     if (appBaseUrl.endsWith('.html')) appBaseUrl = appBaseUrl.substring(0, appBaseUrl.lastIndexOf('/')) + '/index.html';
 
     var profileShopType = profile ? String(profile.shopType || '') : '';
-    if (profileShopType === 'user' && profile && profile.userId) {
-        appBaseUrl += '?action=user&uid=' + encodeURIComponent(String(profile.userId).trim());
-    } else if (profileShopType !== 'user' && profile && profile.shopId) {
+    if (profileShopType !== 'user' && profile && profile.shopId) {
         appBaseUrl += '?shop=' + encodeURIComponent(String(profile.shopId).trim());
     }
     const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(appBaseUrl)}`;
 
-    var qrPanelTitle = profileShopType === 'user' ? '車両共有QR' : 'かかりつけ登録QR';
-    var qrPanelDesc = '';
+    var qrPanelTitle = profileShopType === 'user' ? 'アプリ紹介QR' : 'かかりつけ登録QR';
+    var qrPanelDesc = profileShopType === 'user'
+        ? 'お店のスタッフに読み取ってもらう紹介用です。'
+        : 'ユーザーに読み取ってもらい、かかりつけ店舗に登録してもらいます。';
     const qrPanelBlock = `
           <div id="nappy-qr-panel"><div class="qr-panel-title">${qrPanelTitle}</div><div class="qr-panel-desc">${qrPanelDesc}</div><div class="qr-img-wrap"><img class="qr-img" src="${qrImageUrl}" alt="QR"></div><button type="button" class="qr-read-btn" id="nappy-qr-read-app">カメラで読み取る</button><button class="qr-close-btn" id="nappy-qr-close">閉じる</button></div>`;
 
@@ -8305,6 +8317,9 @@ window.ringUpdateInspectionSchedulePanel_ = ringUpdateInspectionSchedulePanel_;
 window.ringVehicleRecordSignature_ = ringVehicleRecordSignature_;
 window.ringIsBizProfile_ = ringIsBizProfile_;
 window.ringCanEditManagedVehicles_ = ringCanEditManagedVehicles_;
+window.ringFindLocalVehicleIndexByOwner_ = ringFindLocalVehicleIndexByOwner_;
+window.ringFindLocalVehicleByOwner_ = ringFindLocalVehicleByOwner_;
+window.ringFindLocalVehicleIndexForProfile_ = ringFindLocalVehicleIndexForProfile_;
 window.ringVehicleCloudUnsyncPending_ = ringVehicleCloudUnsyncPending_;
 window.ringRemoveLocalVehicleFromList_ = ringRemoveLocalVehicleFromList_;
 window.ringDeleteVehicleViaGas_ = ringDeleteVehicleViaGas_;

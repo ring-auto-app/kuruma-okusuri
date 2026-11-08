@@ -250,6 +250,20 @@
       return typeof _normalize === 'function' ? _normalize(v) : String(v || '');
     }
 
+    /** 管理車両表示用：ログイン所有者の行のみ（点検ログの VIN 検索とは別） */
+    function ringDailyHistoryResolveOwnVehicle_(vehicles, vinRaw) {
+      const prof = profile || (typeof getCurrentProfile === 'function' ? getCurrentProfile() : null);
+      if (!prof || !vinRaw) return null;
+      if (typeof ringFindLocalVehicleByOwner_ === 'function') {
+        return ringFindLocalVehicleByOwner_(vinRaw, prof);
+      }
+      if (typeof ringFindLocalVehicleIndexByOwner_ === 'function') {
+        const idx = ringFindLocalVehicleIndexByOwner_(vehicles, vinRaw, prof);
+        return idx >= 0 ? vehicles[idx] : null;
+      }
+      return null;
+    }
+
     /** 記録の点検日を YYYY-MM-DD（ローカル）に正規化 */
     function ringDailyHistoryDateIso_(item) {
       var raw = item && (item.date || item.createdAt);
@@ -320,8 +334,8 @@
       (async () => {
         document.getElementById('dispVin').textContent = `VIN: ${currentVin || '未指定'}`;
         const vehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
-        const car = vehicles.find(v => normVinDaily(v.vin) === normVinDaily(currentVin));
-        document.getElementById('dispName').textContent = car ? (car.model || "名称未設定") : "車両名未設定";
+        const car = ringDailyHistoryResolveOwnVehicle_(vehicles, currentVin);
+        document.getElementById('dispName').textContent = car ? (car.model || car.nickname || "名称未設定") : "車両名未設定";
         await fetchLocalHistory();
         hideLoading();
       })();
@@ -571,8 +585,8 @@
       closePrintModal();
 
       const vehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
-      const car = vehicles.find(v => v.vin === currentVin);
-      const carLabel = car ? `${car.model || 'VIN'} (${currentVin})` : currentVin;
+      const car = ringDailyHistoryResolveOwnVehicle_(vehicles, currentVin);
+      const carLabel = car ? `${car.model || car.nickname || 'VIN'} (${currentVin})` : currentVin;
       const periodLabel = { '1week': '一週間分', '1month': '一か月分', '6month': '半年分' }[period]
         || (period.startsWith('year_') ? period.replace('year_', '') + '年分' : period);
 

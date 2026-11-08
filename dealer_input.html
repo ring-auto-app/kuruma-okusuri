@@ -255,6 +255,19 @@
       return best;
     }
 
+    /** ログイン中の事業者に紐づく管理車両行のみ（VIN単独の先頭一致は使わない） */
+    function ringDealerResolveOwnVehicle_(vehicles, vin, prof) {
+      if (!prof || !vin) return null;
+      if (typeof ringFindLocalVehicleByOwner_ === 'function') {
+        return ringFindLocalVehicleByOwner_(vin, prof);
+      }
+      if (typeof ringFindLocalVehicleIndexByOwner_ === 'function') {
+        var idx = ringFindLocalVehicleIndexByOwner_(vehicles, vin, prof);
+        return idx >= 0 ? vehicles[idx] : null;
+      }
+      return null;
+    }
+
     function ringDealerApplyVehiclePrefill_(rec, vin) {
       if (!rec) return;
       var expiryEl = document.getElementById('inExpiry');
@@ -273,8 +286,16 @@
     async function lookupVehicle(rawVin) {
       var vin = ringDealerNormVin_(rawVin);
       if (!vin) return;
+      var prof = (typeof getCurrentProfile === 'function' ? getCurrentProfile() : null);
+      if (!prof && typeof currentProfile !== 'undefined') prof = currentProfile;
+      if (!prof) {
+        if (typeof showToast === 'function') {
+          showToast('warning', 'ログイン情報を確認できません。再ログインしてください。');
+        }
+        return;
+      }
       var vehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
-      var rec = vehicles.find(function (v) { return ringDealerNormVin_(v.vin) === vin; });
+      var rec = ringDealerResolveOwnVehicle_(vehicles, vin, prof);
       if (rec) {
         ringDealerApplyVehiclePrefill_(rec, vin);
       } else if (!document.getElementById('inMileage').value) {
@@ -286,7 +307,9 @@
 
       if (typeof ringFetchAndApplyVehicleInfoByVin_ === 'function') {
         await ringFetchAndApplyVehicleInfoByVin_(vin, {
-          onApplied: function (v) { ringDealerApplyVehiclePrefill_(v, vin); }
+          onApplied: function (v) {
+            if (v) ringDealerApplyVehiclePrefill_(v, vin);
+          }
         });
       }
     }

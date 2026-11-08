@@ -425,6 +425,18 @@
       else                   location.replace('user_home.html');
     }
 
+    /** 自ユーザー／自店舗の管理車両行インデックス（VIN単独の findIndex は使わない） */
+    function ringCarAddFindOwnVehicleIndex_(list, vinNorm, prof) {
+      if (!prof || !vinNorm) return -1;
+      if (typeof ringFindLocalVehicleIndexForProfile_ === 'function') {
+        return ringFindLocalVehicleIndexForProfile_(list, vinNorm, prof);
+      }
+      if (typeof ringFindLocalVehicleIndexByOwner_ === 'function') {
+        return ringFindLocalVehicleIndexByOwner_(list, vinNorm, prof);
+      }
+      return -1;
+    }
+
     /* ── バリデーション ── */
     function clearErr(id) {
       if (id === 'inFirstReg') {
@@ -541,13 +553,23 @@
         }
       }
 
+      if (!profile) {
+        if (typeof hideLoading === 'function') hideLoading();
+        btn.disabled = false;
+        if (typeof showToast === 'function') {
+          showToast('warning', 'ログイン情報を確認できません。再ログインしてください。');
+        }
+        if (typeof window !== 'undefined') window.__ringSaving = false;
+        return;
+      }
+
       try {
         let vehRes = null;
         if (typeof addVehicle === 'function') {
           vehRes = await addVehicle(newVehicle);
         } else {
           const list = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
-          const idx = list.findIndex(v => v.vin === vin);
+          const idx = ringCarAddFindOwnVehicleIndex_(list, vin, profile);
           if (idx >= 0) list[idx] = { ...list[idx], ...newVehicle };
           else list.push(newVehicle);
           localStorage.setItem('nappy_vehicles_v1', JSON.stringify(list));

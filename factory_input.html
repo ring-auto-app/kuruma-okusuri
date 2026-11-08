@@ -354,6 +354,19 @@
       }
     }
 
+    /** ログイン中の工場店舗に紐づく管理車両行のみ（VIN単独の先頭一致は使わない） */
+    function ringFactoryResolveOwnVehicle_(vehicles, vin, prof) {
+      if (!prof || !vin) return null;
+      if (typeof ringFindLocalVehicleByOwner_ === 'function') {
+        return ringFindLocalVehicleByOwner_(vin, prof);
+      }
+      if (typeof ringFindLocalVehicleIndexByOwner_ === 'function') {
+        const idx = ringFindLocalVehicleIndexByOwner_(vehicles, vin, prof);
+        return idx >= 0 ? vehicles[idx] : null;
+      }
+      return null;
+    }
+
     function ringFactoryUpdateVinInfoBanner_(rec) {
       const infoEl = document.getElementById('vinVehicleInfo');
       if (!infoEl || !rec) return;
@@ -374,9 +387,17 @@
     async function lookupVehicle(rawVin) {
       const vin = ringFactoryNormVin_(rawVin);
       if (!vin) return;
-      const vehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
-      const rec = vehicles.find(v => ringFactoryNormVin_(v.vin) === vin);
+      const prof = currentProfile || (typeof getCurrentProfile === 'function' ? getCurrentProfile() : null);
       const infoEl = document.getElementById('vinVehicleInfo');
+      if (!prof) {
+        if (infoEl) infoEl.style.display = 'none';
+        if (typeof showToast === 'function') {
+          showToast('warning', 'ログイン情報を確認できません。再ログインしてください。');
+        }
+        return;
+      }
+      const vehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
+      const rec = ringFactoryResolveOwnVehicle_(vehicles, vin, prof);
       if (rec) {
         ringFactoryApplyVehiclePrefill_(rec, vin);
         document.getElementById('inModel').value     = rec.vehicleModel || rec.model || '';
@@ -385,7 +406,7 @@
         document.getElementById('inTypeDesig').value = rec.typeDesignation || '';
         ringFactoryUpdateVinInfoBanner_(rec);
       } else {
-        infoEl.style.display = 'none';
+        if (infoEl) infoEl.style.display = 'none';
         if (!document.getElementById('inMileage').value) {
           var latestOnly = ringFactoryLatestMileage_(vin);
           if (latestOnly != null && !isNaN(latestOnly)) {
@@ -397,8 +418,12 @@
       if (typeof ringFetchAndApplyVehicleInfoByVin_ === 'function') {
         await ringFetchAndApplyVehicleInfoByVin_(vin, {
           onApplied: function (v) {
-            ringFactoryApplyVehiclePrefill_(v, vin);
-            ringFactoryUpdateVinInfoBanner_(v);
+            if (rec) {
+              ringFactoryApplyVehiclePrefill_(v, vin);
+              ringFactoryUpdateVinInfoBanner_(v);
+            } else if (v) {
+              ringFactoryApplyVehiclePrefill_(v, vin);
+            }
           }
         });
       }
