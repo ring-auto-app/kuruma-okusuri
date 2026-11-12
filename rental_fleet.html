@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#4b5563" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="車のお薬手帳" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="manifest" href="manifest.json">
+  <title>レンタカー・代車管理</title>
+  <link rel="stylesheet" href="common.css">
+  <link rel="stylesheet" href="rental-fleet.css">
+  <script src="app.js?v=20261108-v33"></script>
+  <script src="theme.js"></script>
+</head>
+<body class="ring-fleet-page">
+  <div class="page-wrap">
+    <a id="backBtn" class="back-link">◁ ホームへ戻る</a>
+
+    <header class="ring-fleet-topbar">
+      <div class="ring-fleet-topbar-left">
+        <h1 class="title">レンタカー・代車管理</h1>
+        <span id="ringFleetLastSync" class="ring-fleet-last-sync"></span>
+      </div>
+      <div class="ring-fleet-topbar-actions">
+        <button type="button" class="sync-btn" id="ringFleetRefreshBtn" title="予約・車両を更新">🔄 更新</button>
+        <div class="ring-fleet-primary-actions-wrap">
+          <button type="button" class="ring-fleet-return-main" id="fleetReturnBtn">↩ 返却受付</button>
+          <button type="button" class="ring-fleet-new-booking-main" id="fleetNewBookingBtn">＋ 新しい予約</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- スマホメイン -->
+    <section class="fleet-mobile-only ring-fleet-mob-shell">
+      <p id="fleetMobSummaryHint" class="ring-fleet-summary-hint" hidden></p>
+      <div class="ring-fleet-mob-summary" aria-label="状況サマリー">
+        <article class="ring-fleet-mob-stat"><span>貸出中</span><strong id="fleetMobStatOut">—</strong></article>
+        <article class="ring-fleet-mob-stat"><span>本日返却予定</span><strong id="fleetMobStatEndToday">—</strong></article>
+        <article class="ring-fleet-mob-stat" id="fleetMobStatOverdueWrap"><span>返却遅れ</span><strong id="fleetMobStatOverdue">—</strong></article>
+      </div>
+
+      <label class="fleet-history-toggle ring-fleet-history-opt ring-fleet-mob-history"><input type="checkbox" id="fleetShowReturnedMob" checked> 返却済みを薄く表示</label>
+
+      <section class="ring-fleet-mob-cal-section">
+        <div class="ring-fleet-mob-cal-mode">
+          <button type="button" class="is-active" data-mob-cal-mode="week">今週</button>
+          <button type="button" data-mob-cal-mode="month">月全体</button>
+        </div>
+        <div class="ring-fleet-cal-nav ring-fleet-mob-cal-nav" id="fleetMobCalNavWeek">
+          <button type="button" id="fleetMobWeekPrev">◀ 前週</button>
+          <button type="button" id="fleetMobWeekToday">今日</button>
+          <button type="button" id="fleetMobWeekNext">翌週 ▶</button>
+        </div>
+        <div class="ring-fleet-cal-nav ring-fleet-mob-cal-nav" id="fleetMobCalNavMonth" hidden>
+          <button type="button" id="fleetCalPrev">◀ 前月</button>
+          <button type="button" id="fleetCalToday">今日</button>
+          <button type="button" id="fleetCalNext">翌月 ▶</button>
+        </div>
+        <p class="ring-fleet-cal-month-title" data-cal-title="fleetCalMob" hidden>—</p>
+        <div id="fleetCalMob"></div>
+        <div id="fleetMobDayAgenda" class="ring-fleet-mob-day-agenda" hidden></div>
+      </section>
+
+      <button type="button" class="ring-fleet-mob-list-entry" id="fleetMobListOpen">車両一覧を見る</button>
+
+      <div id="fleetMobListPanel" class="ring-fleet-mob-list-panel" hidden>
+        <div class="ring-fleet-mob-list-head">
+          <h2>登録車両一覧</h2>
+          <button type="button" class="ring-fleet-mob-list-close" id="fleetMobListClose">閉じる</button>
+        </div>
+        <div id="fleetMobEmptyOnboard" class="ring-fleet-empty-onboard" hidden></div>
+        <div class="cat-tabs" role="tablist">
+          <button type="button" class="cat-tab active" id="tabAll" data-tab="fleet_all">すべて<span class="cat-tab-count" id="cntAll">0</span></button>
+          <button type="button" class="cat-tab" id="tabRental" data-tab="rental">レンタカー<span class="cat-tab-count" id="cntRental">0</span></button>
+          <button type="button" class="cat-tab" id="tabLoaner" data-tab="loaner">代車<span class="cat-tab-count" id="cntLoaner">0</span></button>
+        </div>
+        <input type="search" id="fleetSearchInput" class="vehicle-search-input" placeholder="車両名・車台番号・ナンバーで検索" autocomplete="off">
+        <button type="button" id="fleetSearchClear" class="ring-fleet-search-clear">クリア</button>
+        <select id="fleetSortSelect" class="sort-select">
+          <option value="inspect_near">点検が近い順</option>
+          <option value="shaken_near">車検が近い順</option>
+          <option value="created_new">登録した順</option>
+        </select>
+        <div id="fleetListArea"></div>
+        <div class="add-actions" id="fleetAddActions">
+          <a href="car_add.html?category=rental&amp;returnTo=rental_fleet" class="add-btn">＋ レンタカーを新規登録</a>
+          <a href="car_add.html?category=loaner&amp;returnTo=rental_fleet" class="add-btn">＋ 代車を新規登録</a>
+        </div>
+      </div>
+    </section>
+
+    <label class="fleet-history-toggle ring-fleet-history-opt fleet-desktop-only"><input type="checkbox" id="fleetShowReturned" checked> 返却済みを薄く表示</label>
+
+    <!-- PC: ダッシュボード -->
+    <div class="fleet-desktop-only ring-fleet-desk-dashboard">
+      <div class="ring-fleet-summary" id="fleetSummaryRow" aria-label="状況サマリー">
+        <article class="ring-fleet-stat-card"><span class="ring-fleet-stat-label">管理車両数</span><strong id="fleetStatTotal" class="ring-fleet-stat-val">—</strong></article>
+        <article class="ring-fleet-stat-card"><span class="ring-fleet-stat-label">現在貸出中</span><strong id="fleetStatOut" class="ring-fleet-stat-val">—</strong></article>
+        <article class="ring-fleet-stat-card"><span class="ring-fleet-stat-label">本日貸出予定</span><strong id="fleetStatStartToday" class="ring-fleet-stat-val">—</strong></article>
+        <article class="ring-fleet-stat-card"><span class="ring-fleet-stat-label">本日返却予定</span><strong id="fleetStatEndToday" class="ring-fleet-stat-val">—</strong></article>
+      </div>
+      <p id="fleetSummaryHint" class="ring-fleet-summary-hint" hidden></p>
+
+      <div id="fleetDeskEmptyState" class="ring-fleet-empty-onboard" hidden></div>
+
+      <div class="ring-fleet-desk-main">
+        <section class="ring-fleet-cal-column ring-fleet-panel ring-fleet-cal-wrap">
+          <div class="ring-fleet-cal-head">
+            <h2 class="ring-fleet-cal-title" data-cal-title="fleetCalDesk">—</h2>
+            <div class="ring-fleet-cal-nav">
+              <button type="button" id="fleetCalPrevDesk" onclick="document.getElementById('fleetCalPrev').click()">◀ 前月</button>
+              <button type="button" onclick="document.getElementById('fleetCalToday').click()">今日</button>
+              <button type="button" onclick="document.getElementById('fleetCalNext').click()">▶ 翌月</button>
+            </div>
+          </div>
+          <p class="ring-fleet-cal-pick-hint">日付をクリックすると空車検索の期間に反映されます（予約帯のクリックは予約詳細）</p>
+          <div id="fleetCalDesk"></div>
+        </section>
+
+        <aside class="ring-fleet-side-column">
+          <section class="ring-fleet-panel ring-fleet-side-block">
+            <h3>空車を検索</h3>
+            <div class="ring-fleet-quick-avail">
+              <div class="ring-fleet-avail-hint" id="fleetDeskAvailHint"></div>
+              <div class="ring-fleet-date-row">
+                <label class="ring-fleet-field ring-fleet-date-field"><span>貸出開始日</span><input type="date" id="fleetDeskAvailStart" class="ring-fleet-date-input"></label>
+                <label class="ring-fleet-field ring-fleet-date-field"><span>返却予定日</span><input type="date" id="fleetDeskAvailEnd" class="ring-fleet-date-input"></label>
+              </div>
+              <select id="fleetDeskAvailCat" class="sort-select ring-fleet-cat-select">
+                <option value="fleet_all">すべて</option>
+                <option value="rental">レンタカー</option>
+                <option value="loaner">代車</option>
+              </select>
+              <button type="button" class="primary ring-fleet-desk-search-btn" id="fleetDeskAvailSearch">この期間の空車を表示</button>
+              <div id="fleetDeskAvailResults" class="ring-fleet-avail-results"></div>
+            </div>
+          </section>
+          <section class="ring-fleet-panel ring-fleet-side-block">
+            <h3>本日の予定</h3>
+            <div id="fleetDeskTodayPanel" class="ring-fleet-today-panel"></div>
+          </section>
+          <section class="ring-fleet-panel ring-fleet-side-block">
+            <h3>現在貸出中</h3>
+            <div id="fleetDeskOutPanel" class="ring-fleet-out-desk-list"></div>
+          </section>
+          <section class="ring-fleet-panel ring-fleet-side-block" id="fleetDetailPanel">
+            <h3>予約・詳細</h3>
+            <p class="ring-fleet-detail-placeholder">カレンダー上の予定を選択してください</p>
+          </section>
+        </aside>
+      </div>
+
+      <section class="ring-fleet-desk-bottom ring-fleet-panel">
+        <div class="ring-fleet-list-head">
+          <h2>登録車両一覧</h2>
+          <p class="ring-fleet-list-head-actions add-actions ring-fleet-desk-add-actions" id="fleetDeskAddActions">
+            <a href="car_add.html?category=rental&amp;returnTo=rental_fleet" class="add-btn">＋ レンタカーを新規登録</a>
+            <a href="car_add.html?category=loaner&amp;returnTo=rental_fleet" class="add-btn">＋ 代車を新規登録</a>
+          </p>
+        </div>
+        <div class="cat-tabs ring-fleet-desk-tabs" role="tablist">
+          <button type="button" class="cat-tab active" data-tab="fleet_all" data-desk-tab="fleet_all">すべて<span class="cat-tab-count" id="cntAllDesk">0</span></button>
+          <button type="button" class="cat-tab" data-tab="rental" data-desk-tab="rental">レンタカー<span class="cat-tab-count" id="cntRentalDesk">0</span></button>
+          <button type="button" class="cat-tab" data-tab="loaner" data-desk-tab="loaner">代車<span class="cat-tab-count" id="cntLoanerDesk">0</span></button>
+        </div>
+        <div class="ring-fleet-desk-list-tools">
+          <input type="search" id="fleetSearchInputDesk" class="vehicle-search-input" placeholder="車両名・車台番号・ナンバーで検索" autocomplete="off">
+          <select id="fleetSortSelectDesk" class="sort-select">
+            <option value="inspect_near">点検が近い順</option>
+            <option value="shaken_near">車検が近い順</option>
+            <option value="created_new">登録した順</option>
+          </select>
+        </div>
+        <p id="fleetDeskListCount" class="ring-fleet-desk-list-count" aria-live="polite"></p>
+        <div id="fleetDeskListArea" class="ring-fleet-desk-card-grid"></div>
+        <div id="fleetDeskListSentinel" class="ring-fleet-desk-list-sentinel" aria-hidden="true"></div>
+        <button type="button" id="fleetDeskListMoreBtn" class="ring-fleet-desk-list-more" hidden>さらに25台を表示</button>
+        <div id="fleetDeskVehTable" class="ring-fleet-veh-table-fallback" hidden></div>
+      </section>
+    </div>
+  </div>
+
+  <div id="fleetNewBookingWizard" class="ring-fleet-wizard" hidden aria-hidden="true"></div>
+  <div id="fleetMobDetailBackdrop" class="ring-fleet-mob-sheet-backdrop" hidden></div>
+  <div id="fleetMobDetailSheet" class="ring-fleet-mob-detail-sheet" hidden role="dialog" aria-modal="true" aria-labelledby="fleetMobDetailTitle">
+    <div class="ring-fleet-mob-sheet-grab" aria-hidden="true"></div>
+    <div class="ring-fleet-mob-sheet-head">
+      <h2 id="fleetMobDetailTitle">予約・詳細</h2>
+      <button type="button" class="ring-fleet-mob-sheet-close" id="fleetMobDetailClose">閉じる</button>
+    </div>
+    <div id="fleetMobDetailHost" class="ring-fleet-mob-sheet-body"></div>
+  </div>
+
+  <script src="rental-fleet.js"></script>
+</body>
+</html>

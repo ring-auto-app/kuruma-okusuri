@@ -1,0 +1,1406 @@
+/* レンタカー・代車管理 — モバイル基調 + PCダッシュボード (960px+) */
+:root { --sticky-odd: #fef9c3; --sticky-even: #fffbeb; }
+
+.ring-fleet-page {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: linear-gradient(to bottom, var(--page-line) 1px, transparent 1px) 0 0 / 100% 34px, var(--page-bg);
+  color: var(--text);
+  padding: 34px 16px 102px;
+  line-height: 1.45;
+  box-sizing: border-box;
+  min-height: 100vh;
+}
+
+.ring-fleet-page .page-wrap {
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.ring-fleet-page .back-link {
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  display: inline-block;
+  margin-bottom: 8px;
+}
+
+.ring-fleet-page .title {
+  font-size: 22px;
+  font-weight: 900;
+  margin: 0;
+  position: relative;
+  display: inline-block;
+}
+
+.ring-fleet-page .title::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 2px;
+  height: 8px;
+  background: var(--highlighter);
+  z-index: -1;
+}
+
+.ring-fleet-topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.ring-fleet-topbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.ring-fleet-last-sync {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.sync-btn {
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  min-height: var(--tap-min);
+}
+
+.cat-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.cat-tab {
+  flex: 1;
+  min-width: 90px;
+  min-height: var(--tap-min);
+  border: 2px solid var(--accent);
+  border-radius: 12px;
+  background: var(--paper);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.cat-tab.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.cat-tab-count {
+  font-size: 10px;
+  margin-left: 4px;
+  padding: 1px 5px;
+  border-radius: 99px;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.vehicle-search-input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: var(--tap-min);
+  padding: 10px 14px;
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.sort-select {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: var(--tap-min);
+  padding: 0 12px;
+  border: 2px solid var(--accent);
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  background: var(--paper);
+  margin-bottom: 12px;
+}
+
+.car-card {
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  border-radius: 2px 2px 12px 2px;
+  box-shadow: 1px 3px 6px rgba(0, 0, 0, 0.08);
+  background: var(--sticky-odd);
+}
+
+.car-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.car-model {
+  font-size: 16px;
+  font-weight: 900;
+  margin: 0;
+}
+
+.cat-pill {
+  font-size: 10px;
+  font-weight: 900;
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: rgba(37, 99, 235, 0.12);
+  color: var(--accent);
+}
+
+.car-info-btn {
+  min-height: 36px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 900;
+  border-radius: 999px;
+  border: 2px solid var(--accent);
+  color: var(--accent);
+  text-decoration: none;
+  background: var(--paper);
+}
+
+.car-meta {
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b;
+  margin: 6px 0 0;
+}
+
+.empty-msg {
+  text-align: center;
+  color: var(--muted);
+  font-weight: 800;
+  margin: 24px 0;
+}
+
+.add-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.add-btn {
+  min-height: var(--tap-primary, 48px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed var(--accent);
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 900;
+  color: var(--accent);
+  text-decoration: none;
+  background: var(--paper);
+  text-align: center;
+  padding: 8px;
+}
+
+.ring-fleet-history-opt {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.ring-fleet-cal-nav {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.ring-fleet-cal-nav button {
+  min-height: var(--tap-min);
+  padding: 0 14px;
+  border: 2px solid var(--accent);
+  border-radius: 10px;
+  background: var(--paper);
+  font-size: 13px;
+  font-weight: 900;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.ring-fleet-cal-month-title {
+  font-size: 16px;
+  font-weight: 900;
+  margin: 0 0 8px;
+  text-align: center;
+}
+
+.ring-fleet-search-clear {
+  display: none;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
+.ring-fleet-search-clear.is-visible {
+  display: inline-block;
+}
+
+.ring-fleet-page .ring-fleet-return-main {
+  min-height: var(--tap-min);
+  padding: 0 16px;
+  border: 2px solid #7c3aed;
+  border-radius: 12px;
+  background: var(--paper);
+  color: #7c3aed;
+  font-size: 14px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.ring-fleet-page .ring-fleet-new-booking-main {
+  min-height: var(--tap-min);
+  padding: 0 18px;
+  border: none;
+  border-radius: 12px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
+}
+
+.ring-fleet-wizard {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 0 env(safe-area-inset-bottom);
+}
+
+.ring-fleet-wizard[hidden] {
+  display: none !important;
+}
+
+.ring-fleet-wizard-inner {
+  width: 100%;
+  max-width: 600px;
+  max-height: 92vh;
+  overflow: auto;
+  background: var(--paper, #fff);
+  border-radius: 16px 16px 0 0;
+  padding: 16px 16px 28px;
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.15);
+}
+
+.ring-fleet-wizard-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.ring-fleet-wizard-head h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.ring-fleet-wizard-back,
+.ring-fleet-wizard-close {
+  min-height: var(--tap-min);
+  padding: 0 12px;
+  border: none;
+  background: transparent;
+  color: var(--muted, #64748b);
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.ring-fleet-wizard-step-btns {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.ring-fleet-wizard-step-btns button {
+  min-height: var(--tap-primary, 52px);
+  border: 2px solid var(--accent);
+  border-radius: 14px;
+  background: var(--paper);
+  font-size: 16px;
+  font-weight: 900;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.ring-fleet-wizard-step-btns button.primary-mode {
+  background: var(--accent);
+  color: #fff;
+}
+
+.ring-fleet-avail-card {
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  border-radius: 2px 2px 12px 2px;
+  box-shadow: 1px 3px 6px rgba(0, 0, 0, 0.08);
+  background: var(--sticky-even, #fffbeb);
+  cursor: pointer;
+  border: 2px solid transparent;
+}
+
+.ring-fleet-avail-card.is-selected {
+  border-color: var(--accent);
+}
+
+.ring-fleet-avail-card .meta-line {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  margin: 4px 0 0;
+}
+
+.ring-fleet-avail-warn {
+  font-size: 12px;
+  font-weight: 800;
+  color: #b45309;
+  background: #fffbeb;
+  border: 1px solid #fbbf24;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+
+.ring-fleet-avail-offline {
+  color: #b91c1c;
+  background: #fef2f2;
+  border-color: #fca5a5;
+}
+
+.ring-fleet-vin-cal .ring-fleet-cal-day {
+  width: 100%;
+  border: none;
+  border-right: 1px solid #f1f5f9;
+  padding: 4px 2px;
+  font-size: 11px;
+  font-weight: 800;
+  background: #fff;
+  cursor: pointer;
+}
+
+.ring-fleet-vin-cal .ring-fleet-cal-day.is-booked {
+  background: #fee2e2;
+  color: #991b1b;
+  cursor: not-allowed;
+}
+
+.ring-fleet-vin-cal .ring-fleet-cal-day.is-pick-start {
+  outline: 2px solid var(--accent);
+}
+
+.ring-fleet-vin-cal .ring-fleet-cal-day.is-pick-range {
+  background: #dbeafe;
+}
+
+.ring-fleet-desk-search-btn,
+.ring-fleet-wizard .ring-fleet-confirm-save {
+  width: 100%;
+  min-height: var(--tap-min);
+  margin-top: 8px;
+  border-radius: 10px;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 900;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.ring-fleet-avail-results {
+  margin-top: 12px;
+  max-height: 200px;
+  overflow: auto;
+}
+
+.ring-fleet-avail-hint {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  margin-bottom: 8px;
+}
+
+.ring-fleet-out-overdue {
+  color: #b91c1c;
+  font-weight: 900;
+  font-size: 11px;
+}
+
+.ring-fleet-out-desk-list {
+  max-height: 180px;
+  overflow: auto;
+}
+
+.ring-fleet-return-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 12px;
+  font-weight: 800;
+  margin: 12px 0;
+  line-height: 1.45;
+}
+
+.ring-fleet-return-check input {
+  min-width: 22px;
+  min-height: 22px;
+  margin-top: 2px;
+}
+
+.ring-fleet-return-sheet-note {
+  font-size: 11px;
+  font-weight: 700;
+  color: #475569;
+  background: #f8fafc;
+  border: 1px dashed #94a3b8;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+
+/* カレンダー（PC・スマホ共通） */
+.ring-fleet-cal-grid {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.ring-fleet-cal-dow {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.ring-fleet-cal-dow span {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 800;
+  color: #64748b;
+  padding: 6px 0;
+}
+
+.ring-fleet-cal-week {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  min-height: 58px;
+  border-bottom: 1px solid #f1f5f9;
+  position: relative;
+}
+
+.ring-fleet-cal-week:last-child {
+  border-bottom: none;
+}
+
+.ring-fleet-cal-day {
+  border-right: 1px solid #f1f5f9;
+  padding: 4px 2px;
+  font-size: 11px;
+  font-weight: 800;
+  color: #334155;
+  text-align: center;
+  min-height: 44px;
+}
+
+.ring-fleet-cal-day:last-child {
+  border-right: none;
+}
+
+.ring-fleet-cal-day.is-out {
+  color: #cbd5e1;
+}
+
+.ring-fleet-cal-day.is-today {
+  background: #dbeafe;
+}
+
+.ring-fleet-cal-day.is-today.is-selected,
+.ring-fleet-cal-mob .ring-fleet-cal-day.is-selected {
+  outline: 2px solid var(--accent);
+  background: #eff6ff;
+}
+
+.ring-fleet-cal-day.is-avail-pick {
+  cursor: pointer;
+}
+
+.ring-fleet-cal-day.is-avail-pick:hover {
+  background: #e0f2fe;
+}
+
+.ring-fleet-cal-day.is-avail-selected {
+  outline: 2px solid var(--accent);
+  background: #eff6ff;
+}
+
+.ring-fleet-cal-bars {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  padding: 0 2px 4px;
+  margin-top: -2px;
+}
+
+.ring-fleet-cal-bar {
+  min-height: 16px;
+  max-height: 22px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 800;
+  color: #fff;
+  padding: 1px 4px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  border: none;
+  text-align: left;
+}
+
+.ring-fleet-cal-bar.st-reserved {
+  background: #f59e0b;
+}
+
+.ring-fleet-cal-bar.st-confirmed {
+  background: #2563eb;
+}
+
+.ring-fleet-cal-bar.st-out {
+  background: #7c3aed;
+}
+
+.ring-fleet-cal-bar.st-returned {
+  background: #94a3b8;
+  opacity: 0.55;
+}
+
+.ring-fleet-cal-bar.st-cancelled {
+  display: none;
+}
+
+.ring-fleet-cal-marker {
+  font-size: 8px;
+  font-weight: 900;
+  line-height: 1.1;
+  margin-top: 2px;
+}
+
+.ring-fleet-cal-marker.mk-inspect {
+  color: #059669;
+}
+
+.ring-fleet-cal-marker.mk-shaken {
+  color: #dc2626;
+}
+
+.ring-fleet-cal-day-mark {
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 99px;
+  background: #2563eb;
+  margin: 3px auto 0;
+}
+
+.ring-fleet-detail-actions button {
+  width: 100%;
+  min-height: var(--tap-min);
+  margin-top: 8px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.ring-fleet-detail-actions button.primary {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+@media (max-width: 959px) {
+  .ring-fleet-page .fleet-desktop-only {
+    display: none !important;
+  }
+
+  .ring-fleet-topbar {
+    margin-bottom: 8px;
+  }
+
+  .ring-fleet-topbar-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .ring-fleet-primary-actions-wrap {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    width: 100%;
+    margin-top: 6px;
+  }
+
+  .ring-fleet-primary-actions-wrap .ring-fleet-return-main,
+  .ring-fleet-primary-actions-wrap .ring-fleet-new-booking-main {
+    min-height: 52px;
+    font-size: 15px;
+    border-radius: 14px;
+  }
+
+  .ring-fleet-mob-summary {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .ring-fleet-mob-stat {
+    background: var(--paper);
+    border: 1px solid var(--page-line);
+    border-radius: 12px;
+    padding: 10px 8px;
+    text-align: center;
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
+  }
+
+  .ring-fleet-mob-stat span {
+    display: block;
+    font-size: 10px;
+    font-weight: 800;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+
+  .ring-fleet-mob-stat strong {
+    font-size: 28px;
+    font-weight: 900;
+    line-height: 1.05;
+    color: var(--text);
+  }
+
+  .ring-fleet-mob-stat strong.is-unknown {
+    font-size: 22px;
+    color: #b45309;
+  }
+
+  .ring-fleet-mob-stat.has-overdue strong {
+    color: #b91c1c;
+  }
+
+  .ring-fleet-summary-hint {
+    font-size: 12px;
+    font-weight: 800;
+    color: #b45309;
+    margin: 0 0 10px;
+  }
+
+  .ring-fleet-mob-history {
+    display: block;
+    margin-bottom: 10px;
+  }
+
+  .ring-fleet-mob-cal-section {
+    background: var(--paper);
+    border: 1px solid var(--page-line);
+    border-radius: 14px;
+    padding: 12px 10px 14px;
+    margin-bottom: 14px;
+  }
+
+  .ring-fleet-mob-cal-mode {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .ring-fleet-mob-cal-mode button {
+    min-height: 44px;
+    border: 2px solid var(--accent);
+    border-radius: 12px;
+    background: var(--paper);
+    font-size: 14px;
+    font-weight: 900;
+    color: var(--accent);
+    cursor: pointer;
+  }
+
+  .ring-fleet-mob-cal-mode button.is-active {
+    background: var(--accent);
+    color: #fff;
+  }
+
+  .ring-fleet-mob-cal-nav {
+    margin-bottom: 8px;
+  }
+
+  .ring-fleet-cal-month-title {
+    font-size: 14px;
+    font-weight: 900;
+    text-align: center;
+    margin: 0 0 8px;
+  }
+
+  .ring-fleet-mob-week-head {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+    margin-bottom: 8px;
+  }
+
+  .ring-fleet-mob-week-day {
+    min-height: 56px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #fff;
+    padding: 4px 2px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    cursor: pointer;
+    font: inherit;
+    color: inherit;
+  }
+
+  .ring-fleet-mob-week-day .dow {
+    font-size: 10px;
+    font-weight: 800;
+    color: #64748b;
+  }
+
+  .ring-fleet-mob-week-day .num {
+    font-size: 16px;
+    font-weight: 900;
+  }
+
+  .ring-fleet-mob-week-day.is-today {
+    background: #dbeafe;
+  }
+
+  .ring-fleet-mob-week-day.is-selected {
+    outline: 2px solid var(--accent);
+    background: #eff6ff;
+  }
+
+  .ring-fleet-mob-week-day .has-booking {
+    width: 6px;
+    height: 6px;
+    border-radius: 99px;
+    background: #2563eb;
+  }
+
+  .ring-fleet-cal-mob .ring-fleet-cal-week {
+    min-height: 52px;
+  }
+
+  .ring-fleet-cal-mob.is-month-compact .ring-fleet-cal-bar {
+    font-size: 0;
+    min-height: 8px;
+    max-height: 10px;
+    padding: 0;
+  }
+
+  .ring-fleet-cal-mob.is-month-compact .ring-fleet-cal-marker {
+    display: none;
+  }
+
+  .ring-fleet-mob-day-agenda {
+    margin-top: 12px;
+    border-top: 1px dashed #cbd5e1;
+    padding-top: 10px;
+  }
+
+  .ring-fleet-mob-day-agenda h3 {
+    margin: 0 0 8px;
+    font-size: 13px;
+    font-weight: 900;
+  }
+
+  .ring-fleet-mob-agenda-item {
+    width: 100%;
+    text-align: left;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    background: #fff;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    min-height: 48px;
+    cursor: pointer;
+    font: inherit;
+  }
+
+  .ring-fleet-mob-agenda-item strong {
+    display: block;
+    font-size: 14px;
+    margin-bottom: 4px;
+  }
+
+  .ring-fleet-mob-agenda-item span {
+    font-size: 11px;
+    font-weight: 700;
+    color: #64748b;
+  }
+
+  .ring-fleet-mob-list-entry {
+    width: 100%;
+    min-height: 52px;
+    border: 2px solid var(--accent);
+    border-radius: 14px;
+    background: var(--paper);
+    color: var(--accent);
+    font-size: 15px;
+    font-weight: 900;
+    margin-bottom: 12px;
+    cursor: pointer;
+  }
+
+  .ring-fleet-mob-list-panel {
+    margin-top: 8px;
+    padding: 12px 10px 16px;
+    background: var(--paper);
+    border: 1px solid var(--page-line);
+    border-radius: 14px;
+  }
+
+  .ring-fleet-mob-list-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+
+  .ring-fleet-mob-list-head h2 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 900;
+  }
+
+  .ring-fleet-mob-list-close {
+    min-height: 44px;
+    border: none;
+    background: transparent;
+    color: var(--accent);
+    font-size: 14px;
+    font-weight: 900;
+    cursor: pointer;
+  }
+
+  .ring-fleet-cal-pick-hint {
+    display: none;
+  }
+
+  body.ring-fleet-sheet-open {
+    overflow: hidden;
+  }
+
+  .ring-fleet-mob-sheet-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+    z-index: 800;
+  }
+
+  .ring-fleet-mob-detail-sheet {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 810;
+    background: var(--paper);
+    border-radius: 18px 18px 0 0;
+    border: 1px solid var(--page-line);
+    max-height: min(88vh, 640px);
+    display: flex;
+    flex-direction: column;
+    padding-bottom: env(safe-area-inset-bottom, 0);
+    box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.12);
+  }
+
+  .ring-fleet-mob-sheet-grab {
+    width: 40px;
+    height: 4px;
+    border-radius: 99px;
+    background: #cbd5e1;
+    margin: 8px auto 4px;
+  }
+
+  .ring-fleet-mob-sheet-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 16px 8px;
+    border-bottom: 1px solid #e2e8f0;
+  }
+
+  .ring-fleet-mob-sheet-head h2 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 900;
+  }
+
+  .ring-fleet-mob-sheet-close {
+    min-height: 44px;
+    min-width: 44px;
+    border: none;
+    background: transparent;
+    color: var(--accent);
+    font-size: 14px;
+    font-weight: 900;
+    cursor: pointer;
+  }
+
+  .ring-fleet-mob-sheet-body {
+    overflow: auto;
+    padding: 12px 16px 20px;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+@media (min-width: 960px) {
+  .ring-fleet-page {
+    padding: 20px 24px 48px;
+    background: #f1f5f9;
+    background-image: none;
+    line-height: 1.45;
+  }
+
+  .ring-fleet-page .page-wrap {
+    max-width: 1680px;
+    margin: 0 auto;
+  }
+
+  .ring-fleet-page .fleet-mobile-only {
+    display: none !important;
+  }
+
+  .ring-fleet-page .fleet-desktop-only {
+    display: block !important;
+  }
+
+  .ring-fleet-primary-actions-wrap {
+    display: contents;
+  }
+
+  .ring-fleet-summary {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+
+  .ring-fleet-stat-card {
+    background: #fff;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    padding: 12px 14px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  }
+
+  .ring-fleet-stat-label {
+    display: block;
+    font-size: 11px;
+    font-weight: 800;
+    color: #64748b;
+    margin-bottom: 4px;
+  }
+
+  .ring-fleet-stat-val {
+    font-size: 26px;
+    font-weight: 900;
+    color: #0f172a;
+    line-height: 1.1;
+  }
+
+  .ring-fleet-stat-val.is-unknown {
+    font-size: 18px;
+    color: #b45309;
+  }
+
+  .ring-fleet-summary-hint {
+    font-size: 12px;
+    font-weight: 800;
+    color: #b45309;
+    margin: -6px 0 12px;
+  }
+
+  .ring-fleet-desk-main {
+    display: grid;
+    grid-template-columns: minmax(0, 1.95fr) minmax(300px, 1fr);
+    gap: 16px;
+    align-items: start;
+    margin-bottom: 16px;
+  }
+
+  .ring-fleet-panel {
+    background: #fff;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+    padding: 14px 16px;
+  }
+
+  .ring-fleet-panel h3 {
+    margin: 0 0 10px;
+    font-size: 13px;
+    font-weight: 800;
+    color: #334155;
+  }
+
+  .ring-fleet-side-column {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .ring-fleet-side-block {
+    padding: 12px 14px;
+  }
+
+  .ring-fleet-cal-wrap {
+    padding: 14px 16px 16px;
+  }
+
+  .ring-fleet-desk-cal-pair {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 16px;
+    align-items: start;
+  }
+
+  .ring-fleet-cal-month-block {
+    min-width: 0;
+  }
+
+  .ring-fleet-cal-month-label {
+    margin: 0 0 8px;
+    font-size: 14px;
+    font-weight: 900;
+    color: #334155;
+    text-align: center;
+  }
+
+  #fleetCalDesk .ring-fleet-cal-day.is-drag-preview,
+  #fleetCalDesk .ring-fleet-cal-day.is-range-pick {
+    background: #e0f2fe;
+  }
+
+  #fleetCalDesk .ring-fleet-cal-day.is-drag-edge,
+  #fleetCalDesk .ring-fleet-cal-day.is-range-edge {
+    outline: 2px solid var(--accent);
+    background: #eff6ff;
+  }
+
+  .ring-fleet-cal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .ring-fleet-cal-title {
+    font-size: 17px;
+    font-weight: 800;
+    color: #0f172a;
+    margin: 0;
+  }
+
+  .ring-fleet-cal-pick-hint {
+    font-size: 11px;
+    font-weight: 700;
+    color: #64748b;
+    margin: 0 0 8px;
+  }
+
+  .ring-fleet-cal-nav button {
+    min-height: 36px;
+    padding: 0 12px;
+    border: 1px solid #94a3b8;
+    border-radius: 8px;
+    background: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    color: #334155;
+  }
+
+  .ring-fleet-date-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+
+  .ring-fleet-date-field {
+    margin-bottom: 0;
+    cursor: pointer;
+  }
+
+  .ring-fleet-date-field span {
+    display: block;
+    font-size: 11px;
+    font-weight: 800;
+    color: #64748b;
+    margin-bottom: 4px;
+  }
+
+  .ring-fleet-date-input {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    min-height: 40px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .ring-fleet-cat-select {
+    margin-bottom: 8px;
+    min-height: 40px;
+  }
+
+  .ring-fleet-field {
+    margin-bottom: 10px;
+  }
+
+  .ring-fleet-field label {
+    display: block;
+    font-size: 11px;
+    font-weight: 800;
+    color: #64748b;
+    margin-bottom: 4px;
+  }
+
+  .ring-fleet-field input,
+  .ring-fleet-field select {
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 40px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 14px;
+  }
+
+  .ring-fleet-detail-placeholder {
+    font-size: 12px;
+    color: #64748b;
+    font-weight: 700;
+    margin: 0;
+  }
+
+  .ring-fleet-desk-bottom {
+    padding: 16px 18px 20px;
+  }
+
+  .ring-fleet-list-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .ring-fleet-list-head h2 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 900;
+    color: #0f172a;
+  }
+
+  .ring-fleet-desk-add-actions {
+    margin-top: 0;
+    width: auto;
+    max-width: 520px;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .ring-fleet-desk-add-actions .add-btn {
+    flex: 1;
+    min-width: 200px;
+    min-height: 40px;
+    font-size: 12px;
+    border-style: solid;
+  }
+
+  .ring-fleet-desk-tabs {
+    margin-bottom: 10px;
+  }
+
+  .ring-fleet-desk-tabs .cat-tab {
+    flex: 0 1 auto;
+    min-width: 120px;
+  }
+
+  .ring-fleet-desk-list-tools {
+    display: grid;
+    grid-template-columns: 1fr minmax(160px, 220px);
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .ring-fleet-desk-list-tools .vehicle-search-input,
+  .ring-fleet-desk-list-tools .sort-select {
+    margin-bottom: 0;
+  }
+
+  .ring-fleet-desk-list-count {
+    margin: 0 0 10px;
+    font-size: 12px;
+    font-weight: 800;
+    color: #64748b;
+  }
+
+  .ring-fleet-desk-card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+  }
+
+  .ring-fleet-desk-card-grid .car-card {
+    margin-bottom: 0;
+  }
+
+  .ring-fleet-desk-list-sentinel {
+    height: 1px;
+    margin-top: 8px;
+    pointer-events: none;
+    visibility: hidden;
+  }
+
+  .ring-fleet-desk-list-more {
+    width: 100%;
+    min-height: 44px;
+    margin-top: 12px;
+    border: 2px solid var(--accent);
+    border-radius: 12px;
+    background: #fff;
+    color: var(--accent);
+    font-size: 14px;
+    font-weight: 900;
+    cursor: pointer;
+  }
+
+  .ring-fleet-empty-onboard {
+    background: #fffbeb;
+    border: 2px dashed #f59e0b;
+    border-radius: 12px;
+    padding: 20px 18px;
+    margin-bottom: 16px;
+    text-align: center;
+  }
+
+  .ring-fleet-empty-onboard h2 {
+    margin: 0 0 8px;
+    font-size: 17px;
+    font-weight: 900;
+  }
+
+  .ring-fleet-empty-onboard p {
+    margin: 0 0 14px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #64748b;
+    line-height: 1.5;
+  }
+
+  .ring-fleet-empty-onboard .add-actions {
+    max-width: 520px;
+    margin: 0 auto;
+  }
+
+  .ring-fleet-today-panel {
+    font-size: 12px;
+    font-weight: 700;
+    color: #475569;
+    max-height: 140px;
+    overflow: auto;
+  }
+
+  .ring-fleet-today-line {
+    padding: 6px 0;
+    border-bottom: 1px solid #f1f5f9;
+  }
+
+  .ring-fleet-wizard {
+    align-items: center;
+    padding: 24px;
+  }
+
+  .ring-fleet-wizard-inner {
+    max-width: 520px;
+    border-radius: 14px;
+    max-height: 85vh;
+  }
+}
+
+@media (min-width: 960px) and (max-width: 1200px) {
+  .ring-fleet-summary {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .ring-fleet-desk-main {
+    grid-template-columns: 1fr;
+  }
+
+  .ring-fleet-side-column {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  #fleetDetailPanel {
+    grid-column: 1 / -1;
+  }
+}

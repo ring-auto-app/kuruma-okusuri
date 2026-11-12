@@ -181,12 +181,28 @@
           <label for="catManaged" class="cat-radio-label">🚗 管理車両</label>
           <input type="radio" name="vehicleCategory" id="catLoaner" value="loaner" class="cat-radio-input">
           <label for="catLoaner" class="cat-radio-label">🔄 代 車</label>
+          <input type="radio" name="vehicleCategory" id="catRental" value="rental" class="cat-radio-input">
+          <label for="catRental" class="cat-radio-label">🔑 レンタカー</label>
         </div>
       </div>
 
       <div class="field">
         <span class="label">表示名 / ニックネーム <span class="optional">※任意</span></span>
         <input id="inName" type="text" placeholder="例：私のプリウス、30号車など">
+      </div>
+
+      <div class="field" id="plateSuffixField" style="display:none;">
+        <span class="label">ナンバー <span class="optional">※任意</span></span>
+        <div class="ring-plate-input-row" style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;">
+          <span style="font-size:12px;font-weight:800;color:var(--muted);">ひらがな</span>
+          <input id="inPlateKana" type="text" class="ring-plate-kana" maxlength="2" placeholder="あ" inputmode="text" style="width:48px;text-align:center;min-height:var(--tap-min);">
+          <span style="font-size:12px;font-weight:800;color:var(--muted);">番号</span>
+          <input id="inPlateNumA" type="text" class="ring-plate-num" inputmode="numeric" maxlength="2" placeholder="12" style="width:52px;text-align:center;min-height:var(--tap-min);">
+          <span style="font-weight:900;">－</span>
+          <input id="inPlateNumB" type="text" class="ring-plate-num" inputmode="numeric" maxlength="2" placeholder="34" style="width:52px;text-align:center;min-height:var(--tap-min);">
+        </div>
+        <input id="inPlateSuffix" type="hidden" value="">
+        <p style="font-size:11px;color:var(--muted);font-weight:700;margin:6px 0 0;">表示例：「あ 12-34」</p>
       </div>
 
       <div class="field">
@@ -345,6 +361,7 @@
     var vehicleInfoCacheKey = '';
     /** 画面に表示した時点の車両項目（未変更の項目を保存時に端末の最新値へ戻すための基準） */
     var vehicleFormBase_ = null;
+    var vehiclePlateBase_ = '';
 
     /** 同一VINでも所有者・管理店舗が違う行は別車両。ログイン中の所有者の行だけを返す（VIN先頭一致は使わない） */
     function findOwnVehicleIndex_(vehicles, prof) {
@@ -489,6 +506,36 @@
       var savedCat = car.vehicleCategory || 'managed';
       var catRadio = document.querySelector('input[name="vehicleCategory"][value="' + savedCat + '"]');
       if (catRadio) catRadio.checked = true;
+      var plateEl = document.getElementById('plateSuffixField');
+      if (plateEl && typeof ringIsFleetVehicleCategory_ === 'function' && ringIsFleetVehicleCategory_(savedCat)) {
+        plateEl.style.display = '';
+        var resolved = typeof ringResolveVehiclePlateSuffix_ === 'function'
+          ? ringResolveVehiclePlateSuffix_(car) : String(car.plateSuffix || '');
+        var parsed = typeof ringParsePlateSuffixToForm_ === 'function'
+          ? ringParsePlateSuffixToForm_(resolved) : { kana: '', numA: '', numB: '' };
+        var kanaEl = document.getElementById('inPlateKana');
+        var aEl = document.getElementById('inPlateNumA');
+        var bEl = document.getElementById('inPlateNumB');
+        var hid = document.getElementById('inPlateSuffix');
+        if (kanaEl) kanaEl.value = parsed.kana || '';
+        if (aEl) aEl.value = parsed.numA || '';
+        if (bEl) bEl.value = parsed.numB || '';
+        if (hid) hid.value = resolved;
+        vehiclePlateBase_ = typeof ringResolveVehiclePlateSuffix_ === 'function'
+          ? ringResolveVehiclePlateSuffix_(car) : String(car.plateSuffix || '');
+      }
+    }
+
+    function ringVehicleInfoReadPlate_() {
+      var kanaEl = document.getElementById('inPlateKana');
+      var aEl = document.getElementById('inPlateNumA');
+      var bEl = document.getElementById('inPlateNumB');
+      var plateSuffix = typeof ringBuildPlateSuffixFromForm_ === 'function'
+        ? ringBuildPlateSuffixFromForm_(kanaEl ? kanaEl.value : '', aEl ? aEl.value : '', bEl ? bEl.value : '')
+        : '';
+      var hid = document.getElementById('inPlateSuffix');
+      if (hid) hid.value = plateSuffix;
+      return { plateSuffix: plateSuffix };
     }
 
     // 戻るボタンの設定（呼び出し元に応じて戻り先を変更）
@@ -628,12 +675,13 @@
         const cycle = typeof ringGetInspectionCycle_ === 'function'
           ? ringGetInspectionCycle_({
               usage: document.getElementById('inUsage').value,
-              ownerType: document.getElementById('inOwnerType').value
+              ownerType: document.getElementById('inOwnerType').value,
+              vehicleCategory: (document.querySelector('input[name="vehicleCategory"]:checked') || {}).value
             })
           : { months: 12 };
         const months = cycle.months;
-        const vehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
-        const idx = findOwnVehicleIndex_(vehicles,
+        let vehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
+        let idx = findOwnVehicleIndex_(vehicles,
           (typeof getCurrentProfile === 'function' ? getCurrentProfile() : null) || profile);
 
         if (idx < 0) {
@@ -675,6 +723,19 @@
         updatePayload.model = vehicles[idx].model || '';
         dropUnchangedVehicleFormFields_(updatePayload);
 
+        var platePackEarly = null;
+        var plateChangedEarly = false;
+        if (isBizSave && typeof ringIsFleetVehicleCategory_ === 'function' && ringIsFleetVehicleCategory_(newCategory)) {
+          platePackEarly = ringVehicleInfoReadPlate_();
+          plateChangedEarly = typeof ringFleetPlateSuffixChanged_ === 'function'
+            ? ringFleetPlateSuffixChanged_(vehiclePlateBase_, platePackEarly.plateSuffix)
+            : String(vehiclePlateBase_ || '') !== String(platePackEarly.plateSuffix || '');
+          if (plateChangedEarly && typeof ringMarkVehiclePlateSuffixPending_ === 'function') {
+            ringMarkVehiclePlateSuffixPending_(targetVin, profSave, platePackEarly.plateSuffix);
+          }
+          updatePayload.plateSuffix = platePackEarly.plateSuffix;
+        }
+
         let res;
         if (typeof updateVehicle === 'function') {
           res = await updateVehicle(updatePayload);
@@ -698,8 +759,69 @@
           return;
         }
 
+        var plateOk = true;
+        var plateConflict = false;
+        if (isBizSave && typeof ringIsFleetVehicleCategory_ === 'function' && ringIsFleetVehicleCategory_(newCategory)) {
+          var platePack = platePackEarly || ringVehicleInfoReadPlate_();
+          var plateChanged = plateChangedEarly;
+          var vehicleSaveOk = typeof ringVehicleSaveAllowsPlateFollowUp_ === 'function'
+            ? ringVehicleSaveAllowsPlateFollowUp_(res)
+            : !!(res && (res.queued || res.success !== false));
+          if (plateChanged && vehicleSaveOk) {
+            if (res && res.queued && typeof ringEnqueuePlateAfterVehicleSave_ === 'function') {
+              vehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
+              var idxQ = findOwnVehicleIndex_(vehicles, profSave);
+              var revQ = idxQ >= 0 ? vehicles[idxQ].serverRev : null;
+              ringEnqueuePlateAfterVehicleSave_(targetVin, platePack.plateSuffix, profSave, revQ);
+            } else if (!res.queued && typeof updateFleetPlateSuffixOnServer_ === 'function') {
+              vehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
+              var idxPend = findOwnVehicleIndex_(vehicles, profSave);
+              var stillPending = idxPend >= 0 && vehicles[idxPend].plateSuffixPendingCloud === true;
+              if (stillPending) {
+                var revForPlate = idxPend >= 0 ? vehicles[idxPend].serverRev : null;
+                var psSaveRev = typeof ringEffectiveVehiclePlateSuffixSaveRev_ === 'function'
+                  ? ringEffectiveVehiclePlateSuffixSaveRev_(vehicles[idxPend])
+                  : null;
+                var mayFallback = typeof ringPlateOnlyFallbackStillCurrent_ !== 'function' ||
+                  ringPlateOnlyFallbackStillCurrent_(targetVin, profSave, psSaveRev, platePack.plateSuffix);
+                if (!mayFallback) {
+                  plateOk = false;
+                } else if (typeof ringGasSupportsPlateSuffixDedicated_ === 'function' &&
+                    !ringGasSupportsPlateSuffixDedicated_()) {
+                  plateOk = false;
+                  if (typeof showToast === 'function') {
+                    showToast('warning', 'サーバーがナンバー専用保存に未対応のため、端末に未反映のまま保持します。');
+                  }
+                } else {
+                var psRes = await updateFleetPlateSuffixOnServer_(targetVin, platePack.plateSuffix, revForPlate);
+                if (psRes && psRes.conflict) {
+                  plateConflict = true;
+                  plateOk = false;
+                  window.addEventListener('ring:vehicle-conflict-resolved', function () { location.reload(); }, { once: true });
+                } else if (!psRes || psRes.success === false || psRes.plateCloudUnconfirmed || psRes.plateCloudUnsupported) {
+                  plateOk = false;
+                  if (typeof ringEnqueuePlateAfterVehicleSave_ === 'function') {
+                    ringEnqueuePlateAfterVehicleSave_(targetVin, platePack.plateSuffix, profSave, revForPlate);
+                  }
+                  if (psRes && psRes.plateCloudUnconfirmed && typeof showToast === 'function') {
+                    showToast('warning', 'ナンバーのサーバー保存を確認できませんでした。未送信のまま保持します。');
+                  }
+                  if (psRes && psRes.plateCloudUnsupported && typeof showToast === 'function') {
+                    showToast('warning', 'ナンバー専用保存はサーバー未対応のため、未反映のまま保持します。');
+                  }
+                }
+                }
+              }
+            }
+          }
+        }
+
+        if (plateConflict) return;
+
         if (typeof showToast === 'function') {
-          if (res && res.queued) {
+          if (!plateOk) {
+            showToast('warning', '車両情報は保存しましたが、ナンバーをサーバーへ反映できませんでした。再度お試しください。');
+          } else if (res && res.queued) {
             showToast('info', '端末に保存しました。オンライン復帰時にサーバーへ反映します。');
           } else if (res && res.autoMerged) {
             showToast('success', '他の端末での更新と合わせて保存しました');
@@ -707,6 +829,8 @@
             showToast('success', '車両情報を更新しました');
           }
         }
+
+        if (!plateOk) return;
 
         const dest = fromPage === 'factory_history'
           ? `factory_history.html?vin=${encodeURIComponent(targetVin)}`

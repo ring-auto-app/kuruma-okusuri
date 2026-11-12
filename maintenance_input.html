@@ -191,6 +191,74 @@
     html, body { min-height: 100dvh; }
     body.ring-ios-kbd-open { overflow: hidden; }
     .container { min-height: 100dvh; }
+
+    .ring-maint-pick-btn {
+      width: 100%; min-height: var(--tap-min); margin: 0 0 14px;
+      border: 2px solid var(--accent); border-radius: 12px;
+      background: var(--paper); color: var(--accent);
+      font-size: 15px; font-weight: 900; cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .ring-maint-pick-btn:active { transform: scale(0.98); }
+
+    .ring-maint-picker-overlay {
+      position: fixed; inset: 0; z-index: 1200;
+      background: rgba(15, 23, 42, 0.45);
+      display: none; align-items: flex-end; justify-content: center;
+      padding: 0; box-sizing: border-box;
+    }
+    .ring-maint-picker-overlay.is-open { display: flex; }
+    .ring-maint-picker-sheet {
+      width: 100%; max-width: 640px; max-height: min(88dvh, 720px);
+      background: var(--page-bg); border-radius: 16px 16px 0 0;
+      border: 2px solid var(--line); box-shadow: 0 -8px 32px rgba(0,0,0,0.15);
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .ring-maint-picker-head {
+      padding: 14px 16px 10px; border-bottom: 1px dashed var(--line);
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    }
+    .ring-maint-picker-title { font-size: 17px; font-weight: 900; margin: 0; }
+    .ring-maint-picker-close {
+      min-width: var(--tap-min); min-height: var(--tap-min); border: none;
+      background: transparent; font-size: 22px; font-weight: 900; color: var(--muted); cursor: pointer;
+    }
+    .ring-maint-picker-step { padding: 12px 16px; overflow-y: auto; flex: 1; }
+    .ring-maint-picker-cats {
+      display: grid; grid-template-columns: 1fr; gap: 10px;
+    }
+    .ring-maint-picker-cat-btn {
+      min-height: var(--tap-min); border: 2px solid var(--accent); border-radius: 12px;
+      background: var(--paper); font-size: 15px; font-weight: 900; color: var(--accent); cursor: pointer;
+    }
+    .ring-maint-picker-toolbar {
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px;
+    }
+    .ring-maint-picker-search {
+      flex: 1 1 160px; min-height: var(--tap-min); padding: 8px 12px;
+      border: 2px solid var(--line); border-radius: 10px; font-size: 15px; font-weight: 700;
+    }
+    .ring-maint-picker-sort {
+      min-height: var(--tap-min); padding: 0 10px; border: 2px solid var(--accent);
+      border-radius: 10px; font-size: 13px; font-weight: 800; background: var(--paper);
+    }
+    .ring-maint-picker-back {
+      border: none; background: none; color: var(--accent); font-size: 13px; font-weight: 900;
+      cursor: pointer; padding: 0; min-height: var(--tap-min);
+    }
+    .ring-maint-picker-row {
+      width: 100%; text-align: left; border: 2px solid var(--line); border-radius: 12px;
+      background: var(--paper); padding: 12px 14px; margin-bottom: 10px; cursor: pointer;
+    }
+    .ring-maint-picker-row:active { transform: scale(0.99); }
+    .ring-maint-picker-row-name { font-size: 15px; font-weight: 900; margin: 0 0 4px; }
+    .ring-maint-picker-row-meta { font-size: 12px; font-weight: 700; color: var(--muted); margin: 0; line-height: 1.45; }
+    .ring-maint-picker-empty { text-align: center; color: var(--muted); font-weight: 800; padding: 24px 8px; }
+    @media (min-width: 720px) {
+      .ring-maint-picker-overlay { align-items: center; padding: 24px; }
+      .ring-maint-picker-sheet { border-radius: 16px; max-height: 80vh; }
+      .ring-maint-picker-cats { grid-template-columns: repeat(3, 1fr); }
+    }
   </style>
 </head>
 <body>
@@ -216,6 +284,8 @@
         <div class="discard-notice" id="discardNotice">※書類画像は保存されず破棄されます</div>
       </section>
     </div>
+
+    <button type="button" class="ring-maint-pick-btn" id="ringMaintOpenPickerBtn">📋 登録車両から選択</button>
 
     <div class="basic-info-card">
       <div class="field">
@@ -348,6 +418,35 @@
     <p class="privacy-notice" id="detailPrivacyNotice" hidden>＊「この内容で登録する」前に内容を確認できます。個人情報・金額に注意！</p>
   </div>
 
+  <div class="ring-maint-picker-overlay" id="ringMaintPickerOverlay" role="dialog" aria-modal="true" aria-labelledby="ringMaintPickerTitle" hidden>
+    <div class="ring-maint-picker-sheet">
+      <div class="ring-maint-picker-head">
+        <h2 class="ring-maint-picker-title" id="ringMaintPickerTitle">登録車両から選択</h2>
+        <button type="button" class="ring-maint-picker-close" id="ringMaintPickerCloseBtn" aria-label="閉じる">×</button>
+      </div>
+      <div class="ring-maint-picker-step" id="ringMaintPickerStepCategory">
+        <p style="font-size:13px;font-weight:800;color:var(--muted);margin:0 0 12px;">車両区分を選んでください</p>
+        <div class="ring-maint-picker-cats">
+          <button type="button" class="ring-maint-picker-cat-btn" data-ring-maint-cat="managed">🚗 管理車両</button>
+          <button type="button" class="ring-maint-picker-cat-btn" data-ring-maint-cat="rental">🔑 レンタカー</button>
+          <button type="button" class="ring-maint-picker-cat-btn" data-ring-maint-cat="loaner">🔄 代車</button>
+        </div>
+      </div>
+      <div class="ring-maint-picker-step" id="ringMaintPickerStepList" style="display:none;">
+        <button type="button" class="ring-maint-picker-back" id="ringMaintPickerBackBtn">◁ 区分を選び直す</button>
+        <div class="ring-maint-picker-toolbar">
+          <input type="search" class="ring-maint-picker-search" id="ringMaintPickerSearch" placeholder="車両名・VINで検索" autocomplete="off">
+          <select class="ring-maint-picker-sort" id="ringMaintPickerSort" aria-label="並び替え">
+            <option value="inspect_near">点検が近い順</option>
+            <option value="shaken_near">車検が近い順</option>
+            <option value="created_new">登録した順</option>
+          </select>
+        </div>
+        <div id="ringMaintPickerList"></div>
+      </div>
+    </div>
+  </div>
+
   <script>
     var currentProfile = null;
     var ringMaintActiveTab = 'quick';
@@ -424,6 +523,149 @@
         infoEl.style.display = 'block';
       } else {
         infoEl.style.display = 'none';
+      }
+    }
+
+    var ringMaintPickerCategory_ = '';
+
+    function ringMaintCloseVehiclePicker_() {
+      var ov = document.getElementById('ringMaintPickerOverlay');
+      if (ov) {
+        ov.classList.remove('is-open');
+        ov.setAttribute('hidden', '');
+      }
+    }
+
+    function ringMaintShowPickerCategoryStep_() {
+      var sCat = document.getElementById('ringMaintPickerStepCategory');
+      var sList = document.getElementById('ringMaintPickerStepList');
+      if (sCat) sCat.style.display = '';
+      if (sList) sList.style.display = 'none';
+      ringMaintPickerCategory_ = '';
+    }
+
+    function ringMaintOpenVehiclePicker_() {
+      var ov = document.getElementById('ringMaintPickerOverlay');
+      if (!ov) return;
+      ringMaintShowPickerCategoryStep_();
+      ov.removeAttribute('hidden');
+      ov.classList.add('is-open');
+    }
+
+    function ringMaintFmtPickerInspect_(d) {
+      if (!d) return '次回点検：---';
+      if (typeof ringFormatDateLocal_ === 'function') return '次回点検：' + ringFormatDateLocal_(d, false);
+      var dd = d instanceof Date ? d : new Date(d);
+      if (isNaN(dd.getTime())) return '次回点検：---';
+      return '次回点検：' + dd.getFullYear() + '/' + String(dd.getMonth() + 1).padStart(2, '0') + '/' + String(dd.getDate()).padStart(2, '0');
+    }
+
+    function ringMaintRenderPickerList_() {
+      var listEl = document.getElementById('ringMaintPickerList');
+      if (!listEl || !currentProfile) return;
+      var cat = ringMaintPickerCategory_;
+      if (!cat) return;
+      var prof = currentProfile;
+      var mine = typeof ringLoadMyVehicles_ === 'function' ? ringLoadMyVehicles_(prof) : [];
+      var vehicles = typeof ringFilterVehiclesByCategoryTab_ === 'function'
+        ? ringFilterVehiclesByCategoryTab_(mine, cat)
+        : mine;
+      vehicles = vehicles.map(function (c) {
+        return typeof ringEnrichVehicleListRow_ === 'function' ? ringEnrichVehicleListRow_(c) : c;
+      });
+      var q = document.getElementById('ringMaintPickerSearch');
+      var sortSel = document.getElementById('ringMaintPickerSort');
+      var sortType = sortSel ? sortSel.value : 'inspect_near';
+      var nq = typeof ringNormalizeVehicleSearchText_ === 'function'
+        ? ringNormalizeVehicleSearchText_(q ? q.value : '')
+        : '';
+      if (nq && typeof ringVehicleMatchesListSearch_ === 'function') {
+        vehicles = vehicles.filter(function (car) { return ringVehicleMatchesListSearch_(car, nq); });
+      }
+      if (typeof ringSortVehicleList_ === 'function') {
+        vehicles = ringSortVehicleList_(vehicles, sortType);
+      }
+      if (!vehicles.length) {
+        listEl.innerHTML = '<p class="ring-maint-picker-empty">該当する車両がありません</p>';
+        return;
+      }
+      var html = '';
+      vehicles.forEach(function (car) {
+        var name = typeof ringVehicleListDisplayName_ === 'function'
+          ? ringVehicleListDisplayName_(car)
+          : (car.nickname || car.vin);
+        var safeName = typeof escapeHtml === 'function' ? escapeHtml(name) : name;
+        var safeVin = typeof escapeHtml === 'function' ? escapeHtml(car.vin || '') : (car.vin || '');
+        var shaken = typeof ringFormatVehicleDateJst_ === 'function'
+          ? ringFormatVehicleDateJst_(car.nextShaken)
+          : (car.nextShaken || '---');
+        html += '<button type="button" class="ring-maint-picker-row" data-ring-maint-pick-vin="' +
+          encodeURIComponent(car.vin || '') + '">' +
+          '<p class="ring-maint-picker-row-name">' + safeName + '</p>' +
+          '<p class="ring-maint-picker-row-meta">VIN：' + safeVin + '<br>' +
+          ringMaintFmtPickerInspect_(car._nextInspect) + '　車検：' + (typeof escapeHtml === 'function' ? escapeHtml(shaken) : shaken) +
+          '</p></button>';
+      });
+      listEl.innerHTML = html;
+    }
+
+    function ringMaintEnterPickerList_(cat) {
+      ringMaintPickerCategory_ = cat;
+      var sCat = document.getElementById('ringMaintPickerStepCategory');
+      var sList = document.getElementById('ringMaintPickerStepList');
+      if (sCat) sCat.style.display = 'none';
+      if (sList) sList.style.display = '';
+      var search = document.getElementById('ringMaintPickerSearch');
+      if (search) search.value = '';
+      var sortSel = document.getElementById('ringMaintPickerSort');
+      if (sortSel) sortSel.value = 'inspect_near';
+      ringMaintRenderPickerList_();
+    }
+
+    async function ringMaintApplyPickedVehicle_(vin) {
+      vin = ringMaintNormVin_(vin);
+      if (!vin) return;
+      var vinEl = document.getElementById('inVin');
+      if (vinEl) {
+        vinEl.readOnly = false;
+        vinEl.value = vin;
+      }
+      var errVin = document.getElementById('errVin');
+      if (errVin) errVin.style.display = 'none';
+      ringMaintCloseVehiclePicker_();
+      await lookupVehicle(vin);
+    }
+
+    function ringMaintInitVehiclePicker_() {
+      var openBtn = document.getElementById('ringMaintOpenPickerBtn');
+      var closeBtn = document.getElementById('ringMaintPickerCloseBtn');
+      var backBtn = document.getElementById('ringMaintPickerBackBtn');
+      var overlay = document.getElementById('ringMaintPickerOverlay');
+      if (openBtn) openBtn.addEventListener('click', ringMaintOpenVehiclePicker_);
+      if (closeBtn) closeBtn.addEventListener('click', ringMaintCloseVehiclePicker_);
+      if (backBtn) backBtn.addEventListener('click', ringMaintShowPickerCategoryStep_);
+      if (overlay) {
+        overlay.addEventListener('click', function (ev) {
+          if (ev.target === overlay) ringMaintCloseVehiclePicker_();
+        });
+      }
+      document.querySelectorAll('[data-ring-maint-cat]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          ringMaintEnterPickerList_(btn.getAttribute('data-ring-maint-cat'));
+        });
+      });
+      var search = document.getElementById('ringMaintPickerSearch');
+      if (search) search.addEventListener('input', ringMaintRenderPickerList_);
+      var sortSel = document.getElementById('ringMaintPickerSort');
+      if (sortSel) sortSel.addEventListener('change', ringMaintRenderPickerList_);
+      var listHost = document.getElementById('ringMaintPickerStepList');
+      if (listHost) {
+        listHost.addEventListener('click', function (ev) {
+          var row = ev.target && ev.target.closest ? ev.target.closest('[data-ring-maint-pick-vin]') : null;
+          if (!row) return;
+          var raw = decodeURIComponent(row.getAttribute('data-ring-maint-pick-vin') || '');
+          ringMaintApplyPickedVehicle_(raw);
+        });
       }
     }
 
@@ -836,6 +1078,7 @@
       }
 
       ringMaintSetTab_('quick');
+      ringMaintInitVehiclePicker_();
 
       var preVin = new URLSearchParams(location.search).get('vin');
       if (preVin) {

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#4b5563" />
+  <title>車両チェックシート</title>
+  <link rel="stylesheet" href="common.css">
+  <link rel="stylesheet" href="fleet-check-sheet.css">
+  <script src="app.js?v=20261108-v33"></script>
+  <script src="theme.js"></script>
+</head>
+<body class="ring-check-page">
+  <div class="ring-check-layout">
+    <header class="ring-check-top">
+      <button type="button" id="ringCheckBack" class="ring-check-back">◁ 戻る</button>
+      <div id="ringCheckHeader"></div>
+      <div id="ringCheckAttention" class="ring-check-attention" hidden></div>
+      <div id="ringCheckLocalBanner" class="ring-check-local-banner"></div>
+      <div id="ringCheckPhotoWarn" class="ring-check-photo-warn"></div>
+    </header>
+
+    <nav class="ring-check-steps" id="ringCheckSteps" aria-label="チェックシート区分">
+      <button type="button" class="is-active" data-step="basic">基本</button>
+      <button type="button" data-step="inspection">点検</button>
+      <button type="button" data-step="tires">タイヤ</button>
+      <button type="button" data-step="diagram">展開図</button>
+      <button type="button" data-step="photos">写真</button>
+      <button type="button" data-step="pdf">PDF</button>
+    </nav>
+
+    <main id="ringCheckMain" class="ring-check-main">
+      <section class="ring-check-pane is-active" data-pane="basic" id="ringCheckPaneBasic"></section>
+      <section class="ring-check-pane" data-pane="inspection" id="ringCheckPaneInspection"></section>
+      <section class="ring-check-pane" data-pane="tires" id="ringCheckPaneTires"></section>
+      <section class="ring-check-pane" data-pane="diagram" id="ringCheckPaneDiagram">
+        <div class="ring-check-columns ring-check-diagram-column">
+          <div class="ring-check-diagram-wrap">
+            <h2 class="ring-check-section-title">車両展開図</h2>
+            <div id="ringCheckDiagramHost" class="ring-check-diagram-host"></div>
+          </div>
+          <aside class="ring-check-side">
+            <h2 class="ring-check-section-title">マーク一覧</h2>
+            <div id="ringCheckMarkList" class="ring-check-mark-list"></div>
+            <button type="button" id="ringCheckSaveSnap" class="ring-check-save-btn">この端末に保存（スナップショット）</button>
+          </aside>
+        </div>
+        <div id="ringCheckDetail" class="ring-check-detail" hidden></div>
+      </section>
+      <section class="ring-check-pane" data-pane="photos" id="ringCheckPanePhotos"></section>
+      <section class="ring-check-pane" data-pane="pdf" id="ringCheckPanePdf"></section>
+    </main>
+
+    <nav class="ring-check-toolbar" id="ringCheckMarkToolbar" aria-label="マーク操作" hidden>
+      <button type="button" data-check-mode="scratch" class="is-active"><span aria-hidden="true">●</span> 傷</button>
+      <button type="button" data-check-mode="dent"><span aria-hidden="true">×</span> へこみ</button>
+      <button type="button" data-check-mode="other"><span aria-hidden="true">□</span> その他</button>
+      <button type="button" data-check-mode="delete"><span aria-hidden="true">🗑</span> 削除</button>
+      <button type="button" id="ringCheckUndo"><span aria-hidden="true">↩</span> 戻す</button>
+    </nav>
+  </div>
+  <input type="file" id="ringCheckPhotoInput" accept="image/*" multiple hidden />
+  <div id="ringCheckPhotoModal" class="ring-check-photo-modal" hidden>
+    <div class="ring-check-photo-modal-inner">
+      <button type="button" id="ringCheckPhotoModalClose" class="ring-check-photo-modal-close">閉じる</button>
+      <img id="ringCheckPhotoModalImg" alt="拡大プレビュー" />
+    </div>
+  </div>
+  <script src="vendor/pdf-lib.min.js"></script>
+  <script src="fleet-check-sheet.js"></script>
+  <script src="fleet-check-sheet-pdf.js"></script>
+</body>
+</html>

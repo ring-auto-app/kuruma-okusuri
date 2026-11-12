@@ -158,19 +158,9 @@
       <button type="button" id="openTrashBtn" class="trash-entry-link">🗑 削除した車両（30日以内に復元）</button>
     </div>
     <div id="mainListBlock">
-    <!-- 車両区分タブ（工場・事業者のみ JS で表示） -->
-    <div class="cat-tabs" id="categoryTabs" style="display:none;">
-      <button class="cat-tab active" id="tabManaged" onclick="setTab('managed')">
-        🚗 管理車両<span class="cat-tab-count" id="cntManaged">0</span>
-      </button>
-      <button class="cat-tab" id="tabLoaner" onclick="setTab('loaner')">
-        🔄 代車<span class="cat-tab-count" id="cntLoaner">0</span>
-      </button>
-    </div>
-
     <div class="vehicle-search-wrap">
       <input type="search" id="vehicleSearchInput" class="vehicle-search-input"
-             placeholder="車両名・ナンバー・管理番号で検索" autocomplete="off" enterkeyhint="search"
+             placeholder="車両名・車台番号・ナンバーで検索" autocomplete="off" enterkeyhint="search"
              inputmode="search" autocapitalize="off" autocorrect="off">
       <button type="button" id="vehicleSearchClear" class="vehicle-search-clear" aria-label="検索をクリア">×</button>
     </div>
@@ -199,8 +189,6 @@
     const userRole = profile ? (profile.shopType || profile.role) : 'user';
     const isBizMode = (userRole === 'factory' || userRole === 'dealer');
 
-    // 現在選択中の車両区分タブ（工場・事業者のみ使用）
-    let currentCategoryTab = 'managed';
     let vehiclesCacheKey = '';
     var trashViewActive_ = false;
     var trashRestoreBusyId_ = '';
@@ -256,21 +244,15 @@
       }, VEHICLE_SEARCH_DEBOUNCE_MS_);
     }
 
-    function getMyVehiclesFilter() {
-      return function (car) {
-        if (!profile) return false;
-        const myShopId = profile.shopId || "";
-        const myUserId = profile.userId || "";
-        return (myShopId && car.shopId === myShopId) ||
-          car.shopId === myUserId ||
-          car.userId === myUserId ||
-          car.ownerId === myUserId;
-      };
-    }
-
     function getFilteredVehicles() {
-      let allVehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
-      return allVehicles.filter(getMyVehiclesFilter());
+      if (typeof ringLoadMyVehicles_ === 'function' && profile) {
+        var mine = ringLoadMyVehicles_(profile);
+        if (isBizMode && typeof ringFilterVehiclesByCategoryTab_ === 'function') {
+          return ringFilterVehiclesByCategoryTab_(mine, 'managed');
+        }
+        return mine;
+      }
+      return [];
     }
 
     function getVehiclesSignature() {
@@ -346,11 +328,6 @@
         backBtn.onclick = () => location.href = 'user_home.html';
       }
 
-      // 工場・事業者のみ車両区分タブを表示
-      if (isBizMode) {
-        document.getElementById('categoryTabs').style.display = '';
-      }
-
       // 登録ボタンの飛び先（一般ユーザーは台数上限を先にチェック）
       if (addBtn) {
         var canEditBizVeh = !isBizMode || (typeof ringCanEditManagedVehicles_ === 'function' && ringCanEditManagedVehicles_(profile));
@@ -359,7 +336,7 @@
         } else {
           addBtn.onclick = function () {
             if (typeof ringGuardUserVehicleLimitBeforeAdd_ === 'function' && !ringGuardUserVehicleLimitBeforeAdd_('')) return;
-            location.href = 'car_add.html';
+            location.href = isBizMode ? 'car_add.html?category=managed' : 'car_add.html';
           };
         }
       }
@@ -526,15 +503,6 @@
       loadAndRenderTrashList_();
     }
 
-    /* ── 車両区分タブ切替 ── */
-    function setTab(tab) {
-      currentCategoryTab = tab;
-      document.getElementById('tabManaged').classList.toggle('active', tab === 'managed');
-      document.getElementById('tabLoaner').classList.toggle('active', tab === 'loaner');
-      clearVehicleSearch_(false);
-      renderCars(false, window.scrollY);
-    }
-
     function fmtInspectListDate(d) {
       if (!d) return '---';
       if (typeof ringFormatDateLocal_ === 'function') return ringFormatDateLocal_(d, false);
@@ -562,34 +530,11 @@
       }
 
       setTimeout(() => {
-        let allVehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
-        let vehicles = allVehicles.filter(getMyVehiclesFilter());
-
-        // 次回点検日を事前計算
-        vehicles = vehicles.map(car => {
-          var c = typeof ringApplyVehicleInspectionDerivedFields_ === 'function'
-            ? ringApplyVehicleInspectionDerivedFields_(Object.assign({}, car))
+        let vehicles = getFilteredVehicles().map(function (car) {
+          return typeof ringEnrichVehicleListRow_ === 'function'
+            ? ringEnrichVehicleListRow_(car)
             : car;
-          return Object.assign({}, c, {
-            _nextInspect: typeof ringCalcNextLegalInspectionDate_ === 'function'
-              ? ringCalcNextLegalInspectionDate_(c)
-              : null
-          });
         });
-
-        // タブカウント更新（工場・事業者のみ）
-        if (isBizMode) {
-          const cntM = vehicles.filter(c => (c.vehicleCategory || 'managed') === 'managed').length;
-          const cntL = vehicles.filter(c => c.vehicleCategory === 'loaner').length;
-          document.getElementById('cntManaged').textContent = cntM;
-          document.getElementById('cntLoaner').textContent  = cntL;
-          // タブフィルター適用
-          vehicles = vehicles.filter(c =>
-            currentCategoryTab === 'loaner'
-              ? c.vehicleCategory === 'loaner'
-              : (c.vehicleCategory || 'managed') === 'managed'
-          );
-        }
 
         var searchInputEl = document.getElementById('vehicleSearchInput');
         var searchQueryRaw = searchInputEl ? String(searchInputEl.value || '') : '';
@@ -610,9 +555,7 @@
           if (vehiclesBeforeSearchFilter > 0 && normalizedSearchQuery) {
             emptyMsg = '該当する車両がありません';
           } else {
-            emptyMsg = isBizMode && currentCategoryTab === 'loaner'
-              ? '代車の登録がありません。'
-              : '登録車両がありません。';
+            emptyMsg = '登録車両がありません。';
           }
           container.innerHTML = `<div class="empty-msg">${emptyMsg}</div>`;
           updateUserVehicleCountLabel();
@@ -621,17 +564,9 @@
           return;
         }
 
-        // ソート
-        const FAR = new Date('9999-12-31');
-        vehicles.sort((a, b) => {
-          if (sortType === 'inspect_near') return (a._nextInspect || FAR) - (b._nextInspect || FAR);
-          if (sortType === 'shaken_near') {
-            return ringVehicleDateSortKey_(a.nextShaken).localeCompare(ringVehicleDateSortKey_(b.nextShaken));
-          }
-          if (sortType === 'created_new')  return (new Date(b.createdAt || 0)) - (new Date(a.createdAt || 0));
-          if (sortType === 'history_old')  return (new Date(a.lastMaint || 0)) - (new Date(b.lastMaint || 0));
-          return 0;
-        });
+        if (typeof ringSortVehicleList_ === 'function') {
+          vehicles = ringSortVehicleList_(vehicles, sortType);
+        }
 
         const historyLink      = (userRole === 'user') ? 'user_history.html'            : 'history.html';
         const inspectHistoryLink = (userRole === 'user') ? 'user_inspection_history.html' : 'daily_history.html';
@@ -679,9 +614,9 @@
               </div>
               <div class="btn-group">
                 <a href="${historyLink}?vin=${encodeURIComponent(car.vin)}" class="vc-btn">📖 整備履歴</a>
-                ${maintInputBase ? `<a href="${maintInputBase}?vin=${encodeURIComponent(car.vin)}" class="vc-btn">🔧 整備入力</a>` : ''}
-                <a href="${inspectHistoryLink}?vin=${encodeURIComponent(car.vin)}" class="vc-btn">🔍 日常点検記録</a>
-                <a href="${inspectLink}?vin=${encodeURIComponent(car.vin)}" class="vc-btn">📋 日常点検入力</a>
+                ${!isBizMode ? `<a href="${maintInputBase}?vin=${encodeURIComponent(car.vin)}" class="vc-btn">🔧 整備入力</a>` : ''}
+                ${!isBizMode ? `<a href="${inspectHistoryLink}?vin=${encodeURIComponent(car.vin)}" class="vc-btn">🔍 日常点検記録</a>` : ''}
+                ${!isBizMode ? `<a href="${inspectLink}?vin=${encodeURIComponent(car.vin)}" class="vc-btn">📋 日常点検入力</a>` : ''}
               </div>
             </div>`;
         });

@@ -1,0 +1,420 @@
+/* Phase3 車両チェックシート */
+.ring-check-page {
+  margin: 0;
+  font-family: -apple-system, sans-serif;
+  background: linear-gradient(to bottom, var(--page-line) 1px, transparent 1px) 0 0 / 100% 34px, var(--page-bg);
+  color: var(--text);
+  min-height: 100vh;
+  padding-bottom: calc(88px + env(safe-area-inset-bottom));
+}
+
+.ring-check-layout {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 12px 14px 0;
+}
+
+.ring-check-back {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 800;
+  min-height: var(--tap-min);
+  cursor: pointer;
+}
+
+.ring-check-title {
+  font-size: 22px;
+  font-weight: 900;
+  margin: 4px 0 10px;
+}
+
+.ring-check-vehicle-card {
+  background: var(--sticky-odd, #fef9c3);
+  border-radius: 2px 2px 12px 2px;
+  box-shadow: 1px 3px 6px rgba(0,0,0,0.08);
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+
+.ring-check-veh-name { font-size: 16px; font-weight: 900; margin: 0 0 6px; }
+.ring-check-meta { font-size: 12px; font-weight: 700; color: #64748b; margin: 2px 0; }
+.ring-check-local-banner {
+  font-size: 11px;
+  font-weight: 700;
+  color: #475569;
+  background: #fffbeb;
+  border: 1px solid #fbbf24;
+  border-radius: 10px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+}
+.ring-check-link-btn {
+  margin-top: 8px;
+  width: 100%;
+  min-height: var(--tap-min);
+  border: 2px solid var(--accent);
+  border-radius: 10px;
+  background: var(--paper);
+  font-weight: 800;
+  color: var(--accent);
+}
+.ring-check-warn { color: #b91c1c; font-weight: 800; }
+.ring-check-idb-warn {
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+.ring-check-type-pick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.ring-check-type-btn {
+  flex: 1;
+  min-width: 90px;
+  min-height: var(--tap-min);
+  border: 2px solid #cbd5e1;
+  border-radius: 10px;
+  background: #fff;
+  font-weight: 900;
+  cursor: pointer;
+}
+.ring-check-type-btn.is-active {
+  border-color: var(--accent);
+  background: rgba(37, 99, 235, 0.1);
+  color: var(--accent);
+}
+.ring-check-field-label { font-size: 11px; font-weight: 800; color: #64748b; margin: 0 0 6px; }
+
+.ring-check-columns {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ring-check-section-title {
+  font-size: 14px;
+  font-weight: 900;
+  margin: 0 0 8px;
+}
+
+.ring-check-diagram-host {
+  background: var(--paper, #fff);
+  border: 2px solid var(--line, #cbd5e1);
+  border-radius: 12px;
+  padding: 8px;
+  overflow: auto;
+  touch-action: pan-x pan-y;
+}
+
+.ring-check-diagram {
+  width: 100%;
+  max-width: 420px;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+  user-select: none;
+}
+
+.ring-check-region { cursor: crosshair; }
+.ring-check-mark { pointer-events: all; cursor: pointer; }
+.ring-check-mark-hit { fill: rgba(255,255,255,0.01); stroke: none; }
+.ring-check-mark.is-selected .ring-check-mark-hit { stroke: var(--accent, #2563eb); stroke-width: 2; fill: rgba(37,99,235,0.12); }
+.ring-check-mark-glyph {
+  font-size: 18px;
+  font-weight: 900;
+  fill: #0f172a;
+  pointer-events: none;
+}
+.ring-check-mark[data-mark-id] text { pointer-events: none; }
+
+.ring-check-mark-list { display: flex; flex-direction: column; gap: 8px; max-height: 280px; overflow: auto; }
+.ring-check-mark-row {
+  text-align: left;
+  min-height: var(--tap-min);
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: var(--paper);
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.ring-check-mark-sym { font-size: 16px; font-weight: 900; margin-right: 6px; }
+.ring-check-muted { font-size: 12px; color: #64748b; font-weight: 700; }
+
+.ring-check-save-btn {
+  width: 100%;
+  min-height: var(--tap-min);
+  margin-top: 12px;
+  border: none;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 900;
+}
+
+.ring-check-detail {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  background: var(--paper);
+}
+.ring-check-field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 6px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 14px;
+  padding: 8px;
+}
+.ring-check-detail-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.ring-check-detail-actions button {
+  min-height: var(--tap-min);
+  border-radius: 10px;
+  font-weight: 800;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+}
+.ring-check-detail-actions button.primary {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+}
+
+.ring-check-toolbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 100;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+  padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+  background: rgba(255,255,255,0.96);
+  border-top: 2px solid var(--accent);
+  box-shadow: 0 -4px 16px rgba(0,0,0,0.08);
+}
+.ring-check-toolbar button {
+  min-height: 52px;
+  border: 2px solid #cbd5e1;
+  border-radius: 12px;
+  background: var(--paper);
+  font-size: 11px;
+  font-weight: 900;
+  color: #334155;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+.ring-check-toolbar button span { font-size: 18px; line-height: 1; }
+.ring-check-toolbar button.is-active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+.ring-check-toolbar button[data-check-mode="delete"].is-active {
+  border-color: #b91c1c;
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+@media (min-width: 960px) {
+  .ring-check-columns {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+  .ring-check-diagram-wrap { flex: 1.2; min-width: 0; }
+  .ring-check-side { flex: 0.8; min-width: 280px; max-width: 360px; }
+  .ring-check-diagram { max-width: 100%; }
+}
+
+.ring-check-attention {
+  background: #fef2f2;
+  border: 2px solid #f87171;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 12px;
+  font-weight: 900;
+  color: #b91c1c;
+  margin-bottom: 8px;
+}
+
+.ring-check-steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.ring-check-steps button {
+  min-height: 40px;
+  border: 2px solid #cbd5e1;
+  border-radius: 10px;
+  background: var(--paper);
+  font-size: 11px;
+  font-weight: 900;
+}
+.ring-check-steps button.is-active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+@media (min-width: 720px) {
+  .ring-check-steps { grid-template-columns: repeat(6, 1fr); }
+}
+
+.ring-check-pane { display: none; }
+.ring-check-pane.is-active { display: block; }
+
+.ring-check-form-card {
+  background: var(--paper, #fff);
+  border: 2px solid var(--line, #cbd5e1);
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+.ring-check-field {
+  display: block;
+  font-size: 12px;
+  font-weight: 800;
+  margin: 8px 0;
+}
+.ring-check-field input,
+.ring-check-field select,
+.ring-check-field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 4px;
+  min-height: 40px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 8px;
+  font-size: 14px;
+}
+.ring-check-hint {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  margin: 6px 0;
+}
+.ring-check-form-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+.ring-check-secondary-btn {
+  width: 100%;
+  min-height: var(--tap-min);
+  border: 2px solid #cbd5e1;
+  border-radius: 10px;
+  background: #fff;
+  font-weight: 900;
+}
+
+.ring-check-collapse summary {
+  font-weight: 900;
+  cursor: pointer;
+  margin: 8px 0;
+}
+.ring-check-insp-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+}
+.ring-check-insp-label { flex: 1; font-size: 12px; font-weight: 800; }
+.ring-check-insp-row select { min-width: 110px; }
+.ring-check-insp-memo { margin-top: -4px; margin-bottom: 10px; }
+.ring-check-pressure-extra input { max-width: 88px; }
+
+.ring-check-photo-warn,
+.ring-check-photo-note {
+  font-size: 11px;
+  font-weight: 800;
+  color: #92400e;
+  margin-bottom: 8px;
+}
+.ring-check-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 10px;
+}
+.ring-check-photo-card {
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+.ring-check-photo-thumb {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  display: block;
+  cursor: pointer;
+}
+.ring-check-photo-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+}
+.ring-check-photo-actions button {
+  min-height: 36px;
+  font-size: 11px;
+  font-weight: 800;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+}
+.ring-check-photo-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(0,0,0,0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.ring-check-photo-modal-inner {
+  max-width: min(96vw, 720px);
+  width: 100%;
+  background: #fff;
+  border-radius: 12px;
+  padding: 10px;
+}
+.ring-check-photo-modal img {
+  width: 100%;
+  height: auto;
+  max-height: 70vh;
+  object-fit: contain;
+}
+.ring-check-photo-modal-close {
+  width: 100%;
+  min-height: var(--tap-min);
+  margin-bottom: 8px;
+}
+.ring-check-pdf-summary {
+  font-size: 12px;
+  font-weight: 700;
+  margin: 8px 0 12px;
+  padding-left: 18px;
+}
+
+.ring-check-on-diagram {
+  padding-bottom: calc(88px + env(safe-area-inset-bottom));
+}
+

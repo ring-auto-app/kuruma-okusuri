@@ -218,12 +218,27 @@
           <label for="catManaged" class="cat-radio-label">🚗 管理車両</label>
           <input type="radio" name="vehicleCategory" id="catLoaner" value="loaner" class="cat-radio-input">
           <label for="catLoaner" class="cat-radio-label">🔄 代 車</label>
+          <input type="radio" name="vehicleCategory" id="catRental" value="rental" class="cat-radio-input">
+          <label for="catRental" class="cat-radio-label">🔑 レンタカー</label>
         </div>
       </div>
 
       <div class="field">
         <span class="label">表示名 / ニックネーム <span class="optional">※任意</span></span>
         <input id="inName" type="text" placeholder="例：私のプリウス、30号車など">
+      </div>
+
+      <div class="field" id="fleetPlateField" style="display:none;">
+        <span class="label">ナンバー <span class="optional">※任意</span></span>
+        <div class="ring-plate-input-row" style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;">
+          <span style="font-size:12px;font-weight:800;color:var(--muted);">ひらがな</span>
+          <input id="inPlateKana" type="text" class="ring-plate-kana" maxlength="2" placeholder="あ" inputmode="text" style="width:48px;text-align:center;min-height:var(--tap-min);">
+          <span style="font-size:12px;font-weight:800;color:var(--muted);">番号</span>
+          <input id="inPlateNumA" type="text" class="ring-plate-num" inputmode="numeric" maxlength="2" placeholder="12" style="width:52px;text-align:center;min-height:var(--tap-min);">
+          <span style="font-weight:900;">－</span>
+          <input id="inPlateNumB" type="text" class="ring-plate-num" inputmode="numeric" maxlength="2" placeholder="34" style="width:52px;text-align:center;min-height:var(--tap-min);">
+        </div>
+        <p class="scan-hint" style="margin-top:6px;">表示例：「あ 12-34」</p>
       </div>
 
       <div class="field">
@@ -412,6 +427,19 @@
         document.getElementById('pageSubtitle').textContent = '入庫車両や在庫車の情報を登録します。';
         // 工場・事業者のみ車両区分フィールドを表示
         document.getElementById('categoryField').style.display = '';
+        ringCarAddApplyCategoryFromQuery_();
+        document.querySelectorAll('input[name="vehicleCategory"]').forEach(function (r) {
+          r.addEventListener('change', ringCarAddTogglePlateField_);
+        });
+        ['inPlateNumA', 'inPlateNumB'].forEach(function (id) {
+          var el = document.getElementById(id);
+          if (el) el.addEventListener('input', function () {
+            el.value = String(el.value || '').replace(/[^\d０-９]/g, '').replace(/[０-９]/g, function (ch) {
+              return String.fromCharCode(ch.charCodeAt(0) - 0xFEE0);
+            }).slice(0, 2);
+          });
+        });
+        ringCarAddTogglePlateField_();
       }
       updateSchedule();
       if (typeof ringCarAddInitDateFields === 'function') {
@@ -419,10 +447,51 @@
       }
     });
 
+    var carAddReturnTo_ = '';
+
     function goBackHome() {
+      if (carAddReturnTo_ === 'rental_fleet') {
+        location.replace('rental_fleet.html');
+        return;
+      }
       if (role === 'dealer') location.replace('dealer_home.html');
       else if (isBiz)        location.replace('factory_home.html');
       else                   location.replace('user_home.html');
+    }
+
+    function ringCarAddApplyCategoryFromQuery_() {
+      var params = new URLSearchParams(location.search);
+      var cat = String(params.get('category') || '').trim().toLowerCase();
+      if (cat !== 'managed' && cat !== 'loaner' && cat !== 'rental') return;
+      var el = document.querySelector('input[name="vehicleCategory"][value="' + cat + '"]');
+      if (el) el.checked = true;
+      if (params.get('returnTo') === 'rental_fleet') carAddReturnTo_ = 'rental_fleet';
+      ringCarAddTogglePlateField_();
+    }
+
+    function ringCarAddTogglePlateField_() {
+      var el = document.getElementById('fleetPlateField');
+      var catEl = document.querySelector('input[name="vehicleCategory"]:checked');
+      if (!el) return;
+      var cat = catEl ? catEl.value : 'managed';
+      var fleet = cat === 'rental' || cat === 'loaner';
+      el.style.display = fleet ? '' : 'none';
+    }
+
+    function ringCarAddReadPlate_() {
+      var kanaEl = document.getElementById('inPlateKana');
+      var aEl = document.getElementById('inPlateNumA');
+      var bEl = document.getElementById('inPlateNumB');
+      if (typeof ringBuildPlateSuffixFromForm_ === 'function') {
+        return {
+          plateSuffix: ringBuildPlateSuffixFromForm_(
+            kanaEl ? kanaEl.value : '',
+            aEl ? aEl.value : '',
+            bEl ? bEl.value : ''
+          )
+        };
+      }
+      return { plateSuffix: '' };
     }
 
     /** 自ユーザー／自店舗の管理車両行インデックス（VIN単独の findIndex は使わない） */
@@ -500,17 +569,18 @@
       btn.disabled = true;
       if (typeof showLoading === 'function') showLoading('登録中', '車両情報を保存しています...');
 
-      const cycle = typeof ringGetInspectionCycle_ === 'function'
-        ? ringGetInspectionCycle_({
-            usage: document.getElementById('inUsage').value,
-            ownerType: document.getElementById('inOwnerType').value
-          })
-        : { months: 12 };
-      const months = cycle.months;
-
       // 車両区分（工場・事業者のみ選択あり、それ以外は managed）
       const catEl = document.querySelector('input[name="vehicleCategory"]:checked');
       const vehicleCategory = catEl ? catEl.value : 'managed';
+
+      const cycle = typeof ringGetInspectionCycle_ === 'function'
+        ? ringGetInspectionCycle_({
+            usage: document.getElementById('inUsage').value,
+            ownerType: document.getElementById('inOwnerType').value,
+            vehicleCategory: vehicleCategory
+          })
+        : { months: 12 };
+      const months = cycle.months;
 
       // 初度登録年月（YYYY-MM形式で保存）
       const firstReg = typeof ringNormalizeVehicleSaveValue_ === 'function'
@@ -541,6 +611,11 @@
         lastMaint:         '---'
       };
       newVehicle.nickname = nickVal;
+
+      var platePack = ringCarAddReadPlate_();
+      if (typeof ringIsFleetVehicleCategory_ === 'function' && ringIsFleetVehicleCategory_(vehicleCategory)) {
+        if (platePack.plateSuffix) newVehicle.plateSuffix = platePack.plateSuffix;
+      }
 
       if (profile) {
         if (isBiz) {
@@ -598,13 +673,58 @@
           return;
         }
 
+        var plateServerOk = true;
+        var plateServerSkipped = !platePack.plateSuffix;
+        var vehSaveAllowsPlate = typeof ringVehicleSaveAllowsPlateFollowUp_ === 'function'
+          ? ringVehicleSaveAllowsPlateFollowUp_(vehRes)
+          : !!(vehRes && (vehRes.queued || vehRes.success !== false));
+        if (typeof ringIsFleetVehicleCategory_ === 'function' && ringIsFleetVehicleCategory_(vehicleCategory) &&
+            platePack.plateSuffix && vehSaveAllowsPlate) {
+          var listPs = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);
+          var idxPs = ringCarAddFindOwnVehicleIndex_(listPs, vin, profile);
+          var revPs = idxPs >= 0 ? listPs[idxPs].serverRev : null;
+          if (vehRes && vehRes.queued && typeof ringEnqueuePlateAfterVehicleSave_ === 'function') {
+            ringEnqueuePlateAfterVehicleSave_(vin, platePack.plateSuffix, profile, revPs);
+          } else if (vehRes && !vehRes.queued) {
+            var stillPend = idxPs >= 0 && listPs[idxPs].plateSuffixPendingCloud === true;
+            if (stillPend && typeof updateFleetPlateSuffixOnServer_ === 'function') {
+              if (typeof ringGasSupportsPlateSuffixDedicated_ === 'function' &&
+                  !ringGasSupportsPlateSuffixDedicated_()) {
+                plateServerOk = false;
+                if (typeof showToast === 'function') {
+                  showToast('warning', 'サーバーがナンバー専用保存に未対応のため、端末に未反映のまま保持します。');
+                }
+              } else {
+              var psRes = await updateFleetPlateSuffixOnServer_(vin, platePack.plateSuffix, revPs);
+              if (!psRes || psRes.success === false || psRes.plateCloudUnsupported || psRes.plateCloudUnconfirmed) {
+                plateServerOk = false;
+                if (typeof ringEnqueuePlateAfterVehicleSave_ === 'function') {
+                  ringEnqueuePlateAfterVehicleSave_(vin, platePack.plateSuffix, profile, revPs);
+                }
+                if (psRes && psRes.plateCloudUnsupported && typeof showToast === 'function') {
+                  showToast('warning', 'ナンバー専用保存はサーバー未対応です。未反映のまま保持します。');
+                }
+              }
+              }
+            }
+          }
+        }
+
         if (typeof hideLoading === 'function') hideLoading();
         btn.disabled = false;
 
         const queued = !!(vehRes && vehRes.queued);
-        const variant = queued ? 'queued' : 'success';
+        const variant = queued ? 'queued' : (plateServerOk ? 'success' : 'warning');
         if (typeof ringMarkPageSaved === 'function') ringMarkPageSaved();
-        if (typeof showRingSavedSplash === 'function') {
+        if (!plateServerOk && !plateServerSkipped) {
+          var plateErr = '車両は登録されましたが、ナンバーをサーバーへ保存できませんでした。車両情報画面から再度お試しください。';
+          if (typeof showToast === 'function') showToast('warning', plateErr);
+          if (typeof showRingSavedSplash === 'function') {
+            showRingSavedSplash({ variant: 'warning', onDone: () => goBackHome() });
+          } else {
+            setTimeout(() => goBackHome(), 2200);
+          }
+        } else if (typeof showRingSavedSplash === 'function') {
           showRingSavedSplash({ variant, onDone: () => goBackHome() });
         } else {
           if (queued) {
@@ -642,7 +762,10 @@
       const vUsage = document.getElementById('inUsage');
       const vOwner = document.getElementById('inOwnerType');
       const catChecked = document.querySelector('input[name="vehicleCategory"]:checked');
-      const catLabel   = catChecked?.value === 'loaner' ? '代車' : '管理車両';
+      const catVal = catChecked ? catChecked.value : 'managed';
+      const catLabel = typeof ringVehicleCategoryLabelJa_ === 'function'
+        ? ringVehicleCategoryLabelJa_(catVal)
+        : (catVal === 'loaner' ? '代車' : (catVal === 'rental' ? 'レンタカー' : '管理車両'));
       const bodyHtml =
         (isBiz ? ringConfirmRow('車両区分', catLabel) : '') +
         ringConfirmRow('表示名 / ニックネーム', document.getElementById('inName').value.trim() || '名称未設定') +
