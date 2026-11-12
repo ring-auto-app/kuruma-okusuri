@@ -305,15 +305,58 @@
         }
     }
 
-    function ringGeminiApplySelectField_(mapping, value) {
+    function ringGeminiNormalizeVinCompare_(raw) {
+        return String(raw || '').replace(/[^0-9A-Za-z]/g, '').toUpperCase();
+    }
+
+    /**
+     * OCR の種別＋用途から inClass の option 値へ（一意に決まる場合のみ）
+     */
+    function ringGeminiResolveVehicleClassOption_(selectEl, rawResult) {
+        if (!selectEl || !rawResult) return '';
+        var rawVt = String(rawResult.vehicleType || '').trim();
+        if (ringGeminiSelectHasOption_(selectEl, rawVt)) return rawVt;
+        var compactVt = rawVt.replace(/\s+/g, '');
+        if (ringGeminiSelectHasOption_(selectEl, compactVt)) return compactVt;
+
+        var coarse = ringGeminiNormalizeVehicleType_(rawVt);
+        if (!coarse) return '';
+        if (coarse === '軽自動車' && ringGeminiSelectHasOption_(selectEl, '軽自動車')) return '軽自動車';
+        if (coarse === '大型特殊' && ringGeminiSelectHasOption_(selectEl, '大型特殊')) return '大型特殊';
+        if (coarse === '小型特殊' && ringGeminiSelectHasOption_(selectEl, '小型特殊')) return '小型特殊';
+
+        var purpose = ringGeminiNormalizeAlias_('purpose', rawResult.purpose);
+        if (!purpose) return '';
+
+        var combos = {
+            '普通乗用': coarse === '普通' && purpose === '乗用',
+            '普通貨物': coarse === '普通' && purpose === '貨物',
+            '普通乗合': coarse === '普通' && purpose === '乗合',
+            '普通特種': coarse === '普通' && purpose === '特種',
+            '小型乗用': coarse === '小型' && purpose === '乗用',
+            '小型貨物': coarse === '小型' && purpose === '貨物',
+            '小型乗合': coarse === '小型' && purpose === '乗合',
+            '小型特種': coarse === '小型' && purpose === '特種'
+        };
+        var hits = [];
+        Object.keys(combos).forEach(function (opt) {
+            if (combos[opt] && ringGeminiSelectHasOption_(selectEl, opt)) hits.push(opt);
+        });
+        return hits.length === 1 ? hits[0] : '';
+    }
+
+    function ringGeminiApplySelectField_(mapping, value, rawResult, key) {
         var el = ringGeminiGetElementByMapping_(mapping);
-        if (!el) return;
-        if (ringGeminiSelectHasOption_(el, value)) {
-            el.value = value;
-        } else {
-            el.value = '';
+        if (!el) return false;
+        var resolved = value;
+        if (key === 'vehicleType') {
+            var fromCombo = ringGeminiResolveVehicleClassOption_(el, rawResult || {});
+            if (fromCombo) resolved = fromCombo;
         }
+        if (!ringGeminiSelectHasOption_(el, resolved)) return false;
+        el.value = resolved;
         el.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
     }
 
     /**
@@ -349,8 +392,9 @@
                 ringGeminiApplyFirstRegIso_(value);
                 applied.push(key);
             } else if (mapping.type === 'select') {
-                ringGeminiApplySelectField_(mapping, value);
-                applied.push(key);
+                if (ringGeminiApplySelectField_(mapping, value, result, key)) {
+                    applied.push(key);
+                }
             }
         });
 
@@ -396,12 +440,13 @@
      * @param {string} imageBase64
      * @returns {Promise<object>}
      */
-    async function ringGeminiOcrShakenViaGas_(prompt, imageBase64) {
+    async function ringGeminiOcrShakenViaGas_(prompt, imageBase64, sessionId) {
+        if (global.RING_OCR_SESSION_API_VERSION !== 2) throw new Error('OCR_CLIENT_UPDATE_REQUIRED');
         var gasUrl = ringGeminiGetGasUrl_();
         if (!gasUrl) throw new Error('GAS_URL_MISSING');
 
         if (typeof ringEnsureAuthForOcr === 'function') {
-            await ringEnsureAuthForOcr();
+            await ringEnsureAuthForOcr(sessionId);
         }
 
         var payload = {
@@ -415,7 +460,7 @@
             json = await sendToGAS_Safe(RING_GEMINI_OCR_GAS_ACTION, {
                 prompt: prompt,
                 image: imageBase64
-            }, { timeoutMs: RING_GEMINI_OCR_TIMEOUT_MS });
+            }, { timeoutMs: RING_GEMINI_OCR_TIMEOUT_MS, ocrSessionId: sessionId });
         } else if (typeof fetchJsonWithTimeout === 'function') {
             var authToken = typeof ringResolveActiveAuthToken === 'function'
                 ? ringResolveActiveAuthToken() : '';
@@ -438,12 +483,70 @@
         return raw;
     }
 
-    async function ringGeminiOcrShaken(file) {
+    /**
+     * 車検証 OCR 結果の確認・VINゲート後にフォームへ反映
+     * @param {object} rawResult
+     * @param {{ requireVinMatch?: boolean, expectVin?: string }} opts
+     */
+    function ringGeminiConfirmAndApplyShaken_(rawResult, opts) {
+        opts = opts || {};
+        var normalized = ringGeminiNormalizeShakenResult_(rawResult);
+        if (opts.requireVinMatch) {
+            var ocrVin = ringGeminiNormalizeVinCompare_(normalized.vin);
+            var expect = ringGeminiNormalizeVinCompare_(opts.expectVin);
+            if (!ocrVin) {
+                if (typeof showToast === 'function') {
+                    showToast('warning', '車台番号が読み取れませんでした。内容を確認してから手入力してください。');
+                }
+                return Promise.resolve({ applied: false, reason: 'VIN_MISSING' });
+            }
+            if (!expect || ocrVin !== expect) {
+                if (typeof showToast === 'function') {
+                    showToast('warning', '車台番号が一致しません。別の車両の車検証の可能性があります。');
+                }
+                return Promise.resolve({ applied: false, reason: 'VIN_MISMATCH' });
+            }
+        }
+        return new Promise(function (resolve) {
+            var confirmOpts = {
+                title: '車検証の読み取り結果',
+                lead: '反映する前に内容を確認してください。キャンセルした場合はフォームは変更されません。',
+                bodyHtml: '<p>読み取った項目をフォームへ反映します。</p>',
+                confirmLabel: 'フォームへ反映',
+                onConfirm: function () {
+                    if (opts.sessionId && typeof ringOcrShouldConsumeResult_ === 'function' && !ringOcrShouldConsumeResult_(opts.sessionId)) {
+                        resolve({ applied: false, reason: 'CANCELLED' });
+                        return;
+                    }
+                    var applied = ringGeminiApplyToCarAddForm(rawResult);
+                    resolve({ applied: applied.length > 0, keys: applied });
+                },
+                onCancel: function () { resolve({ applied: false, reason: 'CANCELLED' }); }
+            };
+            if (typeof showRingSaveConfirm === 'function') {
+                showRingSaveConfirm(confirmOpts);
+            } else if (typeof showRingConfirm === 'function') {
+                showRingConfirm({
+                    title: confirmOpts.title,
+                    message: '読み取り結果をフォームへ反映しますか？',
+                    okLabel: confirmOpts.confirmLabel,
+                    cancelLabel: 'キャンセル'
+                }).then(function (ok) {
+                    if (ok) confirmOpts.onConfirm();
+                    else confirmOpts.onCancel();
+                });
+            } else {
+                confirmOpts.onConfirm();
+            }
+        });
+    }
+
+    async function ringGeminiOcrShaken(file, sessionId) {
         var b64 = await ringOcrCompressImageToBase64_(file);
         if (!b64) throw new Error('IMAGE_ENCODE_EMPTY');
 
         try {
-            var parsed = await ringGeminiOcrShakenViaGas_(RING_GEMINI_SHAKEN_PROMPT, b64);
+            var parsed = await ringGeminiOcrShakenViaGas_(RING_GEMINI_SHAKEN_PROMPT, b64, sessionId);
             return ringGeminiNormalizeShakenResult_(parsed);
         } finally {
             b64 = null;
@@ -455,5 +558,11 @@
     global.ringGeminiOcrShaken = ringGeminiOcrShaken;
     global.ringGeminiEmptyShakenResult = ringGeminiEmptyShakenResult_;
     global.ringGeminiApplyToCarAddForm = ringGeminiApplyToCarAddForm;
+    global.ringGeminiConfirmAndApplyShaken_ = ringGeminiConfirmAndApplyShaken_;
+    global.ringGeminiNormalizeVinCompare_ = ringGeminiNormalizeVinCompare_;
+    global.ringGeminiResolveVehicleClassOption_ = ringGeminiResolveVehicleClassOption_;
+    global.ringGeminiConfirmAndApplyShaken_ = ringGeminiConfirmAndApplyShaken_;
+    global.ringGeminiNormalizeVinCompare_ = ringGeminiNormalizeVinCompare_;
+    global.ringGeminiResolveVehicleClassOption_ = ringGeminiResolveVehicleClassOption_;
     global.ringOcrCompressImageToBase64_ = ringOcrCompressImageToBase64_;
 }(typeof window !== 'undefined' ? window : globalThis));

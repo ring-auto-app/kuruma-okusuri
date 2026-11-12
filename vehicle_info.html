@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
@@ -12,9 +12,11 @@
   <link rel="manifest" href="manifest.json">
     <title>車のお薬手帳</title>
   <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20261108-v33"></script>
+  <script src="app.js?v=20261113-v36"></script>
   <script src="theme.js"></script>
   <script src="car-add-date.js"></script>
+  <script src="gemini-ocr.js?v=20261113-v36"></script>
+  <script src="ring-media-import.js?v=20261113-v36"></script>
   <style>
     body {
       background: linear-gradient(to bottom, var(--line) 1px, transparent 1px) 0 0 / 100% 34px, var(--page-bg);
@@ -161,6 +163,18 @@
     .cat-radio-input:checked + .cat-radio-label {
       background: var(--accent); color: #fff; border-color: var(--accent);
     }
+    .ring-media-actions {
+      display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 14px;
+    }
+    .ring-media-actions button {
+      flex: 1 1 140px; min-height: var(--tap-min); font-size: 14px; font-weight: 900;
+      border-radius: 12px; border: 2px dashed var(--accent); background: var(--paper, #fff);
+      color: var(--accent); cursor: pointer; padding: 12px 8px;
+    }
+    .vi-shaken-preview {
+      display: none; margin-bottom: 12px; border: 2px solid var(--line); border-radius: 12px; overflow: hidden;
+    }
+    .vi-shaken-preview img { width: 100%; display: block; }
   </style>
 </head>
 <body>
@@ -169,6 +183,20 @@
       <a id="backBtn" class="back-link">≪戻る</a>
       <h1 class="title">🚗 車両情報</h1>
       <p class="sub-title" id="pageSubtitle">VIN以外の項目を編集できます</p>
+    </div>
+
+    <div class="card" style="margin-bottom:16px;">
+      <p style="font-size:13px;font-weight:800;color:var(--muted);margin:0 0 10px;line-height:1.5;">
+        車検証の画像またはPDFから項目を読み取ります（保存は手動です）。
+      </p>
+      <div class="ring-media-actions">
+        <button type="button" id="viShakenCameraBtn">カメラで撮影</button>
+        <button type="button" id="viShakenFileBtn">ファイルから選択</button>
+      </div>
+      <input type="file" id="viShakenCameraInput" accept="image/*" capture="environment" hidden>
+      <input type="file" id="viShakenFileInput" accept="image/jpeg,image/png,image/webp,image/*,application/pdf" hidden>
+      <div id="viShakenPreviewArea" class="vi-shaken-preview"><img id="viShakenPreviewImg" src="" alt=""></div>
+      <input type="hidden" id="inVin" value="">
     </div>
 
     <!-- 表示名・ニックネーム -->
@@ -577,6 +605,8 @@
       }
 
       document.getElementById('vinDisplay').textContent = targetVin;
+      var vinHidden = document.getElementById('inVin');
+      if (vinHidden) vinHidden.value = String(targetVin || '').trim().toUpperCase();
       populateVehicleFormFromCar_(car, prof, isBizInfo);
       rememberVehicleFormBase_(car);
       updateSchedule();
@@ -939,6 +969,40 @@
         if (typeof hideLoading === 'function') hideLoading();
         if (typeof showToast === 'function') showToast('error', '削除に失敗しました');
       }
+    }
+
+    if (typeof ringWireDualMediaButtons_ === 'function') {
+      ringWireDualMediaButtons_({
+        cameraInput: document.getElementById('viShakenCameraInput'),
+        fileInput: document.getElementById('viShakenFileInput'),
+        cameraBtn: document.getElementById('viShakenCameraBtn'),
+        fileBtn: document.getElementById('viShakenFileBtn'),
+        allowPdf: true,
+        maxPdfPages: 1,
+        onFiles: async function (files) {
+          if (!files || !files.length) return;
+          var vinHidden = document.getElementById('inVin');
+          if (vinHidden) vinHidden.value = String(targetVin || '').trim().toUpperCase();
+          await ringRunShakenOcrFromFiles_(files, {
+            previewImg: document.getElementById('viShakenPreviewImg'),
+            previewArea: document.getElementById('viShakenPreviewArea'),
+            onResult: async function (result, file, sessionId) {
+              if (typeof ringGeminiConfirmAndApplyShaken_ !== 'function') return;
+              var vinHidden = document.getElementById('inVin');
+              var expectVin = (vinHidden && vinHidden.value) ? vinHidden.value : targetVin;
+              var outcome = await ringGeminiConfirmAndApplyShaken_(result, {
+                requireVinMatch: true,
+                sessionId: sessionId,
+                expectVin: expectVin
+              });
+              if (outcome && outcome.applied && typeof updateSchedule === 'function') updateSchedule();
+              if (outcome && outcome.applied && typeof showToast === 'function') {
+                showToast('info', '読み取り内容を確認してから保存してください。');
+              }
+            }
+          });
+        }
+      });
     }
   </script>
 </body>

@@ -704,6 +704,29 @@ textarea.ring-auto-grow {
   max-width: 320px;
 }
 
+/* PDF ページ選択（OCR 入力） */
+.ring-pdf-page-picker__list {
+  max-height: 44vh;
+  overflow-y: auto;
+  text-align: left;
+  margin: 12px 0 16px;
+  padding: 8px 12px;
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  background: var(--page-bg);
+}
+.ring-pdf-page-picker__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text);
+  border-bottom: 1px solid var(--line);
+}
+.ring-pdf-page-picker__row:last-child { border-bottom: none; }
+
 /* OCR 解析オーバーレイ */
 .ring-ocr-overlay {
   display: none;

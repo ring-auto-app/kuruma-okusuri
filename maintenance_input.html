@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
@@ -13,10 +13,11 @@
   <title>車のお薬手帳</title>
 
   <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20261108-v33"></script>
+  <script src="app.js?v=20261113-v36"></script>
   <script src="theme.js"></script>
-  <script src="gemini-ocr.js"></script>
-  <script src="gemini-invoice-ocr.js"></script>
+  <script src="gemini-ocr.js?v=20261113-v36"></script>
+  <script src="ring-media-import.js?v=20261113-v36"></script>
+  <script src="gemini-invoice-ocr.js?v=20261113-v36"></script>
   <script src="car-add-date.js"></script>
 
   <style>
@@ -116,6 +117,16 @@
     }
     .invoice-scan-btn:disabled { background: #cbd5e1; color: #64748b; cursor: not-allowed; }
     .invoice-scan-btn:not(:disabled):active { transform: scale(0.98); }
+    .invoice-slot--active { outline: 3px solid var(--accent); outline-offset: 2px; }
+    .ring-media-actions {
+      display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0 14px;
+    }
+    .ring-media-actions button {
+      flex: 1 1 140px; min-height: var(--tap-min); font-size: 14px; font-weight: 900;
+      border-radius: 12px; border: 2px solid var(--line); background: var(--paper, #fff);
+      color: var(--text); cursor: pointer;
+    }
+    .ring-media-actions button:active { transform: scale(0.98); }
     .discard-notice {
       font-size: 12px; color: var(--accent); font-weight: 800; text-align: center;
       margin-bottom: 16px; line-height: 1.4;
@@ -277,10 +288,15 @@
 
     <div id="ring-maint-detail-ocr" role="region" aria-label="請求書・見積書の読み取り" aria-hidden="true" hidden>
       <section class="invoice-scan-section">
-        <p class="invoice-scan-label">請求書・見積書を撮って自動入力（最大5枚）</p>
+        <p class="invoice-scan-label">請求書・見積書を添付して読み取り（最大5枚）</p>
         <div class="invoice-slot-row" id="invoiceSlotRow"></div>
-        <input type="file" id="invoiceSlotFileInput" accept="image/*" capture="environment" hidden>
-        <button type="button" id="invoiceScanBtn" class="invoice-scan-btn" disabled>スキャンして読取開始</button>
+        <div class="ring-media-actions">
+          <button type="button" id="invoiceSlotCameraBtn">カメラで撮影</button>
+          <button type="button" id="invoiceSlotFileBtn">ファイルから選択</button>
+        </div>
+        <input type="file" id="invoiceSlotCameraInput" accept="image/*" capture="environment" hidden>
+        <input type="file" id="invoiceSlotFileInput" accept="image/jpeg,image/png,image/webp,image/*,application/pdf" hidden>
+        <button type="button" id="invoiceScanBtn" class="invoice-scan-btn" disabled>読み取り</button>
         <div class="discard-notice" id="discardNotice">※書類画像は保存されず破棄されます</div>
       </section>
     </div>
@@ -406,8 +422,12 @@
         <span class="label">整備メモ</span>
         <textarea id="inMemo" class="ring-auto-grow" rows="2" placeholder="特記事項があれば入力"></textarea>
       </div>
-      <div class="photo-btn" onclick="document.getElementById('partsPhotoInput').click()">📷 交換部品・用品の写真を追加</div>
-      <input type="file" id="partsPhotoInput" accept="image/*" hidden>
+      <div class="ring-media-actions">
+        <button type="button" id="partsPhotoCameraBtn">カメラで撮影</button>
+        <button type="button" id="partsPhotoFileBtn">ファイルから選択</button>
+      </div>
+      <input type="file" id="partsPhotoCameraInput" accept="image/*" capture="environment" hidden>
+      <input type="file" id="partsPhotoFileInput" accept="image/jpeg,image/png,image/webp,image/*" hidden>
       <img id="partsPhotoPreview" class="photo-preview" alt="">
       <input type="hidden" id="inPartsPhotoBase64">
     </div>
@@ -921,9 +941,15 @@
       });
     });
 
-    document.getElementById('partsPhotoInput').addEventListener('change', function (e) {
-      var file = e.target.files[0];
+    function ringMaintApplyPartsPhotoFile_(file) {
       if (!file) return;
+      var v = typeof ringValidateMediaFile_ === 'function'
+        ? ringValidateMediaFile_(file, { allowPdf: false })
+        : { ok: true };
+      if (!v.ok) {
+        if (typeof showToast === 'function') showToast('warning', v.message);
+        return;
+      }
       var reader = new FileReader();
       reader.onload = function (ev) {
         var preview = document.getElementById('partsPhotoPreview');
@@ -932,7 +958,19 @@
         document.getElementById('inPartsPhotoBase64').value = ev.target.result;
       };
       reader.readAsDataURL(file);
-    });
+    }
+    if (typeof ringWireDualMediaButtons_ === 'function') {
+      ringWireDualMediaButtons_({
+        cameraInput: document.getElementById('partsPhotoCameraInput'),
+        fileInput: document.getElementById('partsPhotoFileInput'),
+        cameraBtn: document.getElementById('partsPhotoCameraBtn'),
+        fileBtn: document.getElementById('partsPhotoFileBtn'),
+        allowPdf: false,
+        onFiles: function (files) {
+          if (files && files[0]) ringMaintApplyPartsPhotoFile_(files[0]);
+        }
+      });
+    }
 
     if (typeof ringInitInvoiceSlotPicker === 'function') {
       ringInitInvoiceSlotPicker({ saveBtnId: 'saveMaintBtn' });

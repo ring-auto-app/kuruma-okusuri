@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.json">
     <title>車のお薬手帳</title>
   <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20261108-v33"></script>
+  <script src="app.js?v=20261113-v36"></script>
   <script src="theme.js"></script>
   <style>
     body {
@@ -158,13 +158,15 @@
     }
     .save-btn:disabled { opacity: 0.5; }
 
-    .doc-scan-btn {
-      background: var(--paper, #fff); border: 2px dashed var(--accent); border-radius: 16px;
-      padding: 20px; text-align: center; cursor: pointer; font-weight: 900; font-size: 16px;
-      color: var(--accent); margin-bottom: 12px; transition: transform 0.1s;
-      line-height: 1.2;
+    .ring-media-actions {
+      display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;
     }
-    .doc-scan-btn:active { transform: scale(0.98); }
+    .ring-media-actions button {
+      flex: 1 1 140px; min-height: var(--tap-min); font-size: 14px; font-weight: 900;
+      border-radius: 12px; border: 2px dashed var(--accent); background: var(--paper, #fff);
+      color: var(--accent); cursor: pointer; padding: 16px 10px; line-height: 1.35;
+    }
+    .ring-media-actions button:active { transform: scale(0.98); }
     .doc-preview-area {
       display: none; margin-bottom: 16px; border: 2px solid var(--line);
       border-radius: 12px; overflow: hidden; background: #fff;
@@ -201,11 +203,15 @@
       <p class="sub-title" id="pageSubtitle">車両の登録します</p>
     </div>
 
-    <div class="doc-scan-btn" onclick="document.getElementById('docInput').click()">
-      📄 車検証をスキャン
-      <div class="scan-hint">写真から車台番号・満了日・型式などを読み取り、フォームへ反映します（登録は手動確認後）。</div>
+    <p class="scan-hint" style="font-size:13px;font-weight:800;color:var(--muted);margin:0 0 10px;line-height:1.5;">
+      車検証の画像またはPDFから読み取り、フォームへ反映します（保存は確認後）。
+    </p>
+    <div class="ring-media-actions">
+      <button type="button" id="docCameraBtn">カメラで撮影</button>
+      <button type="button" id="docFileBtn">ファイルから選択</button>
     </div>
-    <input type="file" id="docInput" accept="image/*" capture="environment" hidden>
+    <input type="file" id="docCameraInput" accept="image/*" capture="environment" hidden>
+    <input type="file" id="docFileInput" accept="image/jpeg,image/png,image/webp,image/*,application/pdf" hidden>
     <div class="doc-preview-area" id="docPreviewArea"><img id="docPreviewImg" src="" alt=""></div>
     <div class="discard-notice" id="discardNotice" style="display:none;">※画像は保存されず破棄されます</div>
 
@@ -402,7 +408,8 @@
     </div>
   </div>
   <script src="car-add-date.js"></script>
-  <script src="gemini-ocr.js"></script>
+  <script src="gemini-ocr.js?v=20261113-v36"></script>
+  <script src="ring-media-import.js?v=20261113-v36"></script>
   <script>
     const profile = (typeof getCurrentProfile === 'function')
       ? getCurrentProfile()
@@ -797,67 +804,39 @@
       });
     }
 
-    /* 車検証 OCR → フォーム反映（自動保存なし） */
-    document.getElementById('docInput').addEventListener('change', async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
+    async function ringCarAddHandleShakenFiles_(files) {
+      if (!files || !files.length) return;
       if (typeof ringGuardUserVehicleLimitBeforeAdd_ === 'function' && !ringGuardUserVehicleLimitBeforeAdd_('')) {
-        e.target.value = '';
         return;
       }
-      let previewUrl = '';
-      try {
-        previewUrl = await new Promise((resolve, reject) => {
-          const r = new FileReader();
-          r.onload = () => resolve(String(r.result || ''));
-          r.onerror = reject;
-          r.readAsDataURL(file);
-        });
-      } catch (err) {
-        console.error(err);
-        return;
-      }
-      document.getElementById('docPreviewImg').src = previewUrl;
-      document.getElementById('docPreviewArea').style.display = 'block';
-      document.getElementById('discardNotice').style.display = 'block';
+      await ringRunShakenOcrFromFiles_(files, {
+        previewImg: document.getElementById('docPreviewImg'),
+        previewArea: document.getElementById('docPreviewArea'),
+        discardNotice: document.getElementById('discardNotice'),
+        onResult: async function (result, file, sessionId) {
+          if (typeof ringGeminiConfirmAndApplyShaken_ !== 'function') return;
+          const outcome = await ringGeminiConfirmAndApplyShaken_(result, { requireVinMatch: false, sessionId: sessionId });
+          if (!outcome || !outcome.applied) return;
+          if (typeof ringCarAddUpdateJibaisekiAlert === 'function') ringCarAddUpdateJibaisekiAlert();
+          if (typeof updateSchedule === 'function') updateSchedule();
+          if (typeof showToast === 'function') {
+            showToast('info', '車台番号に誤認識がないか確認してください。');
+          }
+        }
+      });
+    }
 
-      if (typeof showOcrAnalyzingOverlay === 'function') {
-        showOcrAnalyzingOverlay({ previewDataUrl: previewUrl, title: '読み取り中' });
-      } else if (typeof showLoading === 'function') {
-        showLoading('読み取り中', '読み取り中…');
-      }
-
-      let result = null;
-      try {
-        if (typeof ringGeminiOcrShaken !== 'function') {
-          throw new Error('gemini-ocr.js が読み込まれていません');
-        }
-        result = await ringGeminiOcrShaken(file);
-        console.log(result);
-        const applied = ringGeminiApplyToCarAddForm(result);
-        if (typeof ringCarAddUpdateJibaisekiAlert === 'function') ringCarAddUpdateJibaisekiAlert();
-        if (typeof updateSchedule === 'function') updateSchedule();
-        if (typeof showToast === 'function') {
-          showToast(
-            applied.length ? 'info' : 'warning',
-            applied.length
-              ? '車台番号に誤認識がないか確認してください。'
-              : '読取項目がありませんでした。手入力で続行してください。'
-          );
-        }
-      } catch (err) {
-        const msg = String(err && err.message ? err.message : err);
-        console.error('[OCR]', msg);
-        if (typeof showToast === 'function') {
-          showToast('error', '車検証の読み取りに失敗しました: ' + msg);
-        }
-      } finally {
-        if (typeof hideOcrAnalyzingOverlay === 'function') hideOcrAnalyzingOverlay();
-        else if (typeof hideLoading === 'function') hideLoading();
-        e.target.value = '';
-      }
-      if (typeof wasOcrAnalyzingCancelled === 'function' && wasOcrAnalyzingCancelled()) return;
-    });
+    if (typeof ringWireDualMediaButtons_ === 'function') {
+      ringWireDualMediaButtons_({
+        cameraInput: document.getElementById('docCameraInput'),
+        fileInput: document.getElementById('docFileInput'),
+        cameraBtn: document.getElementById('docCameraBtn'),
+        fileBtn: document.getElementById('docFileBtn'),
+        allowPdf: true,
+        maxPdfPages: 1,
+        onFiles: function (files) { return ringCarAddHandleShakenFiles_(files); }
+      });
+    }
 
   
   </script>

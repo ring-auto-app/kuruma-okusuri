@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
@@ -13,9 +13,10 @@
     <title>車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20261108-v33"></script>
+  <script src="app.js?v=20261113-v36"></script>
   <script src="theme.js"></script>
   <script src="car-add-date.js"></script>
+  <script src="ring-media-import.js?v=20261113-v36"></script>
   
   <style>
     /* ページ固有のデザイン設定：アコーディオン、写真の数値を維持 */
@@ -204,8 +205,12 @@
 
     <div class="footer-card">
       <div class="field"><span class="label">作業メモ</span><textarea id="inMemo" class="ring-auto-grow" rows="2" placeholder="その他作業、交換部品などがあれば入力"></textarea></div>
-      <div class="photo-btn" onclick="document.getElementById('partsPhotoInput').click()">📷 交換部品・用品の写真を追加</div>
-      <input type="file" id="partsPhotoInput" accept="image/*" hidden>
+      <div class="ring-media-actions" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:10px;">
+        <button type="button" id="partsPhotoCameraBtn" style="flex:1;font-weight:900;min-height:var(--tap-min);">カメラで撮影</button>
+        <button type="button" id="partsPhotoFileBtn" style="flex:1;font-weight:900;min-height:var(--tap-min);">ファイルから選択</button>
+      </div>
+      <input type="file" id="partsPhotoCameraInput" accept="image/*" capture="environment" hidden>
+      <input type="file" id="partsPhotoFileInput" accept="image/jpeg,image/png,image/webp,image/*" hidden>
       <img id="partsPhotoPreview" class="photo-preview">
       <input type="hidden" id="inPartsPhotoBase64">
     </div>
@@ -460,9 +465,15 @@
       });
     });
 
-    // 写真プレビュー処理
-    document.getElementById('partsPhotoInput').addEventListener('change', (e) => {
-      const file = e.target.files[0]; if(!file) return;
+    function ringDealerApplyPartsPhoto_(file) {
+      if (!file) return;
+      const v = typeof ringValidateMediaFile_ === 'function'
+        ? ringValidateMediaFile_(file, { allowPdf: false })
+        : { ok: true };
+      if (!v.ok) {
+        if (typeof showToast === 'function') showToast('warning', v.message);
+        return;
+      }
       const reader = new FileReader();
       reader.onload = (ev) => {
         document.getElementById('partsPhotoPreview').src = ev.target.result;
@@ -470,7 +481,17 @@
         document.getElementById('inPartsPhotoBase64').value = ev.target.result;
       };
       reader.readAsDataURL(file);
-    });
+    }
+    if (typeof ringWireDualMediaButtons_ === 'function') {
+      ringWireDualMediaButtons_({
+        cameraInput: document.getElementById('partsPhotoCameraInput'),
+        fileInput: document.getElementById('partsPhotoFileInput'),
+        cameraBtn: document.getElementById('partsPhotoCameraBtn'),
+        fileBtn: document.getElementById('partsPhotoFileBtn'),
+        allowPdf: false,
+        onFiles: (files) => { if (files && files[0]) ringDealerApplyPartsPhoto_(files[0]); }
+      });
+    }
 
     // 保存（バリデーション → 車台番号確認 → 保存実行）
     document.getElementById("saveBtn").addEventListener("click", function () {

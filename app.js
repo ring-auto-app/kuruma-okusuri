@@ -916,7 +916,8 @@ function ringSwitchToAdminDashboard() {
 }
 
 /** OCR 直前のみ GAS verify（Optimistic 起動とは独立） */
-async function ringEnsureAuthForOcr() {
+async function ringEnsureAuthForOcr(sessionId) {
+    if (sessionId && !ringOcrShouldConsumeResult_(sessionId)) throw new Error('OCR_CANCELLED');
     if (ringIsOcrDemoMode_()) return;
     var mode = ringGetActiveMode();
     var tok = ringResolveActiveAuthToken();
@@ -943,6 +944,7 @@ async function ringEnsureAuthForOcr() {
         showToast('info', '通信確認中…');
     }
     var verified = await ringVerifySession(tok, mode);
+    if (sessionId && (!ringOcrShouldConsumeResult_(sessionId) || tok !== ringResolveActiveAuthToken() || mode !== ringGetActiveMode())) throw new Error('OCR_CANCELLED');
     if (verified.success === true) {
         var slot = ringReadAuthSlot(mode);
         if (slot) {
@@ -951,6 +953,7 @@ async function ringEnsureAuthForOcr() {
             slot.verifiedAt = new Date().toISOString();
             ringWriteAuthSlot(mode, slot);
             ringApplyActiveSession(slot, mode);
+            if (sessionId && window.__ringOcrContext) window.__ringOcrContext.token = ringResolveActiveAuthToken();
         }
         if (typeof window !== 'undefined') {
             window.__ringSessionVerified = true;
@@ -6574,6 +6577,8 @@ async function fetchJsonWithTimeout(url, options, timeoutMs) {
  * @param {{ timeoutMs?: number }} [opts]
  */
 async function sendToGAS_Safe(actionType, data, opts) {
+    var ocrSessionId = opts && opts.ocrSessionId;
+    if (ocrSessionId && !ringOcrShouldConsumeResult_(ocrSessionId)) throw new Error('OCR_CANCELLED');
     if (ringIsDemoGasOffline_()) {
         return ringDemoGasStubResponse_(actionType);
     }
@@ -6625,9 +6630,11 @@ async function sendToGAS_Safe(actionType, data, opts) {
     }
     return json;
     } catch (err) {
+        if (ocrSessionId && !ringOcrShouldConsumeResult_(ocrSessionId)) throw err;
         var errMsg = String(err && err.message ? err.message : err || '');
         if (/AUTH_EXPIRED/i.test(errMsg) && actionType !== 'verify_session') {
             ringHandleAuthExpired_(ringGetActiveMode(), actionType);
+            err.ringAuthHandled = true;
         }
         if (actionType !== 'system_log') {
             if ((actionType === 'ocr_vin' || actionType === 'ocr_vin_search' || actionType === 'ocr_gemini_shaken' || actionType === 'ocr_invoice') && /AUTH_/i.test(errMsg)) {
@@ -6651,11 +6658,8 @@ async function sendToGAS_Safe(actionType, data, opts) {
             showToast(toastType, userMsg);
         }
         throw err;
-    } finally {
-        if (typeof hideOcrAnalyzingOverlay === 'function') {
-            try { hideOcrAnalyzingOverlay(); } catch (eOv) { /* ignore */ }
-        }
     }
+    // OCR overlay lifetime belongs to the UI session, never to shared transport.
 }
 
 /**
@@ -8167,7 +8171,52 @@ function incrementOcrFailureCount() {
 
 var __ringOcrOverlayInterval = null;
 
-function hideOcrAnalyzingOverlay() {
+/** OCR 実行ごとに増える。キャンセル・新規開始で古い応答を無効化 */
+function ringOcrBeginSession_() {
+    if (typeof window === 'undefined') return 0;
+    window.__ringOcrSessionSeq = (window.__ringOcrSessionSeq || 0) + 1;
+    window.__ringOcrActiveSession = window.__ringOcrSessionSeq;
+    window.__ringOcrCancelled = false;
+    window.__ringOcrCancelledSessionId = 0;
+    window.__ringOcrContext = {
+        token: typeof ringResolveActiveAuthToken === 'function' ? ringResolveActiveAuthToken() : null,
+        mode: typeof ringGetActiveMode === 'function' ? ringGetActiveMode() : null,
+        url: typeof GAS_URL !== 'undefined' ? GAS_URL : null
+    };
+    return window.__ringOcrActiveSession;
+}
+
+function ringOcrCancelSession_(sessionId) {
+    if (typeof window === 'undefined') return;
+    if (sessionId && sessionId !== window.__ringOcrActiveSession) return;
+    window.__ringOcrCancelled = true;
+    if (window.__ringOcrActiveSession) {
+        window.__ringOcrCancelledSessionId = window.__ringOcrActiveSession;
+    }
+    window.__ringShakenOcrBusy = false;
+    var cleanup = window.__ringOcrCancelCleanup;
+    if (cleanup && cleanup.sessionId === window.__ringOcrActiveSession) cleanup.run();
+}
+
+/**
+ * @param {number} [sessionId]
+ * @returns {boolean}
+ */
+function ringOcrShouldConsumeResult_(sessionId) {
+    if (typeof window === 'undefined') return true;
+    if (sessionId && window.__ringOcrCancelledSessionId === sessionId) return false;
+    if (sessionId && window.__ringOcrActiveSession && sessionId !== window.__ringOcrActiveSession) return false;
+    var ctx = window.__ringOcrContext;
+    if (sessionId && ctx) {
+        if (ctx.token != null && ctx.token !== ringResolveActiveAuthToken()) return false;
+        if (ctx.mode != null && ctx.mode !== ringGetActiveMode()) return false;
+        if (ctx.url != null && ctx.url !== GAS_URL) return false;
+    }
+    return !window.__ringOcrCancelled;
+}
+
+function hideOcrAnalyzingOverlay(sessionId) {
+    if (sessionId && window.__ringOcrOverlaySessionId !== sessionId) return;
     if (__ringOcrOverlayInterval) {
         clearInterval(__ringOcrOverlayInterval);
         __ringOcrOverlayInterval = null;
@@ -8186,7 +8235,13 @@ function hideOcrAnalyzingOverlay() {
 function showOcrAnalyzingOverlay(opts) {
     opts = opts || {};
     hideOcrAnalyzingOverlay();
-    if (typeof window !== 'undefined') window.__ringOcrCancelled = false;
+    var sessionId = opts.sessionId;
+    if (!sessionId && typeof ringOcrBeginSession_ === 'function') {
+        sessionId = ringOcrBeginSession_();
+    } else if (!sessionId && typeof window !== 'undefined') {
+        window.__ringOcrCancelled = false;
+    }
+    window.__ringOcrOverlaySessionId = sessionId;
     var messages = opts.messages || ['画像を読み込み中…', '読み取り中…', '内容を確認中…'];
     var title = opts.title || '読み取り中';
     var html = '<div class="ring-ocr-overlay show" id="ring-ocr-overlay">' +
@@ -8217,15 +8272,22 @@ function showOcrAnalyzingOverlay(opts) {
     var cancelBtn = document.getElementById('ring-ocr-overlay-cancel');
     if (cancelBtn) {
         cancelBtn.onclick = function () {
-            if (typeof window !== 'undefined') window.__ringOcrCancelled = true;
-            hideOcrAnalyzingOverlay();
+            if (typeof ringOcrCancelSession_ === 'function') ringOcrCancelSession_(sessionId);
+            else if (typeof window !== 'undefined') window.__ringOcrCancelled = true;
+            hideOcrAnalyzingOverlay(sessionId);
         };
     }
+    return sessionId || 0;
 }
 
 function wasOcrAnalyzingCancelled() {
     return !!(typeof window !== 'undefined' && window.__ringOcrCancelled);
 }
+
+window.RING_OCR_SESSION_API_VERSION = 2;
+window.ringOcrBeginSession_ = ringOcrBeginSession_;
+window.ringOcrCancelSession_ = ringOcrCancelSession_;
+window.ringOcrShouldConsumeResult_ = ringOcrShouldConsumeResult_;
 
 /**
  * OCR 複数項目：チェックされたキーだけ applyFn に渡す（デモ全項目向け）
@@ -9008,8 +9070,13 @@ function updateOcrBatchProgressOverlay(state) {
 function showOcrBatchProgressOverlay(opts) {
     opts = opts || {};
     hideOcrBatchProgressOverlay();
-    if (typeof window !== 'undefined') {
+    var sessionId = opts.sessionId;
+    if (!sessionId && typeof ringOcrBeginSession_ === 'function') {
+        sessionId = ringOcrBeginSession_();
+    } else if (typeof window !== 'undefined') {
         window.__ringOcrCancelled = false;
+    }
+    if (typeof window !== 'undefined') {
         window.__ringOcrRunning = true;
         window.addEventListener('beforeunload', ringOcrBeforeUnload_);
     }
@@ -9025,11 +9092,13 @@ function showOcrBatchProgressOverlay(opts) {
     var cancelBtn = document.getElementById('ring-ocr-batch-cancel');
     if (cancelBtn) {
         cancelBtn.onclick = function () {
-            if (typeof window !== 'undefined') window.__ringOcrCancelled = true;
+            if (typeof ringOcrCancelSession_ === 'function') ringOcrCancelSession_();
+            else if (typeof window !== 'undefined') window.__ringOcrCancelled = true;
             hideOcrBatchProgressOverlay();
         };
     }
     updateOcrBatchProgressOverlay(opts.state || { current: 0, total: opts.total || 0, failCount: 0, items: [] });
+    return sessionId || 0;
 }
 
 async function runBatchOcrPipeline(files, onProgress) {
@@ -9240,15 +9309,21 @@ async function ringHandleInvoiceOcrScan(opts) {
         };
     }
 
-    showOcrAnalyzingOverlay({
+    var sessionId = showOcrAnalyzingOverlay({
         title: '明細を読み取り中',
+        sessionId: opts.sessionId,
         messages: ['明細を読み取り中…', '内容を確認中…']
     });
     try {
         if (typeof ringInvoiceOcrViaGas_ !== 'function') throw new Error('INVOICE_OCR_UNAVAILABLE');
-        return await ringInvoiceOcrViaGas_(images);
+        var ocrOut = await ringInvoiceOcrViaGas_(images, sessionId);
+        if (typeof ringOcrShouldConsumeResult_ === 'function' && !ringOcrShouldConsumeResult_(sessionId)) {
+            return null;
+        }
+        if (typeof window !== 'undefined') window.__ringOcrLastInvoiceScanSession = sessionId;
+        return ocrOut;
     } finally {
-        hideOcrAnalyzingOverlay();
+        hideOcrAnalyzingOverlay(sessionId);
     }
 }
 
@@ -9621,13 +9696,21 @@ async function ringHandleBatchDocumentScan(opts) {
     var queueItems = files.map(function (f, i) {
         return { name: f.name, status: i === 0 ? 'processing' : 'waiting' };
     });
-    showOcrBatchProgressOverlay({ total: files.length, state: { current: 0, total: files.length, failCount: 0, items: queueItems } });
+    var batchSessionId = showOcrBatchProgressOverlay({
+        total: files.length,
+        state: { current: 0, total: files.length, failCount: 0, items: queueItems }
+    });
     var batchResult;
     try {
         batchResult = await runBatchOcrPipeline(files, function (st) {
             updateOcrBatchProgressOverlay(st);
         });
     } catch (e) {
+        if (typeof ringOcrShouldConsumeResult_ === 'function' && !ringOcrShouldConsumeResult_(batchSessionId)) {
+            hideOcrBatchProgressOverlay();
+            if (saveBtn) saveBtn.disabled = false;
+            return;
+        }
         ringReportOcrAbort_('batch_pipeline', e, { payload: { fileCount: files.length } });
         hideOcrBatchProgressOverlay();
         if (saveBtn) saveBtn.disabled = false;
@@ -9637,6 +9720,7 @@ async function ringHandleBatchDocumentScan(opts) {
         if (saveBtn) saveBtn.disabled = false;
     }
     if (!batchResult || !batchResult.pageResults) return;
+    if (typeof ringOcrShouldConsumeResult_ === 'function' && !ringOcrShouldConsumeResult_(batchSessionId)) return;
     if (wasOcrAnalyzingCancelled()) return;
     var merged = mergeOCRResults(batchResult.pageResults);
     if (!merged.stats.successCount) return;
