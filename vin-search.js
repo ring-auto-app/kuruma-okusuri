@@ -329,7 +329,7 @@ async function runFactoryVinHistorySearch(rawInput) {
     }
 
     ringFactoryVinSearchSetButtonBusy_(true);
-    ringFactoryVinSearchShowStatus_('整備履歴を取得しています…', false);
+    ringFactoryVinSearchShowStatus_('履歴を読み込み中…', false);
 
     try {
         if (typeof navigator !== 'undefined' && navigator.onLine === false) {

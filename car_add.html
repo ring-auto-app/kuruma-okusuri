@@ -567,7 +567,7 @@
         return;
       }
       btn.disabled = true;
-      if (typeof showLoading === 'function') showLoading('登録中', '車両情報を保存しています...');
+      if (typeof showLoading === 'function') showLoading('登録中', '保存中…');
 
       // 車両区分（工場・事業者のみ選択あり、それ以外は managed）
       const catEl = document.querySelector('input[name="vehicleCategory"]:checked');
@@ -720,7 +720,11 @@
           var plateErr = '車両は登録されましたが、ナンバーをサーバーへ保存できませんでした。車両情報画面から再度お試しください。';
           if (typeof showToast === 'function') showToast('warning', plateErr);
           if (typeof showRingSavedSplash === 'function') {
-            showRingSavedSplash({ variant: 'warning', onDone: () => goBackHome() });
+            showRingSavedSplash({
+              variant: 'warning',
+              message: '登録しました（ナンバー未反映）',
+              onDone: () => goBackHome()
+            });
           } else {
             setTimeout(() => goBackHome(), 2200);
           }
@@ -728,9 +732,9 @@
           showRingSavedSplash({ variant, onDone: () => goBackHome() });
         } else {
           if (queued) {
-            showToast('info', '端末に保存しました。回線が復旧すると車両情報を自動でサーバーへ送信します');
+            showToast('info', '未送信です。接続後に送信します。');
           } else {
-            showToast('success', '正常に登録されました');
+            showToast('success', '登録しました');
           }
           setTimeout(() => goBackHome(), 1200);
         }
@@ -818,9 +822,9 @@
       document.getElementById('discardNotice').style.display = 'block';
 
       if (typeof showOcrAnalyzingOverlay === 'function') {
-        showOcrAnalyzingOverlay({ previewDataUrl: previewUrl, title: '車検証確認中' });
+        showOcrAnalyzingOverlay({ previewDataUrl: previewUrl, title: '読み取り中' });
       } else if (typeof showLoading === 'function') {
-        showLoading('車検証確認中', '車検証を読み取っています...');
+        showLoading('読み取り中', '読み取り中…');
       }
 
       let result = null;

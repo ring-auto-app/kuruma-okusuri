@@ -290,7 +290,7 @@
         refreshLabel: '🔄 更新',
         statusElId: 'ringUserHomeSyncStatus',
         lastSyncElId: 'ringUserHomeLastSync',
-        statusMessage: statusMsg || '最新データ取得中…',
+        statusMessage: statusMsg || '読み込み中…',
         preserveScroll: false,
         getSignatureFn: getUserHomeSignature,
         renderFn: function () { /* 表示項目は静的 */ },
@@ -312,7 +312,7 @@
       var isFirstAccess = !hasMeta;
 
       if (isManualRefresh) {
-        await ringRunPageSync_(buildUserHomeSyncOpts('最新データ取得中…'));
+        await ringRunPageSync_(buildUserHomeSyncOpts('読み込み中…'));
         return;
       }
 
@@ -321,13 +321,13 @@
       }
 
       if (isFirstAccess) {
-        await ringRunPageSync_(buildUserHomeSyncOpts('同期中…'));
+        await ringRunPageSync_(buildUserHomeSyncOpts('読み込み中…'));
         return;
       }
 
       if (fresh) return;
 
-      ringRunPageSync_(buildUserHomeSyncOpts('最新データ取得中…'));
+      ringRunPageSync_(buildUserHomeSyncOpts('読み込み中…'));
     }
 
     window.addEventListener('DOMContentLoaded', function () {
@@ -372,7 +372,7 @@
         ringSetupBackgroundResync_({
           onResume: function () {
             if (typeof ringIsPageCacheFresh_ === 'function' && ringIsPageCacheFresh_(userHomeCacheKey, 'user_home')) return;
-            ringRunPageSync_(buildUserHomeSyncOpts('最新データ取得中…'));
+            ringRunPageSync_(buildUserHomeSyncOpts('読み込み中…'));
           }
         });
       }
@@ -385,7 +385,7 @@
           const pbar = document.getElementById('ringPendingSyncBar');
           if (pbar && pend > 0) {
             pbar.style.display = 'block';
-            pbar.textContent = '未送信のデータが ' + pend + ' 件あります。オンライン復帰時に自動送信します。';
+            pbar.textContent = '未送信のデータがあります（' + pend + '件）。接続後に送信します。';
           }
           if (typeof ringAdsInit === 'function') ringAdsInit('user_home');
           var adl = document.getElementById('ringAdminDashLink');
@@ -400,7 +400,7 @@
         const pbar = document.getElementById('ringPendingSyncBar');
         if (pbar && pend > 0) {
           pbar.style.display = 'block';
-          pbar.textContent = '未送信のデータが ' + pend + ' 件あります。オンライン復帰時に自動送信します。';
+          pbar.textContent = '未送信のデータがあります（' + pend + '件）。接続後に送信します。';
         }
         if (typeof ringAdsInit === 'function') ringAdsInit('user_home');
         var adl = document.getElementById('ringAdminDashLink');

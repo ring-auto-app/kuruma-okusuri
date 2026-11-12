@@ -409,7 +409,7 @@
         if (typeof window !== 'undefined') window.__ringSaving = true;
         try {
 
-        showLoading("保存中", window.__ringInspectionEditMode ? "点検記録を更新しています..." : "点検記録を保存しています...");
+        showLoading("保存中", "保存中…");
 
         const isEdit = !!window.__ringInspectionEditMode;
         const generatedLogId = isEdit && window.__ringInspectionEditLogId
@@ -494,7 +494,7 @@
           !/VEHICLE_NOT_REGISTERED/.test(String(gasResult.error || ''))
           ? ringGasPermanentErrorMessage_(gasResult.error) : null;
         const maintNote = maintState === 'saved' ? '\n整備履歴には追加しました。'
-          : (maintState === 'queued' ? '\n整備履歴は端末に保存し、回線復旧後に送信します。'
+          : (maintState === 'queued' ? '\n整備履歴は未送信です。接続後に送信します。'
             : (maintState === 'failed' ? '\n' + maintFailMsg : ''));
         if (gasResult.hardFail && hardMsgBiz) {
           showToast('error', hardMsgBiz + maintNote);
@@ -511,19 +511,19 @@
           : 'vehicles.html';
         if (maintState === 'failed') {
           showToast('warning', (gasResult.queued
-            ? '点検は端末に保存しました（回線復旧後に送信します）。'
-            : '点検は保存しました。') + maintFailMsg, 4000);
+            ? '未送信です。接続後に送信します。'
+            : '保存しました。') + maintFailMsg, 4000);
           setTimeout(() => location.replace(dest), 4000);
           return;
         }
         const variant = gasResult.queued ? 'queued' : 'success';
         const okMsg = isEdit
-          ? '点検記録を更新しました'
+          ? '変更しました'
           : (maintState === 'saved'
-            ? '点検を保存しました（整備履歴にも追加しました）'
+            ? '保存しました（整備履歴にも追加しました）'
             : (maintState === 'queued'
-              ? '点検を保存しました（整備履歴は回線復旧後に送信します）'
-              : '正常に登録されました'));
+              ? '保存しました（整備履歴は接続後に送信します）'
+              : '登録しました'));
         if (typeof showRingSavedSplash === 'function') {
           showRingSavedSplash({
             variant,
@@ -532,9 +532,9 @@
           });
         } else {
           if (gasResult.queued) {
-            showToast('info', '端末に保存しました。回線が復旧すると点検記録を自動でサーバーへ送信します。');
+            showToast('info', '未送信です。接続後に送信します。');
           } else if (!gasResult.serverSaved) {
-            showToast('info', '端末に保存しました。サーバー送信に失敗しました。回線復旧後に再試行してください。');
+            showToast('info', '未送信です。接続後に送信します。');
           } else {
             showToast('success', okMsg);
           }

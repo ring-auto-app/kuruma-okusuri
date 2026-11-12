@@ -693,6 +693,9 @@ textarea.ring-auto-grow {
 .ring-saved-splash--queued .ring-saved-splash__orb {
   background: linear-gradient(145deg, #eab308, #ca8a04);
 }
+.ring-saved-splash--warning .ring-saved-splash__orb {
+  background: linear-gradient(145deg, #f97316, #ea580c);
+}
 .ring-saved-splash__msg {
   font-size: 16px;
   font-weight: 900;

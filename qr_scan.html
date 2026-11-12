@@ -236,7 +236,7 @@
           } else if (favRes && favRes.shopInfoFailed) {
             showResult('かかりつけ登録', '<p class="empty-msg">店舗情報を取得できませんでした</p>');
           } else if (favRes && favRes.ok && !favRes.duplicate) {
-            showResult('かかりつけ登録', '<p class="status-msg success">登録が完了しました</p>');
+            showResult('かかりつけ登録', '<p class="status-msg success">登録しました</p>');
           } else if (favRes && favRes.duplicate) {
             showResult('かかりつけ登録', '<p class="empty-msg">すでにかかりつけ工場に登録されています</p>');
           } else if (favRes && favRes.cancelled) {

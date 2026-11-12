@@ -226,7 +226,7 @@
         return;
       }
 
-      if (typeof showLoading === 'function') showLoading("データ取得中", "対象の記録を読み込んでいます...");
+      if (typeof showLoading === 'function') showLoading("読込中", "読み込み中…");
       try {
         if (typeof syncMaintenanceHistoryForVin === 'function') {
           try { await syncMaintenanceHistoryForVin(vin); } catch (eSync) { /* キャッシュ */ }
@@ -284,7 +284,7 @@
         return;
       }
 
-      showLoading("保存中", "修正内容を上書き保存しています...");
+      showLoading("保存中", "保存中…");
 
       if (typeof window !== 'undefined') window.__ringSaving = true;
       try {
@@ -343,7 +343,7 @@
               onDone: () => location.replace(`factory_detail.html?vin=${destVin}&log_id=${logId}`),
             });
           } else {
-            showToast('success', '正常に登録されました');
+            showToast('success', '変更しました');
             setTimeout(() => location.replace(`factory_detail.html?vin=${destVin}&log_id=${logId}`), 1200);
           }
         } catch (gasErr) {
@@ -357,7 +357,7 @@
               onDone: () => location.replace(`factory_detail.html?vin=${encodeURIComponent(vinNew)}&log_id=${logId}`),
             });
           } else if (typeof showToast === 'function') {
-            showToast('info', '端末に保存しました。サーバー反映は回線復旧後に自動で再試行されます。');
+            showToast('info', '未送信です。接続後に送信します。');
             setTimeout(() => location.replace(`factory_detail.html?vin=${encodeURIComponent(vinNew)}&log_id=${logId}`), 1200);
           }
         }

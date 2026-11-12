@@ -151,7 +151,7 @@
           const pbar = document.getElementById('ringPendingSyncBar');
           if (pbar && pend > 0) {
             pbar.style.display = 'block';
-            pbar.textContent = '未送信のデータが ' + pend + ' 件あります。オンライン復帰時に自動送信します。';
+            pbar.textContent = '未送信のデータがあります（' + pend + '件）。接続後に送信します。';
           }
           if (typeof ringAdsInit === 'function') ringAdsInit('dealer_home');
         });
@@ -160,7 +160,7 @@
         const pbar = document.getElementById('ringPendingSyncBar');
         if (pbar && pend > 0) {
           pbar.style.display = 'block';
-          pbar.textContent = '未送信のデータが ' + pend + ' 件あります。オンライン復帰時に自動送信します。';
+          pbar.textContent = '未送信のデータがあります（' + pend + '件）。接続後に送信します。';
         }
         if (typeof ringAdsInit === 'function') ringAdsInit('dealer_home');
       }

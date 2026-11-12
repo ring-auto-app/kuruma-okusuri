@@ -268,7 +268,7 @@
         refreshLabel: '🔄 更新',
         statusElId: 'ringVehiclesSyncStatus',
         lastSyncElId: 'ringVehiclesLastSync',
-        statusMessage: statusMsg || '最新データ取得中…',
+        statusMessage: statusMsg || '読み込み中…',
         preserveScroll: true,
         getSignatureFn: getVehiclesSignature,
         renderFn: renderCars,
@@ -288,8 +288,8 @@
       var hasLocal = getFilteredVehicles().length > 0;
 
       if (isManualRefresh) {
-        if (typeof showLoading === 'function') showLoading('更新中', 'サーバーから最新情報を取得しています...');
-        await ringRunPageSync_(buildVehiclesSyncOpts('最新データ取得中…'));
+        if (typeof showLoading === 'function') showLoading('更新中', '読み込み中…');
+        await ringRunPageSync_(buildVehiclesSyncOpts('読み込み中…'));
         if (typeof hideLoading === 'function') hideLoading();
         return;
       }
@@ -298,13 +298,13 @@
         renderCars(false);
         if (typeof ringUpdateLastSyncLabel_ === 'function') ringUpdateLastSyncLabel_('ringVehiclesLastSync', vehiclesCacheKey);
         if (typeof ringRunPageSync_ === 'function') {
-          ringRunPageSync_(buildVehiclesSyncOpts('最新データ取得中…'));
+          ringRunPageSync_(buildVehiclesSyncOpts('読み込み中…'));
         }
         return;
       }
 
-      if (typeof showLoading === 'function') showLoading('読込中', '車両情報を取得しています...');
-      var syncResult = await ringRunPageSync_(buildVehiclesSyncOpts('同期中…'));
+      if (typeof showLoading === 'function') showLoading('読込中', '車両情報を読み込み中…');
+      var syncResult = await ringRunPageSync_(buildVehiclesSyncOpts('読み込み中…'));
       if (!syncResult.rendered) {
         renderCars(false);
       }
@@ -352,7 +352,7 @@
       if (typeof ringSetupBackgroundResync_ === 'function') {
         ringSetupBackgroundResync_({
           onResume: function () {
-            ringRunPageSync_(buildVehiclesSyncOpts('最新データ取得中…'));
+            ringRunPageSync_(buildVehiclesSyncOpts('読み込み中…'));
           }
         });
       }
@@ -473,7 +473,7 @@
       }
       trashRestoreBusyId_ = trashId;
       loadAndRenderTrashList_();
-      if (typeof showLoading === 'function') showLoading('復元中', '車両を復元しています…');
+      if (typeof showLoading === 'function') showLoading('復元中', '復元中…');
       try {
         var json = await ringRestoreVehicleViaGas_(trashId, profile);
         if (json && json.success === true && json.vin) {
@@ -526,7 +526,7 @@
     function renderCars(showLoadOverlay, scrollYToRestore) {
       const sortType = document.getElementById('sortSelect').value;
       if (showLoadOverlay !== false && typeof showLoading === "function") {
-        showLoading("読込中", "リストを作成中...");
+        showLoading("読込中", "読み込み中…");
       }
 
       setTimeout(() => {

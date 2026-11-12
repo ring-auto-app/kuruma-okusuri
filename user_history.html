@@ -209,7 +209,7 @@
         refreshLabel: '🔄 更新',
         statusElId: 'ringHistorySyncStatus',
         lastSyncElId: 'ringHistoryLastSync',
-        statusMessage: forceMsg || '最新データ取得中…',
+        statusMessage: forceMsg || '読み込み中…',
         preserveScroll: true,
         getSignatureFn: getHistSignature,
         renderFn: renderHistory,
@@ -222,8 +222,8 @@
     }
 
     async function manualRefreshHistory() {
-      if (typeof showLoading === 'function') showLoading('更新中', 'サーバーから最新履歴を取得しています...');
-      await ringRunPageSync_(buildHistorySyncOpts('最新データ取得中…'));
+      if (typeof showLoading === 'function') showLoading('更新中', '履歴を読み込み中…');
+      await ringRunPageSync_(buildHistorySyncOpts('読み込み中…'));
       if (typeof hideLoading === 'function') hideLoading();
     }
 
@@ -333,7 +333,7 @@
         ringSetupBackgroundResync_({
           onResume: function () {
             if (typeof ringIsPageCacheFresh_ === 'function' && ringIsPageCacheFresh_(historyCacheKey, 'user_history')) return;
-            ringRunPageSync_(buildHistorySyncOpts('最新データ取得中…'));
+            ringRunPageSync_(buildHistorySyncOpts('読み込み中…'));
           }
         });
       }
@@ -353,8 +353,8 @@
       var fresh = (typeof ringIsPageCacheFresh_ === 'function') && ringIsPageCacheFresh_(historyCacheKey, 'user_history');
 
       if (isManualRefresh) {
-        if (typeof showLoading === 'function') showLoading('更新中', 'サーバーから最新履歴を取得しています...');
-        await ringRunPageSync_(buildHistorySyncOpts('最新データ取得中…'));
+        if (typeof showLoading === 'function') showLoading('更新中', '履歴を読み込み中…');
+        await ringRunPageSync_(buildHistorySyncOpts('読み込み中…'));
         if (typeof hideLoading === 'function') hideLoading();
         return;
       }
@@ -363,13 +363,13 @@
         renderHistory(false);
         if (typeof ringUpdateLastSyncLabel_ === 'function') ringUpdateLastSyncLabel_('ringHistoryLastSync', historyCacheKey);
         if (!fresh && typeof ringRunPageSync_ === 'function') {
-          ringRunPageSync_(buildHistorySyncOpts('最新データ取得中…'));
+          ringRunPageSync_(buildHistorySyncOpts('読み込み中…'));
         }
         return;
       }
 
-      if (typeof showLoading === 'function') showLoading('読込中', '整備履歴を取得しています...');
-      var syncResult = await ringRunPageSync_(buildHistorySyncOpts('同期中…'));
+      if (typeof showLoading === 'function') showLoading('読込中', '履歴を読み込み中…');
+      var syncResult = await ringRunPageSync_(buildHistorySyncOpts('読み込み中…'));
       var hasDataNow = (typeof getLogsByVin === 'function') && getLogsByVin(targetVin).length > 0;
       if (!syncResult.rendered) {
         renderHistory(hasLocal || hasDataNow ? false : true);
@@ -382,7 +382,7 @@
      */
     function renderHistory(showOverlay, scrollYToRestore) {
       if (showOverlay !== false && typeof showLoading === "function") {
-        showLoading("読込中", "整備履歴を取得しています...");
+        showLoading("読込中", "履歴を読み込み中…");
       }
 
       setTimeout(() => {

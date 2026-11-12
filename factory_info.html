@@ -375,7 +375,7 @@
       if (!pendingDivisionChange || !pendingDivisionChange.payload) return;
       var btn = document.getElementById('btnConfirmDivision');
       btn.disabled = true;
-      showLoading('変更中', '会社区分を更新しています…');
+      showLoading('保存中', '保存中…');
       try {
         var result = await ringUpdateShopType_(pendingDivisionChange.payload);
         if (!result.ok) {
@@ -406,7 +406,7 @@
     }
 
     window.addEventListener('DOMContentLoaded', function () {
-      showLoading('データ取得中', '店舗情報を読み込んでいます…');
+      showLoading('読込中', '読み込み中…');
 
       setTimeout(async function () {
         currentProfile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
@@ -493,7 +493,7 @@
     }
 
     async function saveShopInfo() {
-      showLoading('保存中', '店舗情報を更新しています…');
+      showLoading('保存中', '保存中…');
       var btn = document.getElementById('saveBtn');
       btn.disabled = true;
       try {
@@ -514,7 +514,7 @@
         });
         var data = await res.json();
         if (data.success) {
-          showToast('success', '正常に登録されました');
+          showToast('success', '変更しました');
           currentProfile.shopName = document.getElementById('inShopName').value.trim();
           login(currentProfile, localStorage.getItem('ring_auth_token') || '');
         } else {

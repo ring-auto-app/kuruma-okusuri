@@ -103,7 +103,7 @@
     });
 
     function renderFavShops() {
-      showLoading("照会中", "お店の情報を読み込んでいます...");
+      showLoading("読込中", "読み込み中…");
 
       setTimeout(() => {
         let favShops = safeJsonParse(localStorage.getItem('nappy_fav_shops_v1'), []);

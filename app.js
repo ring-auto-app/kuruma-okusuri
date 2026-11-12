@@ -1580,7 +1580,7 @@ function seedDemoEnvironment(role) {
  */
 function ringStartIndexDemo(role) {
   if (typeof showLoading === 'function') {
-    showLoading('デモ準備中', 'サンプルデータを読み込んでいます...');
+    showLoading('読込中', '読み込み中…');
   }
   setTimeout(function () {
     try {
@@ -1842,7 +1842,7 @@ function ringSetRefreshButtonBusy_(btn, busy, defaultLabel) {
     btn.disabled = !!busy;
     btn.style.opacity = busy ? "0.5" : "1";
     btn.style.pointerEvents = busy ? "none" : "";
-    if (defaultLabel) btn.textContent = busy ? "同期中…" : defaultLabel;
+    if (defaultLabel) btn.textContent = busy ? "読み込み中…" : defaultLabel;
 }
 
 /** 整備ログキャッシュ破損検知（破損時はキー削除） */
@@ -1874,7 +1874,7 @@ async function ringRunPageSync_(opts) {
         var scrollY = opts.preserveScroll ? window.scrollY : null;
         ringSetRefreshButtonBusy_(opts.refreshBtn, true, opts.refreshLabel || "🔄 更新");
         if (opts.statusElId) {
-            ringShowSyncStatus_(opts.statusElId, opts.statusMessage || "同期中…", false);
+            ringShowSyncStatus_(opts.statusElId, opts.statusMessage || "読み込み中…", false);
         }
         var ok = false;
         var rendered = false;
@@ -1891,11 +1891,11 @@ async function ringRunPageSync_(opts) {
                     rendered = true;
                 }
             } else if (opts.statusElId) {
-                ringShowSyncStatus_(opts.statusElId, "最新データを取得できませんでした", true);
+                ringShowSyncStatus_(opts.statusElId, "読み込みできませんでした", true);
             }
         } catch (eSync) {
             if (opts.statusElId) {
-                ringShowSyncStatus_(opts.statusElId, "最新データを取得できませんでした", true);
+                ringShowSyncStatus_(opts.statusElId, "読み込みできませんでした", true);
             }
         } finally {
             ringSetRefreshButtonBusy_(opts.refreshBtn, false, opts.refreshLabel || "🔄 更新");
@@ -6457,7 +6457,7 @@ async function ringAfterMaintenanceSaveComplete_(vin, logResult, dest) {
         } else if (typeof showToast === 'function') {
             showToast(
                 queued ? 'info' : 'success',
-                queued ? '端末に保存しました。オンライン復帰時に自動送信します。' : '正常に登録されました'
+                queued ? '未送信です。接続後に送信します。' : '保存しました'
             );
             setTimeout(function () { location.replace(dest); }, 1200);
         } else {
@@ -7135,7 +7135,7 @@ function ringRefreshPendingSyncHomeBar_() {
         return;
     }
     pbar.style.display = 'block';
-    pbar.textContent = '未送信のデータが ' + n + ' 件あります。オンライン復帰時に自動送信します。';
+    pbar.textContent = '未送信のデータがあります（' + n + '件）。接続後に送信します。';
 }
 
 /**
@@ -7163,7 +7163,7 @@ function ringRefreshPendingSyncBanner() {
     }
     var label = n
         ? '<strong class="ring-pending-sync-banner__badge">未送信</strong> ' +
-          '<span class="ring-pending-sync-banner__n">' + n + '</span> 件 … ネットワーク回復後に自動送信されます'
+          '未送信のデータがあります（<span class="ring-pending-sync-banner__n">' + n + '</span>件）。接続後に送信します。'
         : null;
     ringRenderPendingSyncBannerRow_(el, 'pending', label, 'ring-pending-sync-send', '今すぐ再送', function (btn) {
                     btn.disabled = true;
@@ -7544,8 +7544,8 @@ async function ringShowVehicleConflictDialog_(vin) {
                 if (!picks) choice = 'later';
             }
             if (choice === 'local' && typeof showToast === 'function') {
-                if (res && res.success) showToast('success', 'この端末の変更を保存しました');
-                else if (res && res.queued) showToast('info', '端末に保存しました。オンライン復帰時にサーバーへ反映します。');
+                if (res && res.success) showToast('success', '保存しました');
+                else if (res && res.queued) showToast('info', '未送信です。接続後に送信します。');
                 else if (!(res && res.conflict)) showToast('error', '保存できませんでした。時間をおいて再度お試しください。');
             }
         }
@@ -7608,7 +7608,7 @@ async function ringOpenSyncAttentionDialog_() {
             var nr = await ringResolveNicknameConflict_(arg, act === 'nick-local', profile);
             if (typeof showToast === 'function' && act === 'nick-local') {
                 if (nr && nr.success) showToast('success', 'ニックネームを保存しました');
-                else if (nr && nr.queued) showToast('info', '端末に保存しました。オンライン復帰時にサーバーへ反映します。');
+                else if (nr && nr.queued) showToast('info', '未送信です。接続後に送信します。');
                 else if (!(nr && nr.conflict)) showToast('error', 'ニックネームを保存できませんでした');
             }
         } else if (act === 'discard') {
@@ -7932,18 +7932,23 @@ function ringSetFirstRegValue_(value) {
 
 /**
  * 保存完了のフルスクリーン演出（成功／オフラインキュー）
- * @param {{ variant?: 'success'|'queued', message?: string, durationMs?: number, onDone?: () => void }} opts
+ * @param {{ variant?: 'success'|'queued'|'warning', message?: string, durationMs?: number, onDone?: () => void }} opts
  */
 function showRingSavedSplash(opts) {
     opts = opts || {};
-    var variant = opts.variant === 'queued' ? 'queued' : 'success';
-    var msg = opts.message || (variant === 'queued'
-        ? '端末に保存しました。オンライン復帰時に自動送信します。'
-        : '保存しました');
+    var variant = 'success';
+    if (opts.variant === 'queued') variant = 'queued';
+    else if (opts.variant === 'warning') variant = 'warning';
+    var msg = opts.message;
+    if (!msg) {
+        if (variant === 'queued') msg = '未送信です。接続後に送信します。';
+        else if (variant === 'warning') msg = '要確認です';
+        else msg = '保存しました';
+    }
     var durationMs = opts.durationMs != null ? opts.durationMs : 1400;
     var old = document.getElementById('ring-saved-splash');
     if (old) old.remove();
-    var orbMark = variant === 'queued' ? '✓' : '✓';
+    var orbMark = variant === 'warning' ? '!' : (variant === 'queued' ? '⏳' : '✓');
     var html = '<div class="ring-saved-splash ring-saved-splash--' + variant + '" id="ring-saved-splash">' +
         '<div class="ring-saved-splash__orb" aria-hidden="true">' + orbMark + '</div>' +
         '<div class="ring-saved-splash__msg">' + escapeHtml(msg) + '</div></div>';
@@ -8182,8 +8187,8 @@ function showOcrAnalyzingOverlay(opts) {
     opts = opts || {};
     hideOcrAnalyzingOverlay();
     if (typeof window !== 'undefined') window.__ringOcrCancelled = false;
-    var messages = opts.messages || ['画像を読み込み中…', 'AIが認識中…', '内容を整形しています…'];
-    var title = opts.title || '解析中';
+    var messages = opts.messages || ['画像を読み込み中…', '読み取り中…', '内容を確認中…'];
+    var title = opts.title || '読み取り中';
     var html = '<div class="ring-ocr-overlay show" id="ring-ocr-overlay">' +
         '<div class="loading-arrows" aria-hidden="true">' +
         '<div class="loading-arrow arrow-blue"></div>' +
@@ -9009,7 +9014,7 @@ function showOcrBatchProgressOverlay(opts) {
         window.addEventListener('beforeunload', ringOcrBeforeUnload_);
     }
     var html = '<div class="ring-ocr-overlay show" id="ring-ocr-batch-overlay">' +
-        '<div class="ring-ocr-overlay__title">OCR解析中</div>' +
+        '<div class="ring-ocr-overlay__title">読み取り中</div>' +
         '<div class="ring-ocr-batch__count" id="ring-ocr-batch-sub">0 / 0 枚</div>' +
         '<div class="ring-ocr-batch__barwrap"><div class="ring-ocr-batch__bar" id="ring-ocr-batch-bar"></div></div>' +
         '<div class="ring-ocr-batch__fail" id="ring-ocr-batch-fail"></div>' +
@@ -9236,8 +9241,8 @@ async function ringHandleInvoiceOcrScan(opts) {
     }
 
     showOcrAnalyzingOverlay({
-        title: '明細書を解析中',
-        messages: ['AIが作業内容・部品を読み取っています…']
+        title: '明細を読み取り中',
+        messages: ['明細を読み取り中…', '内容を確認中…']
     });
     try {
         if (typeof ringInvoiceOcrViaGas_ !== 'function') throw new Error('INVOICE_OCR_UNAVAILABLE');
@@ -10225,7 +10230,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 });
 
 function showWelcomePopup(isAlreadyRegistered) {
-    const title = isAlreadyRegistered ? "いつもご利用ありがとうございます" : "お店の登録が完了しました";
+    const title = isAlreadyRegistered ? "いつもご利用ありがとうございます" : "登録しました";
     const msg = isAlreadyRegistered 
         ? "かかりつけの店舗として登録済みです。" 
         : "右上のアイコンから、いつでもお店の情報確認や予約ができます。";
@@ -10337,7 +10342,7 @@ var __ringLoadingBaseText = '';
  * @param {string} [text]
  * @param {{ cancelable?: boolean, onCancel?: () => void }} [opts]
  */
-function showLoading(title = "通信中", text = "少々お待ちください...", opts) {
+function showLoading(title = "処理中", text = "少々お待ちください…", opts) {
     opts = opts || {};
     injectLoadingOverlay();
     hideLoading(true);

@@ -901,7 +901,7 @@
   async function fleetUpdateBooking_(bookingId, patch) {
     var cur = bookingsCache.find(function (b) { return b.bookingId === bookingId; });
     if (!cur) return;
-    if (typeof showLoading === 'function') showLoading('保存中', '予約を更新しています...');
+    if (typeof showLoading === 'function') showLoading('保存中', '保存中…');
     var json = null;
     try {
       var payload = {
@@ -921,7 +921,7 @@
     }
     if (json && json.success) {
       await refreshBookings_();
-      if (typeof showToast === 'function') showToast('success', '予約を更新しました');
+      if (typeof showToast === 'function') showToast('success', '変更しました');
     } else if (json && typeof showToast === 'function') {
       showToast('error', json.error || '更新に失敗しました');
     }
@@ -1000,7 +1000,7 @@
     if (saveBtn && saveBtn.disabled) return;
     if (saveBtn) saveBtn.disabled = true;
     if (typeof showLoading === 'function') {
-      showLoading(extra && extra.recheckOnly ? '確認中' : '登録中', '処理しています...');
+      showLoading(extra && extra.recheckOnly ? '確認中' : '登録中', extra && extra.recheckOnly ? '確認中…' : '登録中…');
     }
     var result = null;
     try {
@@ -1040,7 +1040,7 @@
           selectedBookingId = bk.bookingId;
           renderDetailPanel_();
         });
-        if (typeof showToast === 'function') showToast('success', result.outcome === 'resolved_update' ? '予約を更新しました' : '予約を登録しました');
+        if (typeof showToast === 'function') showToast('success', result.outcome === 'resolved_update' ? '変更しました' : '登録しました');
       }
       return;
     }
@@ -1109,7 +1109,7 @@
       return;
     }
     if (typeof ringFleetEnsureBookingsSyncedForRange_ === 'function') {
-      if (typeof showLoading === 'function') showLoading('確認中', '最新の予約状況を取得しています...');
+      if (typeof showLoading === 'function') showLoading('確認中', '読み込み中…');
       var syncRes = await ringFleetEnsureBookingsSyncedForRange_(profile, startDate, endDate);
       if (typeof hideLoading === 'function') hideLoading();
       fleetBookingsSyncOk = !!syncRes.ok;
@@ -1219,7 +1219,7 @@
       returnBookingId: '',
       sheetChecked: false
     }, pre);
-    if (typeof showLoading === 'function') showLoading('読込中', '貸出状況を取得しています...');
+    if (typeof showLoading === 'function') showLoading('読込中', '読み込み中…');
     fleetSyncBookingsFresh_().finally(function () {
       if (typeof hideLoading === 'function') hideLoading();
       renderReturnReception_();
@@ -1302,7 +1302,7 @@
     var btn = document.getElementById('fleetReturnCompleteBtn');
     if (btn && btn.disabled) return;
     if (btn) btn.disabled = true;
-    if (typeof showLoading === 'function') showLoading('返却処理', '保存しています...');
+    if (typeof showLoading === 'function') showLoading('返却処理', '保存中…');
     var json = null;
     try {
       await fleetSyncBookingsFresh_();
@@ -1407,7 +1407,7 @@
       if (typeof showToast === 'function') showToast('error', '返却予定日は貸出開始日以降にしてください');
       return;
     }
-    if (typeof showLoading === 'function') showLoading('検索中', '空き状況を取得しています...');
+    if (typeof showLoading === 'function') showLoading('検索中', '読み込み中…');
     var syncRes = await ringFleetEnsureBookingsSyncedForRange_(profile, start, end);
     if (typeof hideLoading === 'function') hideLoading();
     fleetBookingsSyncOk = !!syncRes.ok;
@@ -1549,7 +1549,7 @@
           if (typeof showToast === 'function') showToast('error', '返却予定日は貸出開始日以降にしてください');
           return;
         }
-        if (typeof showLoading === 'function') showLoading('確認中', '予約状況を確認しています...');
+        if (typeof showLoading === 'function') showLoading('確認中', '読み込み中…');
         var syncRes = await ringFleetEnsureBookingsSyncedForRange_(profile, wizardState.startDate, wizardState.endDate);
         if (typeof hideLoading === 'function') hideLoading();
         fleetBookingsSyncOk = !!syncRes.ok;
@@ -1585,7 +1585,7 @@
       if (typeof showToast === 'function') showToast('error', '返却予定日は貸出開始日以降にしてください');
       return;
     }
-    if (typeof showLoading === 'function') showLoading('検索中', '空き状況を取得...');
+    if (typeof showLoading === 'function') showLoading('検索中', '読み込み中…');
     var syncRes = await ringFleetEnsureBookingsSyncedForRange_(profile, start, end);
     if (typeof hideLoading === 'function') hideLoading();
     fleetBookingsSyncOk = !!syncRes.ok;
@@ -1697,7 +1697,7 @@
   }
 
   async function loadFleetPage_(manual) {
-    if (manual && typeof showLoading === 'function') showLoading('更新中', '同期しています...');
+    if (manual && typeof showLoading === 'function') showLoading('更新中', '読み込み中…');
     fleetVehiclesSyncOk = true;
     if (typeof syncVehiclesFromServer === 'function') {
       try { await syncVehiclesFromServer(); } catch (e) { fleetVehiclesSyncOk = false; }

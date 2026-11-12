@@ -330,7 +330,7 @@
     inspectionData.forEach(g => g.items.forEach(it => { itemNameMap[it.id] = it.name; }));
 
     window.addEventListener('DOMContentLoaded', () => {
-      showLoading("データ読込中", "点検履歴を取得しています...");
+      showLoading("読込中", "履歴を読み込み中…");
       (async () => {
         document.getElementById('dispVin').textContent = `VIN: ${currentVin || '未指定'}`;
         const vehicles = safeJsonParse(localStorage.getItem('nappy_vehicles_v1'), []);

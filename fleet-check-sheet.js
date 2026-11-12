@@ -985,7 +985,7 @@
     if (!state.record) return;
     if (!state.idbAvailable) {
       renderLocalBanner_([]);
-      if (typeof showToast === 'function') showToast('error', 'この端末に保存できません（IndexedDB利用不可）');
+      if (typeof showToast === 'function') showToast('error', 'この端末に保存できません。ブラウザの設定をご確認ください。');
       return;
     }
     state.record.marks = C.cloneMarks_(state.marks);
@@ -994,7 +994,7 @@
       await persistDraft_();
       var snaps2 = await C.idbListSnapshots_(C.shopVinKey_(profile.shopId, vin));
       renderLocalBanner_(snaps2);
-      if (typeof showToast === 'function') showToast('success', 'この端末に保存しました');
+      if (typeof showToast === 'function') showToast('success', '下書きを保存しました');
     } catch (e) {
       state.idbAvailable = false;
       if (typeof showToast === 'function') showToast('error', '保存に失敗しました。この端末に記録は残りません。');
@@ -1268,14 +1268,14 @@
   function idbWarnHtml_() {
     if (state.idbAvailable) return '';
     return '<div class="ring-check-warn ring-check-idb-warn" id="ringCheckIdbWarn" role="alert">' +
-      'IndexedDBを利用できません。この端末に記録は保存されません。ブラウザの設定やプライベートモードをご確認ください。</div>';
+      'この端末に記録を保存できません。ブラウザの設定やプライベートモードをご確認ください。</div>';
   }
 
   function renderLocalBanner_(snapshots) {
     var host = document.getElementById('ringCheckLocalBanner');
     if (!host) return;
     var latest = snapshots && snapshots.length ? snapshots[0] : null;
-    var txt = 'この端末のIndexedDBにのみ保存されます。他端末とは共有されません。';
+    var txt = 'この端末にのみ保存されます。他端末とは共有されません。';
     if (state.idbAvailable && latest) {
       txt += ' 保存記録：' + String(latest.savedAt || '').slice(0, 19).replace('T', ' ') + '（' + (latest.marks || []).length + '件）';
     }

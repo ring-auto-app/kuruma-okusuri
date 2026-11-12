@@ -459,7 +459,7 @@
     function buildVehicleInfoSyncOpts(statusMsg) {
       return {
         cacheKey: vehicleInfoCacheKey,
-        statusMessage: statusMsg || '最新データ取得中…',
+        statusMessage: statusMsg || '読み込み中…',
         preserveScroll: true,
         getSignatureFn: getVehicleInfoSignature_,
         renderFn: refreshVehicleScheduleAfterSync_,
@@ -603,14 +603,14 @@
 
       vehicleInfoCacheKey = 'vehicle_info:' + targetVin + ':' + ((prof && (prof.userId || prof.shopId)) || 'unknown');
       if (typeof ringRunPageSync_ === 'function') {
-        ringRunPageSync_(buildVehicleInfoSyncOpts('最新データ取得中…'));
+        ringRunPageSync_(buildVehicleInfoSyncOpts('読み込み中…'));
       }
 
       if (typeof ringSetupBackgroundResync_ === 'function') {
         ringSetupBackgroundResync_({
           onResume: function () {
             if (typeof ringRunPageSync_ === 'function') {
-              ringRunPageSync_(buildVehicleInfoSyncOpts('最新データ取得中…'));
+              ringRunPageSync_(buildVehicleInfoSyncOpts('読み込み中…'));
             }
           }
         });
@@ -669,7 +669,7 @@
 
       const btn = document.getElementById('saveBtn');
       btn.disabled = true;
-      if (typeof showLoading === 'function') showLoading('保存中', '車両情報を更新しています...');
+      if (typeof showLoading === 'function') showLoading('保存中', '保存中…');
 
       try {
         const cycle = typeof ringGetInspectionCycle_ === 'function'
@@ -822,11 +822,11 @@
           if (!plateOk) {
             showToast('warning', '車両情報は保存しましたが、ナンバーをサーバーへ反映できませんでした。再度お試しください。');
           } else if (res && res.queued) {
-            showToast('info', '端末に保存しました。オンライン復帰時にサーバーへ反映します。');
+            showToast('info', '未送信です。接続後に送信します。');
           } else if (res && res.autoMerged) {
             showToast('success', '他の端末での更新と合わせて保存しました');
           } else {
-            showToast('success', '車両情報を更新しました');
+            showToast('success', '変更しました');
           }
         }
 
@@ -884,7 +884,7 @@
       }
 
       try {
-        if (typeof showLoading === 'function') showLoading('削除中', 'サーバーから削除しています...');
+        if (typeof showLoading === 'function') showLoading('削除中', '削除中…');
         var deleteOpts = {};
         var response = typeof ringDeleteVehicleViaGas_ === 'function'
           ? await ringDeleteVehicleViaGas_(targetVin, profile, deleteOpts)
@@ -901,7 +901,7 @@
               })
             : confirm('未送信の車両変更があります。破棄して削除しますか？');
           if (!abandonOk) return;
-          if (typeof showLoading === 'function') showLoading('削除中', 'サーバーから削除しています...');
+          if (typeof showLoading === 'function') showLoading('削除中', '削除中…');
           response = await ringDeleteVehicleViaGas_(targetVin, profile, { abandonPendingVehicleQueue: true });
         }
         if (response && response.ok === true) {

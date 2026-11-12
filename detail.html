@@ -177,7 +177,7 @@
       if (!vin || !logId) { alert("データが見つかりません。"); location.href = "index.html"; return; }
 
       document.getElementById("backBtn").onclick = () => goBackSmart();
-      showLoading("データ照会中", "整備内容を読み込んでいます...");
+      showLoading("読込中", "読み込み中…");
 
       setTimeout(() => {
         const logs = getLogsByVin(vin);

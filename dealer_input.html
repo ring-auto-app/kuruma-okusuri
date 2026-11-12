@@ -425,7 +425,7 @@
           createdAt: new Date().toISOString()
         };
 
-        showLoading("保存中", "整備記録を保存しています...");
+        showLoading("保存中", "保存中…");
         const result = await saveLog(logData);
         hideLoading();
         const dest = `factory_edit_list.html?vin=${encodeURIComponent(vin)}&log_id=${result.logId || ''}`;

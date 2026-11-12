@@ -296,7 +296,7 @@
         if (typeof window !== 'undefined') window.__ringSaving = true;
         try {
 
-        showLoading("保存中", "手帳に記録しています...");
+        showLoading("保存中", "保存中…");
 
         const mileageRaw = document.getElementById('inMileage').value.trim();
         const mileage = mileageRaw ? parseInt(mileageRaw, 10) : null;
@@ -350,7 +350,7 @@
         }
         const dest = targetVin ? `user_inspection_history.html?vin=${encodeURIComponent(targetVin)}` : "user_home.html";
         const variant = gasResult.queued ? 'queued' : 'success';
-        const okMsg = hasIssue ? '記録しました（整備履歴にも追加）' : '正常に登録されました';
+        const okMsg = hasIssue ? '記録しました（整備履歴にも追加）' : '登録しました';
         if (typeof showRingSavedSplash === 'function') {
           showRingSavedSplash({
             variant,
@@ -359,7 +359,7 @@
           });
         } else {
           if (gasResult.queued) {
-            showToast('info', '端末に保存しました。回線が復旧すると点検記録を自動でサーバーへ送信します。');
+            showToast('info', '未送信です。接続後に送信します。');
           } else {
             showToast('success', okMsg);
           }

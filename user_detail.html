@@ -97,7 +97,7 @@
         return;
       }
 
-      if (typeof showLoading === 'function') showLoading("読込中", "履歴詳細を取得しています...");
+      if (typeof showLoading === 'function') showLoading("読込中", "読み込み中…");
       try {
         if (typeof syncMaintenanceHistoryForVin === "function" && vin) {
           await syncMaintenanceHistoryForVin(vin);
@@ -142,7 +142,7 @@
 
     function render(showOverlay) {
       if (showOverlay !== false && typeof showLoading === 'function') {
-        showLoading("読込中", "履歴詳細を取得しています...");
+        showLoading("読込中", "読み込み中…");
       }
 
       setTimeout(() => {

@@ -838,7 +838,7 @@
           staffName: pf.staffName,
           createdAt: new Date().toISOString()
         };
-        showLoading('保存中', '整備記録を保存しています...');
+        showLoading('保存中', '保存中…');
         var result = await saveLog(logData);
         hideLoading();
         var dest = ringMaintPostSaveDest_(vin, result.logId);
@@ -860,7 +860,7 @@
         var vin = ringMaintNormVin_(document.getElementById('inVin').value);
         var pf = ringMaintBuildProfileFields_();
         var ocrMeta = window.__ringInvoiceOcrMeta || {};
-        showLoading('保存中', '記録をデータベースに書き込んでいます...');
+        showLoading('保存中', '保存中…');
         var logData = {
           vin: vin,
           date: document.getElementById('inDate').value,

@@ -161,7 +161,7 @@
             return;
         }
         if (typeof showLoading === 'function') {
-            showLoading('データ取得中', 'スタッフ一覧を読み込んでいます...');
+            showLoading('読込中', '読み込み中…');
         }
         try {
             var controller = new AbortController();
@@ -284,7 +284,7 @@
             : confirm('本当にID「' + loginId + '」を削除しますか？');
         if (!ok) return;
 
-        if (typeof showLoading === 'function') showLoading('削除中', 'スタッフ情報を削除しています...');
+        if (typeof showLoading === 'function') showLoading('削除中', '削除中…');
 
         try {
             var res = await fetch(GAS_URL, {
@@ -362,7 +362,7 @@
         var btn = document.getElementById('addBtn');
         btn.disabled = true;
         if (typeof showLoading === 'function') {
-            showLoading('スタッフ追加中', '新しいスタッフを登録しています...');
+            showLoading('登録中', '登録中…');
         }
 
         function genLocalId() {
@@ -433,7 +433,7 @@
         } catch (e) {
             completeAdd(genLocalId());
             if (typeof showToast === 'function') {
-                showToast('info', 'オフライン登録しました。次回オンライン時にシートへ反映してください。');
+                showToast('info', '未送信です。接続後に送信します。');
             }
         } finally {
             btn.disabled = false;

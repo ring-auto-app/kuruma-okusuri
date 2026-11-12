@@ -87,7 +87,7 @@
         refreshLabel: '🔄 更新',
         statusElId: 'ringEditListSyncStatus',
         lastSyncElId: 'ringEditListLastSync',
-        statusMessage: statusMsg || '最新データ取得中…',
+        statusMessage: statusMsg || '読み込み中…',
         preserveScroll: true,
         getSignatureFn: getEditListSignature,
         renderFn: renderEditList,
@@ -120,7 +120,7 @@
         ringSetupBackgroundResync_({
           onResume: function () {
             if (typeof ringIsPageCacheFresh_ === 'function' && ringIsPageCacheFresh_(editListCacheKey, 'factory_edit_list')) return;
-            ringRunPageSync_(buildEditListSyncOpts('最新データ取得中…'));
+            ringRunPageSync_(buildEditListSyncOpts('読み込み中…'));
           }
         });
       }
@@ -139,8 +139,8 @@
       var fresh = (typeof ringIsPageCacheFresh_ === 'function') && ringIsPageCacheFresh_(editListCacheKey, 'factory_edit_list');
 
       if (isManualRefresh) {
-        if (typeof showLoading === 'function') showLoading('更新中', 'サーバーから最新履歴を取得しています...');
-        await ringRunPageSync_(buildEditListSyncOpts('最新データ取得中…'));
+        if (typeof showLoading === 'function') showLoading('更新中', '履歴を読み込み中…');
+        await ringRunPageSync_(buildEditListSyncOpts('読み込み中…'));
         if (typeof hideLoading === 'function') hideLoading();
         return;
       }
@@ -149,13 +149,13 @@
         renderEditList(false);
         if (typeof ringUpdateLastSyncLabel_ === 'function') ringUpdateLastSyncLabel_('ringEditListLastSync', editListCacheKey);
         if (!fresh && typeof ringRunPageSync_ === 'function') {
-          ringRunPageSync_(buildEditListSyncOpts('最新データ取得中…'));
+          ringRunPageSync_(buildEditListSyncOpts('読み込み中…'));
         }
         return;
       }
 
-      if (typeof showLoading === 'function') showLoading('データ取得中', 'サーバーから最新履歴を取得しています...');
-      var syncResult = await ringRunPageSync_(buildEditListSyncOpts('同期中…'));
+      if (typeof showLoading === 'function') showLoading('読込中', '履歴を読み込み中…');
+      var syncResult = await ringRunPageSync_(buildEditListSyncOpts('読み込み中…'));
       if (!syncResult.rendered) {
         renderEditList(false);
       }
@@ -176,7 +176,7 @@
 
     function renderEditList(showOverlay, scrollYToRestore) {
       if (showOverlay !== false && typeof showLoading === 'function') {
-        showLoading('読込中', '一覧を表示しています...');
+        showLoading('読込中', '読み込み中…');
       }
 
       const myRecentLogs = getMyRecentShopLogs();
@@ -241,7 +241,7 @@
         : confirm("この記録を取消しますか？\n※サーバーから削除されます。");
       if (!ok) return;
 
-      showLoading("取消処理中", "記録を削除しています...");
+      showLoading("削除中", "削除中…");
 
       try {
         if (typeof deleteMaintenanceLogOnServer === 'function') {
@@ -251,7 +251,7 @@
         } else {
           throw new Error('NO_SENDER');
         }
-        await ringRunPageSync_(buildEditListSyncOpts('同期中…'));
+        await ringRunPageSync_(buildEditListSyncOpts('読み込み中…'));
         hideLoading();
         showToast('success', '取消しました');
       } catch (eDel) {
