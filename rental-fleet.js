@@ -334,14 +334,9 @@
     }).length;
     setStat('fleetStatStartToday', startToday, !fleetBookingsSyncOk);
     setStat('fleetStatEndToday', endToday, !fleetBookingsSyncOk);
-    var overdueN = outs.filter(function (b) { return ringFleetOutReturnIsOverdue_(b); }).length;
     setStat('fleetMobStatOut', outs.length, !fleetBookingsSyncOk);
     setStat('fleetMobStatEndToday', endToday, !fleetBookingsSyncOk);
-    setStat('fleetMobStatOverdue', overdueN, !fleetBookingsSyncOk);
-    var odWrap = document.getElementById('fleetMobStatOverdueWrap');
-    if (odWrap) {
-      odWrap.classList.toggle('has-overdue', !(!fleetBookingsSyncOk) && overdueN > 0);
-    }
+    setStat('fleetMobStatStartToday', startToday, !fleetBookingsSyncOk);
   }
 
   function renderDeskTodayPanel_() {
@@ -808,12 +803,20 @@
     else renderCalendarInto_('fleetCalMob', 'ring-fleet-cal-mob is-month-compact', calYear, calMonth);
   }
 
-  function closeMobDetailSheet_() {
+  function closeMobDetailSheet_(opts) {
+    var clearSelection = !opts || opts.clearSelection !== false;
     var sheet = document.getElementById('fleetMobDetailSheet');
     var back = document.getElementById('fleetMobDetailBackdrop');
-    if (sheet) sheet.hidden = true;
-    if (back) back.hidden = true;
+    if (sheet) {
+      sheet.hidden = true;
+      sheet.setAttribute('aria-hidden', 'true');
+    }
+    if (back) {
+      back.hidden = true;
+      back.setAttribute('aria-hidden', 'true');
+    }
     document.body.classList.remove('ring-fleet-sheet-open');
+    if (clearSelection) selectedBookingId = '';
   }
 
   function openMobDetailSheet_() {
@@ -824,7 +827,11 @@
     if (!sheet || !host) return;
     renderBookingDetailInto_(host);
     sheet.hidden = false;
-    if (back) back.hidden = false;
+    sheet.setAttribute('aria-hidden', 'false');
+    if (back) {
+      back.hidden = false;
+      back.setAttribute('aria-hidden', 'false');
+    }
     document.body.classList.add('ring-fleet-sheet-open');
   }
 
@@ -850,7 +857,7 @@
       retBtn.className = 'primary';
       retBtn.textContent = '返却受付へ';
       retBtn.onclick = function () {
-        closeMobDetailSheet_();
+        closeMobDetailSheet_({ clearSelection: false });
         openReturnReception_({ returnBookingId: b.bookingId, step: 'return_confirm' });
       };
       actions.appendChild(retBtn);
@@ -1823,8 +1830,17 @@
     }
     var detClose = document.getElementById('fleetMobDetailClose');
     var detBack = document.getElementById('fleetMobDetailBackdrop');
-    if (detClose) detClose.onclick = closeMobDetailSheet_;
-    if (detBack) detBack.onclick = closeMobDetailSheet_;
+    function onMobDetailDismiss_(ev) {
+      if (ev) ev.preventDefault();
+      closeMobDetailSheet_();
+    }
+    if (detClose) {
+      detClose.addEventListener('click', onMobDetailDismiss_);
+    }
+    if (detBack) {
+      detBack.addEventListener('click', onMobDetailDismiss_);
+    }
+    closeMobDetailSheet_({ clearSelection: false });
 
     document.body.addEventListener('click', function (ev) {
       var bar = ev.target.closest('[data-booking-id]');

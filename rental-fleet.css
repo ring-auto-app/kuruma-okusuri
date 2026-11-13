@@ -726,10 +726,6 @@
     color: #b45309;
   }
 
-  .ring-fleet-mob-stat.has-overdue strong {
-    color: #b91c1c;
-  }
-
   .ring-fleet-summary-hint {
     font-size: 12px;
     font-weight: 800;
@@ -943,6 +939,12 @@
     inset: 0;
     background: rgba(15, 23, 42, 0.45);
     z-index: 800;
+    touch-action: manipulation;
+  }
+
+  .ring-fleet-mob-sheet-backdrop[hidden] {
+    display: none !important;
+    pointer-events: none !important;
   }
 
   .ring-fleet-mob-detail-sheet {
@@ -954,11 +956,19 @@
     background: var(--paper);
     border-radius: 18px 18px 0 0;
     border: 1px solid var(--page-line);
-    max-height: min(88vh, 640px);
+    max-height: min(88dvh, 640px);
     display: flex;
     flex-direction: column;
-    padding-bottom: env(safe-area-inset-bottom, 0);
+    padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
     box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.12);
+    transform: translateY(0);
+    touch-action: manipulation;
+  }
+
+  .ring-fleet-mob-detail-sheet[hidden] {
+    display: none !important;
+    pointer-events: none !important;
+    transform: translateY(110%);
   }
 
   .ring-fleet-mob-sheet-grab {
