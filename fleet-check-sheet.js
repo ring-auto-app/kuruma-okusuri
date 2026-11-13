@@ -794,13 +794,35 @@
     });
   }
 
+  function closePhotoModal_() {
+    var modal = document.getElementById('ringCheckPhotoModal');
+    var img = document.getElementById('ringCheckPhotoModalImg');
+    if (modal) {
+      modal.hidden = true;
+      modal.setAttribute('aria-hidden', 'true');
+    }
+    if (img) img.removeAttribute('src');
+    document.body.classList.remove('ring-check-photo-modal-open');
+  }
+
+  function openPhotoModal_(objectUrl) {
+    if (!objectUrl) return;
+    var modal = document.getElementById('ringCheckPhotoModal');
+    var img = document.getElementById('ringCheckPhotoModalImg');
+    if (!modal || !img) return;
+    img.src = objectUrl;
+    modal.hidden = false;
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('ring-check-photo-modal-open');
+  }
+
   function renderPhotosPane_() {
     var host = document.getElementById('ringCheckPanePhotos');
     if (!host) return;
     var max = C.PHOTO_MAX;
     var items = state.photos.map(function (p, idx) {
       return '<div class="ring-check-photo-card">' +
-        '<img src="' + esc_(p.objectUrl) + '" alt="写真' + (idx + 1) + '" class="ring-check-photo-thumb" data-photo-idx="' + idx + '">' +
+        '<img src="' + esc_(p.objectUrl) + '" alt="写真' + (idx + 1) + '" class="ring-check-photo-thumb" data-photo-idx="' + idx + '" role="presentation">' +
         '<div class="ring-check-photo-actions">' +
         '<button type="button" data-photo-view="' + idx + '">拡大</button>' +
         '<button type="button" data-photo-replace="' + idx + '">差し替え</button>' +
@@ -816,11 +838,8 @@
       btn.onclick = function () {
         var i = Number(btn.getAttribute('data-photo-view'));
         var ph = state.photos[i];
-        if (!ph) return;
-        var modal = document.getElementById('ringCheckPhotoModal');
-        var img = document.getElementById('ringCheckPhotoModalImg');
-        img.src = ph.objectUrl;
-        modal.hidden = false;
+        if (!ph || !ph.objectUrl) return;
+        openPhotoModal_(ph.objectUrl);
       };
     });
     host.querySelectorAll('[data-photo-del]').forEach(function (btn) {
@@ -915,11 +934,14 @@
       }
     });
     var modalClose = document.getElementById('ringCheckPhotoModalClose');
-    if (modalClose) {
-      modalClose.onclick = function () {
-        document.getElementById('ringCheckPhotoModal').hidden = true;
+    var modal = document.getElementById('ringCheckPhotoModal');
+    if (modalClose) modalClose.onclick = function (ev) { ev.preventDefault(); closePhotoModal_(); };
+    if (modal) {
+      modal.onclick = function (ev) {
+        if (ev.target === modal) closePhotoModal_();
       };
     }
+    closePhotoModal_();
   }
 
   function renderPdfPane_() {
@@ -1351,6 +1373,7 @@
     renderPdfPane_();
     renderAttention_();
     bindPhotoInput_();
+    closePhotoModal_();
     setStep_('basic');
     bindDiagram_();
     renderMarks_();

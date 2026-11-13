@@ -321,6 +321,54 @@ function ringModeMetaKey(mode) {
     return RING_META_USER;
 }
 
+var ringRequestEpoch_ = 0;
+var ringRequestScope_ = null;
+var ringVehicleReadSerial_ = 0;
+var ringFleetReadSerials_ = {};
+
+function ringCaptureRequestContext_() {
+    var mode = ringGetActiveMode();
+    var p = getCurrentProfile() || {};
+    var slot = ringReadAuthSlot(mode);
+    var token = (slot && slot.token) || localStorage.getItem('ring_auth_token') || '';
+    var scope = JSON.stringify([GAS_URL, mode, token, p.userId || '', p.shopId || '', p.shopType || '']);
+    if (scope !== ringRequestScope_) {
+        ringRequestScope_ = scope;
+        ringRequestEpoch_++;
+    }
+    return { scope: scope, epoch: ringRequestEpoch_, mode: mode, token: token };
+}
+
+function ringRequestContextIsCurrent_(ctx) {
+    var now = ringCaptureRequestContext_();
+    return !!ctx && ctx.scope === now.scope && ctx.epoch === now.epoch;
+}
+
+function ringNotifyRequestContextChanged_() {
+    var before = ringRequestEpoch_;
+    ringCaptureRequestContext_();
+    if (before !== ringRequestEpoch_ && typeof window !== 'undefined' &&
+        typeof window.dispatchEvent === 'function' && typeof Event === 'function') {
+        window.dispatchEvent(new Event('ring-auth-context-changed'));
+    }
+}
+
+function ringFleetReadFailure_(err, cached) {
+    var code = String(err && err.message || err && err.error || err || 'NETWORK');
+    var privateError = /AUTH_|SESSION_|STALE_SESSION/.test(code);
+    return { ok: false, fromCache: !privateError, bookings: privateError ? [] : (cached || []),
+        error: privateError ? code : 'NETWORK' };
+}
+
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('storage', function (e) {
+        if (e && e.key && !/^(ring_(current_mode|active_account|.*token|.*profile)|nappy_(current_user|profile_v1))$/.test(e.key)) return;
+        ringRequestEpoch_++;
+        ringRequestScope_ = null;
+        ringNotifyRequestContextChanged_();
+    });
+}
+
 function ringWriteAuthSlot(mode, slot) {
     mode = ringNormalizeMode(mode);
     if (!slot || !slot.profile) return;
@@ -330,6 +378,7 @@ function ringWriteAuthSlot(mode, slot) {
         updatedAt: slot.updatedAt || new Date().toISOString(),
         verifiedAt: slot.verifiedAt || ''
     }));
+    ringNotifyRequestContextChanged_();
 }
 
 function ringReadAuthSlot(mode) {
@@ -354,6 +403,7 @@ function ringSetCurrentMode(mode) {
     mode = ringNormalizeMode(mode);
     localStorage.setItem(RING_CURRENT_MODE, mode);
     localStorage.setItem(RING_ACTIVE_ACCOUNT, mode === 'business' ? 'shop' : mode);
+    ringNotifyRequestContextChanged_();
 }
 
 function ringGetActiveMode() {
@@ -433,6 +483,7 @@ function ringApplyActiveSession(slot, mode) {
     localStorage.setItem(DB_LEGACY_PROFILE, raw);
     if (slot.token) localStorage.setItem('ring_auth_token', slot.token);
     if (typeof window !== 'undefined') window.__ringSessionVerified = true;
+    ringNotifyRequestContextChanged_();
 }
 
 function ringSaveAuthSlot(profile, authToken, opts) {
@@ -523,6 +574,7 @@ function ringClearAuthSlot(mode) {
         localStorage.removeItem('ring_auth_token');
         if (typeof window !== 'undefined') window.__ringSessionVerified = false;
     }
+    ringNotifyRequestContextChanged_();
 }
 
 /**
@@ -730,7 +782,9 @@ function ringVerifySessionBackground_(mode) {
         return;
     }
 
+    var verifyContext = ringCaptureRequestContext_();
     ringVerifySession(slot.token, mode).then(function (verified) {
+        if (!ringRequestContextIsCurrent_(verifyContext)) return;
         if (verified && verified.success === true) {
             var fresh = ringReadAuthSlot(mode) || slot;
             if (verified.profile) fresh.profile = verified.profile;
@@ -2778,6 +2832,7 @@ function ringRetryQueueItemIsBlocked_(item) {
 /** 利用者向けメッセージ（null = 汎用メッセージに任せる） */
 function ringGasPermanentErrorMessage_(code) {
     var c = String(code || '');
+    if (c === 'RETRY_REVIEW_REQUIRED') return '保存状態を確認できない変更を保持しています。車両の内容を確認して再保存してください';
     if (/DAILY_INSPECTION_LOG_ID_CONFLICT/.test(c)) return '同じ記録番号の別の日常点検がサーバーにあるため保存できませんでした';
     if (/LOG_ID_CONFLICT/.test(c)) return '同じ記録番号の別の整備記録がサーバーにあるため保存できませんでした';
     if (/LOG_CREATE_ROLE_DENIED/.test(c)) return 'この権限では整備記録を登録できません（店舗の管理者・スタッフのみ登録できます）';
@@ -3282,7 +3337,8 @@ function ringRetrySyncVehicleNicknameItem_(item, profile) {
     var payRev = parseInt(item.payload.nicknameRev, 10) || 0;
     if (payRev <= 0) payRev = 1;
     if (payRev > localRev) {
-        return { item: item, drop: true };
+        ringRetryQueueMarkBlocked_(item, 'RETRY_REVIEW_REQUIRED', 'review');
+        return { item: item, drop: false };
     }
     var payNick = ringNormalizeVehicleNicknameValue_(item.payload.nickname);
     var localNick = ringNormalizeVehicleNicknameValue_(car.nickname);
@@ -3298,7 +3354,7 @@ function ringRetrySyncVehicleNicknameItem_(item, profile) {
 }
 
 /**
- * 通常 vehicle / update_vehicle 再送: 古い rev は破棄、新しい local なら payload 最新化。
+ * 通常 vehicle / update_vehicle 再送: 情報不足は保留、新しい local なら payload 最新化。
  * @returns {{ item: object, drop: boolean }}
  */
 function ringRetrySyncVehicleUpdateItem_(item, profile) {
@@ -3318,20 +3374,65 @@ function ringRetrySyncVehicleUpdateItem_(item, profile) {
     var localRev = ringGetVehicleSaveRev_(car);
     var payRev = parseInt(item.payload.vehicleSaveRev, 10) || 0;
     var syncedRev = ringGetVehicleSyncedRev_(car);
-    if (payRev > localRev) {
-        return { item: item, drop: true };
+    if (!localRev || !payRev || payRev > localRev) {
+        ringRetryQueueMarkBlocked_(item, 'RETRY_REVIEW_REQUIRED', 'review');
+        return { item: item, drop: false };
     }
     if (syncedRev >= payRev && payRev > 0 && car.nicknamePendingCloud !== true &&
         car.plateSuffixPendingCloud !== true) {
-        return { item: item, drop: true };
+        ringRetryQueueMarkBlocked_(item, 'RETRY_REVIEW_REQUIRED', 'review');
+        return { item: item, drop: false };
+    }
+    if (Object.prototype.hasOwnProperty.call(item.payload, 'plateSuffix') &&
+        (!parseInt(car.plateSuffixSaveRev, 10) || !parseInt(item.payload.plateSuffixSaveRev, 10))) {
+        ringRetryQueueMarkBlocked_(item, 'RETRY_REVIEW_REQUIRED', 'review');
+        return { item: item, drop: false };
     }
     if (payRev < localRev) {
         var fresh = ringBuildVehicleGasPayload_(car, profile);
         fresh.vehicleSaveRev = localRev;
         item.payload = fresh;
     }
-    item.payload.baseServerRev = ringVehicleBaseServerRevForPayload_(car);
+    if (item.payload.baseServerRev == null) {
+        ringRetryQueueMarkBlocked_(item, 'RETRY_REVIEW_REQUIRED', 'review');
+    } else {
+        // Pending merges retain the old base. Only an acknowledged local save or
+        // an explicit conflict merge may advance this base (e.g. nickname migration).
+        item.payload.baseServerRev = ringVehicleBaseServerRevForPayload_(car);
+    }
     return { item: item, drop: false };
+}
+
+/**
+ * get_vehicles マージ後: キューの自動ドロップは行わない（GAS送信成功時の flush のみで除去）。
+ * 再送 payload の鮮度化のみ（所有権一致時）。
+ */
+function ringReconcileVehicleRetryQueueAfterGetVehicles_(profile) {
+    profile = profile || (typeof getCurrentProfile === 'function' ? getCurrentProfile() : null);
+    if (!profile) return { dropped: 0, refreshed: 0 };
+    var q = safeJsonParse(localStorage.getItem(DB_RETRY_QUEUE), []);
+    if (!Array.isArray(q) || !q.length) return { dropped: 0, refreshed: 0 };
+    var refreshed = 0;
+  var next = q.map(function (item) {
+    if (!item) return item;
+    if (typeof ringRetryQueueItemMayFlush_ === 'function' && profile &&
+        !ringRetryQueueItemMayFlush_(item, profile)) {
+      return item;
+    }
+    var nick = ringRetrySyncVehicleNicknameItem_(item, profile);
+    var base = nick.drop ? item : nick.item;
+    if (!nick.drop) {
+      var upd = ringRetrySyncVehicleUpdateItem_(base, profile);
+      base = upd.drop ? item : upd.item;
+      if (!upd.drop) refreshed++;
+      var plate = ringRetrySyncVehiclePlateSuffixItem_(base, profile);
+      base = plate.drop ? item : plate.item;
+      if (!plate.drop && plate.item !== base) refreshed++;
+    }
+    return base;
+  });
+    localStorage.setItem(DB_RETRY_QUEUE, JSON.stringify(next));
+    return { dropped: 0, refreshed: refreshed };
 }
 
 function ringVehicleGasResponseSyncOpts_(payload) {
@@ -3593,6 +3694,21 @@ function ringPrepareVehicleConflictMerge_(vin, profile, choices) {
  * opts.allowAutoMerge: 両方が同じ項目を変えていなければ、端末の変更だけを最新サーバー値へ重ねて 'merged'（再送待ち）。
  * @returns {'identical'|'merged'|'conflict'|'none'}
  */
+function ringRetryPayloadMatchesServer_(payload, response, profile) {
+    var row = response && response.vehicle;
+    if (!row || !payload || !profile || _normalize(row.vin) !== _normalize(payload.vin) ||
+        !ringServerVehicleRowMatchesProfile_(row, profile) || ringParseServerRev_(response.serverRev) == null) return false;
+    var metadata = ['authToken', 'action', 'baseServerRev', 'vehicleSaveRev', 'plateSuffixSaveRev', 'nicknameRev', 'nicknameBase', 'nicknameOnly', 'plateSuffixOnly'];
+    return Object.keys(payload).every(function (key) {
+        if (metadata.indexOf(key) >= 0) return true;
+        var field = key === 'category' ? 'classification' : key;
+        if (!Object.prototype.hasOwnProperty.call(row, field)) return false;
+        if (field === 'vin') return _normalize(row[field]) === _normalize(payload[key]);
+        if (field === 'plateSuffix') return normalizePlateSuffixInput_(row[field]) === normalizePlateSuffixInput_(payload[key]);
+        return String(row[field] == null ? '' : row[field]) === String(payload[key] == null ? '' : payload[key]);
+    });
+}
+
 function ringRecordVehicleConflictFromGas_(vin, gasJson, profile, opts) {
     opts = opts || {};
     profile = profile || (typeof getCurrentProfile === 'function' ? getCurrentProfile() : null);
@@ -3607,7 +3723,8 @@ function ringRecordVehicleConflictFromGas_(vin, gasJson, profile, opts) {
     var platePendingMismatch = car.plateSuffixPendingCloud === true && snap &&
         normalizePlateSuffixInput_(ringResolveVehiclePlateSuffix_(car)) !==
         normalizePlateSuffixInput_(snap.plateSuffix);
-    if (snap && rev != null && sameRequest && !platePendingMismatch &&
+    if ((!opts.requireQueueProof || ringRetryPayloadMatchesServer_(opts.requestPayload, gasJson, profile)) &&
+        snap && rev != null && sameRequest && !platePendingMismatch &&
         ringVehicleConflictDiffs_(car, snap).length === 0) {
         ringAdvanceVehicleServerRev_(car, rev);
         car.vehicleSyncedRev = ringGetVehicleSaveRev_(car);
@@ -3849,10 +3966,12 @@ async function updateVehicleNicknameOnly(vin, nickname, opts) {
 async function ringMigrateLocalNicknamesToCloud_(profile) {
     if (!profile || ringIsDemoGasOffline_()) return;
     if (ringIsBizProfile_(profile) && !ringCanEditManagedVehicles_(profile)) return;
+    var requestContext = ringCaptureRequestContext_();
     var list = loadVehicles().filter(function (car) {
         return ringIsMyVehicleRecord_(car, profile);
     });
     for (var idx = 0; idx < list.length; idx++) {
+        if (!ringRequestContextIsCurrent_(requestContext)) return;
         var car = list[idx];
         var vinNorm = _normalize(car.vin);
         if (!vinNorm) continue;
@@ -4217,8 +4336,16 @@ function ringRetrySyncVehiclePlateSuffixItem_(item, profile) {
     if (!vinNorm) return { item: item, drop: false };
     var car = ringFindLocalVehicleByOwner_(vinNorm, profile);
     if (!car) return { item: item, drop: false };
-    if (car.plateSuffixPendingCloud !== true) {
-        return { item: item, drop: true };
+    var localRev = car.plateSuffixPendingCloud === true ? ringEffectiveVehiclePlateSuffixSaveRev_(car) : 0;
+    var queuedRev = parseInt(item.payload.plateSuffixSaveRev, 10) || 0;
+    if (!localRev || !queuedRev || queuedRev > localRev || car.plateSuffixPendingCloud !== true ||
+        item.payload.baseServerRev == null) {
+        ringRetryQueueMarkBlocked_(item, 'RETRY_REVIEW_REQUIRED', 'review');
+        return { item: item, drop: false };
+    }
+    if (queuedRev === localRev && normalizePlateSuffixInput_(item.payload.plateSuffix) !== normalizePlateSuffixInput_(car.plateSuffix)) {
+        ringRetryQueueMarkBlocked_(item, 'RETRY_REVIEW_REQUIRED', 'review');
+        return { item: item, drop: false };
     }
     item.payload.plateSuffix = normalizePlateSuffixInput_(car.plateSuffix);
     item.payload.plateSuffixSaveRev = ringEffectiveVehiclePlateSuffixSaveRev_(car);
@@ -4241,6 +4368,11 @@ function ringDaysInMonth_(y, m) {
 }
 
 /** @param {Date} d */
+function ringFormatDateToYmdJst_(d) {
+    if (!d || isNaN(d.getTime())) return '';
+    return new Date(d.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
 function ringFormatDateToYmdLocal_(d) {
     if (!d || isNaN(d.getTime())) return '';
     return ringYmdFromParts_(d.getFullYear(), d.getMonth() + 1, d.getDate());
@@ -4333,6 +4465,31 @@ function ringFleetOutReturnIsOverdue_(booking) {
     return ringYmdCompare_(end, today) < 0;
 }
 
+/**
+ * 貸出開始（→out）可否。status 判定は「現在の予約状態」を使う（patch 後の out を渡さない）。
+ * @param {object} booking 現在の予約行
+ * @param {string} [todayYmd]
+ * @param {{ fromStatus?: string }} [opts]
+ */
+function ringFleetCheckoutStartAllowed_(booking, todayYmd, opts) {
+    opts = opts || {};
+    if (!booking) return { ok: false, error: 'BOOKING_NOT_FOUND' };
+    var st = String(opts.fromStatus != null ? opts.fromStatus : booking.status || '').toLowerCase();
+    if (st === 'returned' || st === 'cancelled') {
+        return { ok: false, error: 'BOOKING_STATUS_INVALID', from: st };
+    }
+    if (st !== 'reserved' && st !== 'confirmed') {
+        return { ok: false, error: 'BOOKING_STATUS_INVALID', from: st };
+    }
+    var start = String(booking.startDate || '').trim();
+    if (!start) return { ok: false, error: 'BOOKING_DATES_REQUIRED' };
+    var today = todayYmd || ringFormatDateToYmdJst_(new Date());
+    if (ringYmdCompare_(today, start) < 0) {
+        return { ok: false, error: 'BOOKING_CHECKOUT_TOO_EARLY', minStartDate: start };
+    }
+    return { ok: true };
+}
+
 function ringFleetBookingsShopScoped_(profile, bookings) {
     var shopKey = ringFleetBookingsShopKey_(profile);
     if (!shopKey) return [];
@@ -4369,6 +4526,9 @@ function ringFleetBookingsSyncIsFresh_(syncMeta) {
  * @returns {Promise<{ok:boolean, bookings:Array, fromCache:boolean}>}
  */
 async function ringFleetEnsureBookingsSyncedForRange_(profile, startYmd, endYmd) {
+    var requestContext = ringCaptureRequestContext_();
+    var currentProfile = getCurrentProfile();
+    if (!profile || !currentProfile || String(profile.shopId || '') !== String(currentProfile.shopId || '')) return ringFleetReadFailure_('STALE_SESSION', []);
     var ps = ringParseYmdParts_(startYmd);
     var pe = ringParseYmdParts_(endYmd);
     if (!ps || !pe || !profile || !profile.shopId) {
@@ -4383,6 +4543,8 @@ async function ringFleetEnsureBookingsSyncedForRange_(profile, startYmd, endYmd)
     while (guard < 36) {
         guard++;
         var res = await syncFleetBookingsFromServer(y, m);
+        if (!ringRequestContextIsCurrent_(requestContext)) return ringFleetReadFailure_('STALE_SESSION', []);
+        if (res && /AUTH_|SESSION_|STALE_SESSION/.test(String(res.error || ''))) return res;
         if (!res || !res.ok) ok = false;
         if (y === endY && m === endM) break;
         m++;
@@ -4718,10 +4880,19 @@ function ringFleetPersistBookingLocally_(profile, booking) {
  */
 async function ringFleetHandleCreateBookingSubmit_(profile, input) {
     input = input || {};
+    var requestContext = ringCaptureRequestContext_();
+    var currentProfile = getCurrentProfile();
+    if (!currentProfile || !profile || String(profile.shopId || '') !== String(currentProfile.shopId || '')) {
+        return { outcome: 'error', json: { success: false, error: 'STALE_SESSION' } };
+    }
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        return { outcome: 'error', json: { success: false, error: 'OFFLINE' } };
+    }
     if (input.voidOriginalAndCreate === true && input.confirmProceed === true) {
         var actVoid = ringListFleetUnresolved_(profile)[0];
         if (!actVoid) return { outcome: 'error', message: '未解決の送信がありません' };
         var invVoid = await invalidateFleetBookingRequest_(actVoid.clientRequestId, actVoid.snapshot);
+        if (!ringRequestContextIsCurrent_(requestContext)) return { outcome: 'error', json: { success: false, error: 'STALE_SESSION' } };
         if (!invVoid || invVoid.success !== true || invVoid.confirmed !== true) {
             return {
                 outcome: 'ambiguous',
@@ -4750,6 +4921,7 @@ async function ringFleetHandleCreateBookingSubmit_(profile, input) {
         var only = ringListFleetUnresolved_(profile)[0];
         if (!only) return { outcome: 'none', message: '未解決の送信はありません' };
         var lu = await lookupFleetBookingByClientRequest_(only.clientRequestId);
+        if (!ringRequestContextIsCurrent_(requestContext)) return { outcome: 'error', json: { success: false, error: 'STALE_SESSION' } };
         if (!lu || lu.success !== true) {
             return { outcome: 'ambiguous', unresolved: only, message: '予約の保存結果を確認できませんでした', json: lu };
         }
@@ -4776,6 +4948,7 @@ async function ringFleetHandleCreateBookingSubmit_(profile, input) {
             status: snapshot.status
         };
         var upd = await updateFleetBookingOnServer_(updPayload);
+        if (!ringRequestContextIsCurrent_(requestContext)) return { outcome: 'error', json: { success: false, error: 'STALE_SESSION' } };
         if (upd && upd.success && active) {
             ringClearFleetCreateUnresolved_(profile, active.clientRequestId);
         }
@@ -4785,6 +4958,7 @@ async function ringFleetHandleCreateBookingSubmit_(profile, input) {
     if (input.resolveAction === 'add_new' && input.confirmAddNew === true) {
         if (active) {
             var luAdd = await lookupFleetBookingByClientRequest_(active.clientRequestId);
+        if (!ringRequestContextIsCurrent_(requestContext)) return { outcome: 'error', json: { success: false, error: 'STALE_SESSION' } };
             if (luAdd && luAdd.success && luAdd.found && luAdd.booking) {
                 ringClearFleetCreateUnresolved_(profile, active.clientRequestId);
             } else if (!luAdd || luAdd.success !== true) {
@@ -4797,6 +4971,7 @@ async function ringFleetHandleCreateBookingSubmit_(profile, input) {
                 };
             } else {
                 var invAdd = await invalidateFleetBookingRequest_(active.clientRequestId, active.snapshot);
+        if (!ringRequestContextIsCurrent_(requestContext)) return { outcome: 'error', json: { success: false, error: 'STALE_SESSION' } };
                 if (!invAdd || invAdd.success !== true || invAdd.confirmed !== true) {
                     return {
                         outcome: 'ambiguous',
@@ -4823,6 +4998,7 @@ async function ringFleetHandleCreateBookingSubmit_(profile, input) {
             clientRequestId: newId
         };
         var addJson = await ringFleetPostCreateBooking_(addBody);
+        if (!ringRequestContextIsCurrent_(requestContext)) return { outcome: 'error', json: { success: false, error: 'STALE_SESSION' } };
         if (addJson && addJson.success && addJson.booking) {
             ringClearFleetCreateUnresolved_(profile, newId);
             ringFleetPersistBookingLocally_(profile, addJson.booking);
@@ -4840,6 +5016,7 @@ async function ringFleetHandleCreateBookingSubmit_(profile, input) {
     if (active) {
         if (ringFleetSnapshotEquals_(active.snapshot, snapshot)) {
             var lookupSame = await lookupFleetBookingByClientRequest_(active.clientRequestId);
+        if (!ringRequestContextIsCurrent_(requestContext)) return { outcome: 'error', json: { success: false, error: 'STALE_SESSION' } };
             if (lookupSame && lookupSame.success && lookupSame.found && lookupSame.booking) {
                 if (ringFleetBookingMatchesSnapshot_(lookupSame.booking, snapshot)) {
                     ringClearFleetCreateUnresolved_(profile, active.clientRequestId);
@@ -4869,6 +5046,7 @@ async function ringFleetHandleCreateBookingSubmit_(profile, input) {
                 clientRequestId: active.clientRequestId
             };
             var retryJson = await ringFleetPostCreateBooking_(retryBody);
+        if (!ringRequestContextIsCurrent_(requestContext)) return { outcome: 'error', json: { success: false, error: 'STALE_SESSION' } };
             if (retryJson && retryJson.success && retryJson.booking) {
                 ringClearFleetCreateUnresolved_(profile, active.clientRequestId);
                 ringFleetPersistBookingLocally_(profile, retryJson.booking);
@@ -4890,6 +5068,7 @@ async function ringFleetHandleCreateBookingSubmit_(profile, input) {
         }
 
         var lookup = await lookupFleetBookingByClientRequest_(active.clientRequestId);
+        if (!ringRequestContextIsCurrent_(requestContext)) return { outcome: 'error', json: { success: false, error: 'STALE_SESSION' } };
         if (!lookup || lookup.success !== true) {
             return {
                 outcome: 'ambiguous',
@@ -4926,6 +5105,7 @@ async function ringFleetHandleCreateBookingSubmit_(profile, input) {
         clientRequestId: clientRequestId
     };
     var createJson = await ringFleetPostCreateBooking_(createBody);
+        if (!ringRequestContextIsCurrent_(requestContext)) return { outcome: 'error', json: { success: false, error: 'STALE_SESSION' } };
     if (createJson && createJson.success && createJson.booking) {
         if (!ringFleetBookingMatchesSnapshot_(createJson.booking, snapshot)) {
             return {
@@ -5000,10 +5180,40 @@ function mergeFleetBookingsForShop_(serverList, profile) {
     return Array.from(map.values());
 }
 
+async function syncFleetBookingsForVinHistory_(vin) {
+    var profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+    if (!profile || !profile.shopId) return { ok: false, bookings: [], error: 'NO_SHOP' };
+    var vinNorm = typeof _normalize === 'function' ? _normalize(vin) : String(vin || '').trim().toUpperCase();
+    if (!vinNorm) return { ok: false, bookings: [], error: 'VIN_REQUIRED' };
+    var requestContext = ringCaptureRequestContext_();
+    var readKey = requestContext.scope + ':history:' + vinNorm;
+    var readSerial = (ringFleetReadSerials_[readKey] || 0) + 1;
+    ringFleetReadSerials_[readKey] = readSerial;
+    try {
+        var json = await sendToGAS_Safe('get_fleet_bookings', { vin: vinNorm, historyAll: true }, { silentToast: true });
+        if (!ringRequestContextIsCurrent_(requestContext) || ringFleetReadSerials_[readKey] !== readSerial) {
+            return ringFleetReadFailure_('STALE_SESSION', []);
+        }
+        if (!json || json.success !== true) {
+            return { ok: false, bookings: [], error: (json && json.error) || 'GET_FLEET_BOOKINGS_FAILED' };
+        }
+        var merged = ringFleetBookingsShopScoped_(profile, json.bookings || []);
+        return { ok: true, bookings: merged.filter(function (b) {
+            return b && String(b.vin || '').trim().toUpperCase() === vinNorm;
+        }) };
+    } catch (e) {
+        return ringFleetReadFailure_(ringRequestContextIsCurrent_(requestContext) ? e : 'STALE_SESSION', []);
+    }
+}
+
 async function syncFleetBookingsFromServer(year, month) {
     var profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
     if (!profile || !profile.shopId) return { ok: false, fromCache: false, bookings: [], error: 'NO_SHOP' };
     var cachedOnly = loadFleetBookingsLocal_(profile);
+    var requestContext = ringCaptureRequestContext_();
+    var readKey = requestContext.scope + ':month:' + year + ':' + month;
+    var readSerial = (ringFleetReadSerials_[readKey] || 0) + 1;
+    ringFleetReadSerials_[readKey] = readSerial;
     try {
         var payload = {};
         if (year != null && month != null) {
@@ -5011,19 +5221,17 @@ async function syncFleetBookingsFromServer(year, month) {
             payload.month = month;
         }
         var json = await sendToGAS_Safe('get_fleet_bookings', payload, { silentToast: true });
+        if (!ringRequestContextIsCurrent_(requestContext) || ringFleetReadSerials_[readKey] !== readSerial) {
+            return ringFleetReadFailure_('STALE_SESSION', []);
+        }
         if (!json || json.success !== true) {
-            return {
-                ok: false,
-                fromCache: true,
-                bookings: cachedOnly,
-                error: (json && json.error) || 'GET_FLEET_BOOKINGS_FAILED'
-            };
+            return ringFleetReadFailure_((json && json.error) || 'GET_FLEET_BOOKINGS_FAILED', cachedOnly);
         }
         var merged = mergeFleetBookingsForShop_(json.bookings || [], profile);
         saveFleetBookingsForShop_(profile, merged);
         return { ok: true, fromCache: false, bookings: merged };
     } catch (e) {
-        return { ok: false, fromCache: true, bookings: cachedOnly, error: 'NETWORK' };
+        return ringFleetReadFailure_(ringRequestContextIsCurrent_(requestContext) ? e : 'STALE_SESSION', cachedOnly);
     }
 }
 
@@ -5044,9 +5252,11 @@ async function createFleetBookingOnServer_(payload) {
 }
 
 async function updateFleetBookingOnServer_(payload) {
+    var requestContext = ringCaptureRequestContext_();
+    var prof = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
     var json = await sendToGAS_Safe('update_fleet_booking', payload || {}, { silentToast: false });
+    if (!ringRequestContextIsCurrent_(requestContext)) throw new Error('STALE_SESSION');
     if (json && json.success && json.booking) {
-        var prof = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
         var list = loadFleetBookingsLocal_(prof);
         var id = String(json.booking.bookingId || '').trim();
         var idx = list.findIndex(function (b) { return String(b.bookingId) === id; });
@@ -5368,36 +5578,19 @@ function mergeVehiclesLocalAndServer(localList, serverList, opts) {
         const sharedModel = loc.model && String(loc.model).trim() ? loc.model : '';
         var nickState = ringApplyMergedNicknameState_(prev, loc, { isBiz: isBiz, userId: myUserId });
         var pendingSync = ringVehicleHasPendingServerSync_(prev);
-        const merged = {
-            ...prev,
-            ...loc,
-            model: sharedModel || (isBiz ? (prev.model || '') : (prev.model || loc.model || '')),
-            lastMaint: prev.lastMaint,
-            nickname: nickState.nickname,
-            nicknameCloud: nickState.nicknameCloud,
-            nicknamePendingCloud: nickState.nicknamePendingCloud,
-            shopName: prev.shopName || loc.shopName,
-            shopType: prev.shopType || loc.shopType
-        };
-        if (pendingSync) {
-            merged.vehicleCategory = prev.vehicleCategory;
-            merged.nextShaken = prev.nextShaken;
-            merged.usage = prev.usage;
-            merged.ownerType = prev.ownerType;
-            merged.vClass = prev.vClass;
-            merged.vehicleName = prev.vehicleName;
-            merged.vehicleModel = prev.vehicleModel;
-            merged.engine = prev.engine;
-            merged.classification = prev.classification;
-            merged.typeDesignation = prev.typeDesignation;
-            merged.firstRegistration = prev.firstRegistration;
-            merged.vehicleSaveRev = prev.vehicleSaveRev;
-            merged.vehicleSyncedRev = prev.vehicleSyncedRev;
-            merged.plateSuffix = prev.plateSuffix;
-            merged.plateSuffixCloud = prev.plateSuffixCloud;
-            merged.plateSuffixPendingCloud = prev.plateSuffixPendingCloud;
-            merged.plateSuffixServerKeyPresent = prev.plateSuffixServerKeyPresent;
-            if (prev.plateKana) merged.plateKana = prev.plateKana;
+        var pendingQueue = profile && typeof ringVehicleOwnerHasPendingVehicleQueue_ === 'function' &&
+            ringVehicleOwnerHasPendingVehicleQueue_(prev.vin, profile);
+        var protectLocal = pendingSync || pendingQueue;
+        var merged;
+        if (protectLocal && map.has(k)) {
+            merged = Object.assign({}, prev);
+            merged.lastMaint = prev.lastMaint;
+            // A pending queue is evidence of an unsent edit even if flags were lost.
+            merged.nickname = pendingQueue ? prev.nickname : nickState.nickname;
+            merged.nicknameCloud = pendingQueue ? prev.nicknameCloud : nickState.nicknameCloud;
+            merged.nicknamePendingCloud = pendingQueue ? prev.nicknamePendingCloud : nickState.nicknamePendingCloud;
+            merged.shopName = prev.shopName || loc.shopName;
+            merged.shopType = prev.shopType || loc.shopType;
             if (loc.serverRev != null) {
                 merged.serverRev = ringVehicleBaseServerRevForPayload_(prev);
                 if (prev.vehicleConflict && loc.serverRev > (ringParseServerRev_(prev.vehicleConflict.serverRev) || 0)) {
@@ -5410,13 +5603,22 @@ function mergeVehiclesLocalAndServer(localList, serverList, opts) {
                 merged.serverRev = prev.serverRev;
             }
         } else {
+            merged = Object.assign({}, prev, loc, {
+                model: sharedModel || (isBiz ? (prev.model || '') : (prev.model || loc.model || '')),
+                lastMaint: prev.lastMaint,
+                nickname: nickState.nickname,
+                nicknameCloud: nickState.nicknameCloud,
+                nicknamePendingCloud: nickState.nicknamePendingCloud,
+                shopName: prev.shopName || loc.shopName,
+                shopType: prev.shopType || loc.shopType
+            });
             if (merged.vehicleConflict) delete merged.vehicleConflict;
             ringSetVehicleServerBase_(merged, row);
         }
-        if (prev.plateSuffixPendingCloud === true) {
+        if (prev.plateSuffixPendingCloud === true || protectLocal) {
             merged.plateSuffix = prev.plateSuffix;
             merged.plateSuffixCloud = prev.plateSuffixCloud;
-            merged.plateSuffixPendingCloud = true;
+            merged.plateSuffixPendingCloud = prev.plateSuffixPendingCloud;
             merged.plateSuffixServerKeyPresent = prev.plateSuffixServerKeyPresent;
             if (prev.plateKana) merged.plateKana = prev.plateKana;
         } else if (loc.plateSuffixServerKeyPresent) {
@@ -5470,12 +5672,15 @@ async function syncVehiclesFromServer() {
         ? ringResolveActiveAuthToken()
         : localStorage.getItem("ring_auth_token");
     if (!token) return loadVehicles();
+    var requestContext = ringCaptureRequestContext_();
+    var readSerial = ++ringVehicleReadSerial_;
+    const profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
     try {
         const json = await sendToGAS_Safe("get_vehicles", {});
+        if (!ringRequestContextIsCurrent_(requestContext) || readSerial !== ringVehicleReadSerial_) return loadVehicles();
         if (!json || json.success === false || !Array.isArray(json.vehicles)) {
             return loadVehicles();
         }
-        const profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
         const merged = mergeVehiclesLocalAndServer(loadVehicles(), json.vehicles, {
             profile: profile,
             userId: profile && profile.userId ? String(profile.userId) : '',
@@ -5486,6 +5691,11 @@ async function syncVehiclesFromServer() {
         try {
             await ringMigrateLocalNicknamesToCloud_(profile);
         } catch (eMig) { /* ignore */ }
+        try {
+            if (ringRequestContextIsCurrent_(requestContext) && typeof ringReconcileVehicleRetryQueueAfterGetVehicles_ === 'function') {
+                ringReconcileVehicleRetryQueueAfterGetVehicles_(profile);
+            }
+        } catch (eRec) { /* ignore */ }
         return loadVehicles();
     } catch (e) {
         return loadVehicles();
@@ -6582,6 +6792,7 @@ async function sendToGAS_Safe(actionType, data, opts) {
     if (ringIsDemoGasOffline_()) {
         return ringDemoGasStubResponse_(actionType);
     }
+    var requestContext = ringCaptureRequestContext_();
     try {
     const payload = JSON.parse(JSON.stringify(data || {}));
     payload.action = actionType;
@@ -6599,6 +6810,9 @@ async function sendToGAS_Safe(actionType, data, opts) {
     var authToken = (opts && opts.authToken != null && String(opts.authToken).trim() !== '')
         ? String(opts.authToken).trim()
         : ringResolveActiveAuthToken();
+    if (authToken !== requestContext.token) throw new Error('STALE_SESSION');
+    if (/^(create_fleet_booking|update_fleet_booking|invalidate_fleet_booking_request)$/.test(actionType) &&
+        typeof navigator !== 'undefined' && navigator.onLine === false) throw new Error('OFFLINE');
     if (authToken) payload.authToken = authToken;
 
     if (payload.plateSuffixOnly &&
@@ -6612,6 +6826,7 @@ async function sendToGAS_Safe(actionType, data, opts) {
         headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify(payload)
     }, timeoutMs);
+    if (!ringRequestContextIsCurrent_(requestContext)) throw new Error('STALE_SESSION');
     if (featureRequest) ringRememberGasServerFeatures_(json, featureRequest);
     if (!json || json.success !== true) {
         if (actionType === 'ocr_vin' && json && (json.fields || json.ocrText || json.registration || json.error === 'OCR_DISABLED')) {
@@ -6630,10 +6845,11 @@ async function sendToGAS_Safe(actionType, data, opts) {
     }
     return json;
     } catch (err) {
+        if (!ringRequestContextIsCurrent_(requestContext) || String(err && err.message) === 'STALE_SESSION') throw new Error('STALE_SESSION');
         if (ocrSessionId && !ringOcrShouldConsumeResult_(ocrSessionId)) throw err;
         var errMsg = String(err && err.message ? err.message : err || '');
         if (/AUTH_EXPIRED/i.test(errMsg) && actionType !== 'verify_session') {
-            ringHandleAuthExpired_(ringGetActiveMode(), actionType);
+            ringHandleAuthExpired_(requestContext.mode, actionType);
             err.ringAuthHandled = true;
         }
         if (actionType !== 'system_log') {
@@ -6865,6 +7081,7 @@ async function flushRetryQueue(opts) {
     ringRetryQueueResumePlateGasBlocks_(!!opts.resumeStopped, !!opts.resumeStopped);
     if (ringIsDemoGasOffline_()) return;
     if (__ringRetryFlushBusy) return;
+    var flushRequestContext = ringCaptureRequestContext_();
     __ringRetryFlushBusy = true;
     try {
         var tombMapAtFlush = ringLoadRetryQueueTombstones_();
@@ -6882,6 +7099,7 @@ async function flushRetryQueue(opts) {
         var completedItemIds = {};
         var flushProfileAtStart = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
         for (const item of queue) {
+            if (!ringRequestContextIsCurrent_(flushRequestContext)) break;
             if (ringRetryQueueItemIsForeign_(item, flushProfileAtStart)) {
                 continue;
             }
@@ -6939,7 +7157,7 @@ async function flushRetryQueue(opts) {
                     authToken: flushCtx.token,
                     silentToast: true
                 });
-                if (!ringRetryResponseApplyAllowed_(flushOwnerSnap)) {
+                if (!ringRequestContextIsCurrent_(flushRequestContext) || !ringRetryResponseApplyAllowed_(flushOwnerSnap)) {
                     ringRetryQueuePushOrKeep_(remaining, flushItem);
                     continue;
                 }
@@ -6948,7 +7166,8 @@ async function flushRetryQueue(opts) {
                 var flushHadNick = ringVehicleGasPayloadIncludesNickname_(flushItem.payload);
                 if (flushItem.action === 'update_vehicle' && flushItem.payload && flushItem.payload.nicknameOnly) {
                     if (flushJson && ringIsGasVehicleHardDenyError_(String(flushJson.error || ''))) {
-                        completedItemIds[sentItemId] = true;
+                        ringRetryQueueMarkBlocked_(flushItem, String(flushJson.error), 'permanent');
+                        ringRetryQueuePushOrKeep_(remaining, flushItem);
                         continue;
                     }
                     if (flushJson && String(flushJson.error || '') === 'NICKNAME_CONFLICT') {
@@ -6960,10 +7179,10 @@ async function flushRetryQueue(opts) {
                         completedItemIds[sentItemId] = true;
                         continue;
                     }
-                    if (flushJson && flushJson.success !== false) {
+                    if (flushJson && flushJson.success === true) {
                         ringAdvanceServerRevAfterNicknameOnly_(flushVin, applyProfile, flushJson);
                     }
-                    if (flushJson && flushJson.success !== false && Object.prototype.hasOwnProperty.call(flushJson, 'nickname')) {
+                    if (flushJson && flushJson.success === true && Object.prototype.hasOwnProperty.call(flushJson, 'nickname')) {
                         ringPersistVehicleNicknameAfterGas_(flushVin, flushJson, true, applyProfile, flushSyncOpts);
                         if (applyProfile) {
                             ringMarkVehicleNickMigrated_(applyProfile, _normalize(flushVin));
@@ -6983,7 +7202,8 @@ async function flushRetryQueue(opts) {
                         continue;
                     }
                     if (flushJson && ringIsGasVehicleHardDenyError_(String(flushJson.error || ''))) {
-                        completedItemIds[sentItemId] = true;
+                        ringRetryQueueMarkBlocked_(flushItem, String(flushJson.error), 'permanent');
+                        ringRetryQueuePushOrKeep_(remaining, flushItem);
                         continue;
                     }
                     if (flushJson && ringIsGasVehicleConflictError_(String(flushJson.error || ''))) {
@@ -6994,7 +7214,7 @@ async function flushRetryQueue(opts) {
                         ringRetryQueuePushOrKeep_(remaining, flushItem);
                         continue;
                     }
-                    if (flushJson && flushJson.success !== false) {
+                    if (flushJson && flushJson.success === true) {
                         if (ringGasResponseConfirmsPlateSuffix_(flushJson) &&
                             ringApplyFleetPlateSuffixFromGas_(flushVin, applyProfile, flushJson, flushSyncOpts)) {
                             completedItemIds[sentItemId] = true;
@@ -7009,7 +7229,7 @@ async function flushRetryQueue(opts) {
                     continue;
                 }
                 if ((flushItem.action === 'update_vehicle' || flushItem.action === 'vehicle') && flushJson &&
-                    flushJson.success !== false) {
+                    flushJson.success === true) {
                     ringMarkVehicleSyncedAfterGas_(flushVin, applyProfile, flushJson, flushHadNick,
                         Object.assign({}, flushSyncOpts, { deferPlateQueue: true }));
                     var pendingPlate = ringFindLocalVehicleByOwner_(flushVin, applyProfile);
@@ -7049,20 +7269,26 @@ async function flushRetryQueue(opts) {
                     completedItemIds[sentItemId] = true;
                     continue;
                 }
-                if (flushJson && flushJson.success !== false) {
+                if (flushJson && flushJson.success === true) {
                     completedItemIds[sentItemId] = true;
                     continue;
                 }
                 if (flushJson && ringIsGasVehicleHardDenyError_(String(flushJson.error || ''))) {
-                    completedItemIds[sentItemId] = true;
+                    ringRetryQueueMarkBlocked_(flushItem, String(flushJson.error), 'permanent');
+                    ringRetryQueuePushOrKeep_(remaining, flushItem);
                     continue;
                 }
                 ringRetryQueueRecordFailure_(flushItem);
                 ringRetryQueuePushOrKeep_(remaining, flushItem);
             } catch (e) {
+                if (!ringRequestContextIsCurrent_(flushRequestContext)) {
+                    ringRetryQueuePushOrKeep_(remaining, flushItem);
+                    continue;
+                }
                 var flushErrMsg = String(e && e.message ? e.message : e || '');
                 if (ringIsGasVehicleHardDenyError_(flushErrMsg)) {
-                    completedItemIds[sentItemId] = true;
+                    ringRetryQueueMarkBlocked_(flushItem, flushErrMsg, 'permanent');
+                    ringRetryQueuePushOrKeep_(remaining, flushItem);
                     continue;
                 }
                 var flushErrKind = ringClassifyRetryQueueGasError_(flushItem, flushErrMsg, sendProfile);
@@ -7072,7 +7298,7 @@ async function flushRetryQueue(opts) {
                         var conflictState = ringRecordVehicleConflictFromGas_(flushItem.payload.vin,
                             e && e.gasResponse,
                             ringProfileFromFlushSnapshot_(flushOwnerSnap.profile) || sendProfile,
-                            Object.assign({}, flushSyncOpts, { allowAutoMerge: autoMerges < 2 }));
+                            Object.assign({}, flushSyncOpts, { allowAutoMerge: autoMerges < 2, requireQueueProof: true, requestPayload: flushItem.payload }));
                         if (conflictState === 'identical') {
                             completedItemIds[sentItemId] = true;
                             continue;
@@ -10132,6 +10358,8 @@ window.ringFleetVinAvailableForRange_ = ringFleetVinAvailableForRange_;
 window.ringFleetVinHasUncheckedOut_ = ringFleetVinHasUncheckedOut_;
 window.ringFleetListActiveOutBookings_ = ringFleetListActiveOutBookings_;
 window.ringFleetOutReturnIsOverdue_ = ringFleetOutReturnIsOverdue_;
+window.ringFleetCheckoutStartAllowed_ = ringFleetCheckoutStartAllowed_;
+window.ringReconcileVehicleRetryQueueAfterGetVehicles_ = ringReconcileVehicleRetryQueueAfterGetVehicles_;
 window.ringFleetSearchAvailableVehicles_ = ringFleetSearchAvailableVehicles_;
 window.ringFleetBookingsSyncIsFresh_ = ringFleetBookingsSyncIsFresh_;
 window.ringFleetEnsureBookingsSyncedForRange_ = ringFleetEnsureBookingsSyncedForRange_;
@@ -10145,6 +10373,7 @@ window.ringFleetCalendarWeeksJst_ = ringFleetCalendarWeeksJst_;
 window.ringFleetBookingBarInWeek_ = ringFleetBookingBarInWeek_;
 window.ringFleetInspectYmdForVehicle_ = ringFleetInspectYmdForVehicle_;
 window.syncFleetBookingsFromServer = syncFleetBookingsFromServer;
+window.syncFleetBookingsForVinHistory_ = syncFleetBookingsForVinHistory_;
 window.createFleetBookingOnServer_ = createFleetBookingOnServer_;
 window.updateFleetBookingOnServer_ = updateFleetBookingOnServer_;
 window.updateFleetPlateSuffixOnServer_ = updateFleetPlateSuffixOnServer_;

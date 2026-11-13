@@ -41,7 +41,7 @@
         <article class="ring-fleet-mob-stat" id="fleetMobStatStartTodayWrap"><span>今日の貸出</span><strong id="fleetMobStatStartToday">—</strong></article>
       </div>
 
-      <label class="fleet-history-toggle ring-fleet-history-opt ring-fleet-mob-history"><input type="checkbox" id="fleetShowReturnedMob" checked> 返却済みを薄く表示</label>
+      <label class="fleet-history-toggle ring-fleet-history-opt ring-fleet-mob-history"><input type="checkbox" id="fleetShowReturnedMob"> 返却済みを薄く表示</label>
 
       <section class="ring-fleet-mob-cal-section">
         <div class="ring-fleet-mob-cal-mode">
@@ -91,7 +91,7 @@
       </div>
     </section>
 
-    <label class="fleet-history-toggle ring-fleet-history-opt fleet-desktop-only"><input type="checkbox" id="fleetShowReturned" checked> 返却済みを薄く表示</label>
+    <label class="fleet-history-toggle ring-fleet-history-opt fleet-desktop-only"><input type="checkbox" id="fleetShowReturned"> 返却済みを薄く表示</label>
 
     <!-- PC: ダッシュボード -->
     <div class="fleet-desktop-only ring-fleet-desk-dashboard">
@@ -183,6 +183,16 @@
   </div>
 
   <div id="fleetNewBookingWizard" class="ring-fleet-wizard" hidden aria-hidden="true"></div>
+  <div id="fleetRentalHistoryModal" class="ring-fleet-history-modal" hidden role="dialog" aria-labelledby="fleetRentalHistoryTitle">
+    <div class="ring-fleet-history-inner">
+      <div class="ring-fleet-history-head">
+        <h2 id="fleetRentalHistoryTitle">貸出履歴</h2>
+        <button type="button" class="ring-fleet-history-close" id="fleetRentalHistoryClose">閉じる</button>
+      </div>
+      <div id="fleetRentalHistoryBody" class="ring-fleet-history-body"></div>
+    </div>
+  </div>
+
   <div id="fleetMobDetailBackdrop" class="ring-fleet-mob-sheet-backdrop" hidden></div>
   <div id="fleetMobDetailSheet" class="ring-fleet-mob-detail-sheet" hidden role="dialog" aria-modal="true" aria-labelledby="fleetMobDetailTitle">
     <div class="ring-fleet-mob-sheet-grab" aria-hidden="true"></div>

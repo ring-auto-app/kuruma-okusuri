@@ -1414,3 +1414,146 @@
     grid-column: 1 / -1;
   }
 }
+
+.ring-fleet-veh-card .car-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ring-fleet-veh-meta {
+  font-size: 12px;
+  font-weight: 700;
+  color: #475569;
+  margin: 8px 0 10px;
+  line-height: 1.5;
+}
+
+.ring-fleet-veh-meta p {
+  margin: 4px 0;
+}
+
+.ring-fleet-meta-label {
+  display: inline-block;
+  min-width: 4.5em;
+  color: #64748b;
+  font-weight: 800;
+}
+
+.ring-fleet-veh-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.ring-fleet-action-btn {
+  min-height: var(--tap-min);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+  text-decoration: none;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.ring-fleet-action-btn:active {
+  transform: scale(0.98);
+}
+
+.ring-fleet-checkout-early-hint {
+  font-size: 12px;
+  font-weight: 700;
+  color: #b45309;
+  margin: 0 0 8px;
+  line-height: 1.45;
+}
+
+.ring-fleet-history-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 0 env(safe-area-inset-bottom);
+}
+
+.ring-fleet-history-modal[hidden] {
+  display: none !important;
+  pointer-events: none !important;
+}
+
+.ring-fleet-history-inner {
+  width: 100%;
+  max-width: 560px;
+  max-height: min(85dvh, 720px);
+  background: var(--paper);
+  border-radius: 16px 16px 0 0;
+  padding: 12px 14px 20px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.ring-fleet-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.ring-fleet-history-head h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.ring-fleet-history-close {
+  min-height: var(--tap-min);
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.ring-fleet-history-body {
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.ring-fleet-history-row {
+  padding: 10px 0;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.ring-fleet-history-dates {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.ring-fleet-history-st {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b;
+}
+
+.ring-fleet-history-status {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b;
+}
