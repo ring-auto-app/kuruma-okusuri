@@ -371,6 +371,23 @@
       });
     }
 
+    function factoryUserErrorMessage_(codeOrErr, networkFallback) {
+      var code = codeOrErr != null ? String(codeOrErr).trim() : '';
+      if (typeof ringGasErrorToUserMessage_ === 'function' && code) {
+        var mapped = ringGasErrorToUserMessage_(code);
+        if (mapped) return mapped;
+      }
+      if (/AUTH_EXPIRED/i.test(code)) {
+        return 'ログインの有効期限が切れました。もう一度ログインしてください。';
+      }
+      if (/AUTH_REQUIRED|AUTH_INVALID|AUTH_ERROR/i.test(code)) {
+        return 'ログインが必要です。もう一度ログインしてください。';
+      }
+      if (networkFallback) return '通信できませんでした。接続を確認してください。';
+      if (code && !/^[A-Z0-9_]+$/.test(code)) return code;
+      return '保存できませんでした。もう一度お試しください。';
+    }
+
     async function submitDivisionChange_() {
       if (!pendingDivisionChange || !pendingDivisionChange.payload) return;
       var btn = document.getElementById('btnConfirmDivision');
@@ -380,7 +397,7 @@
         var result = await ringUpdateShopType_(pendingDivisionChange.payload);
         if (!result.ok) {
           hideLoading();
-          showToast('error', result.error || '変更に失敗しました');
+          showToast('error', factoryUserErrorMessage_(result.error, false));
           return;
         }
         var token = typeof ringResolveActiveAuthToken === 'function' ? ringResolveActiveAuthToken() : '';
@@ -399,7 +416,7 @@
         setTimeout(function () { location.replace(home); }, 600);
       } catch (e) {
         hideLoading();
-        showToast('error', '通信エラーが発生しました');
+        showToast('error', factoryUserErrorMessage_(e && e.message, true));
       } finally {
         btn.disabled = false;
       }
@@ -518,10 +535,10 @@
           currentProfile.shopName = document.getElementById('inShopName').value.trim();
           login(currentProfile, localStorage.getItem('ring_auth_token') || '');
         } else {
-          showToast('error', '保存に失敗しました: ' + data.error);
+          showToast('error', factoryUserErrorMessage_(data.error, false));
         }
       } catch (e) {
-        showToast('error', '通信エラーが発生しました');
+        showToast('error', factoryUserErrorMessage_(e && e.message, true));
       } finally {
         btn.disabled = false;
         hideLoading();

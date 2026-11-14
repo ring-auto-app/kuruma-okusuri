@@ -913,7 +913,10 @@
       GAS_ERROR: 'サーバー処理エラー',
       OCR_FAIL: 'OCR読み取り失敗',
       SAVE_FAIL: '保存処理失敗',
-      AUTH_ERROR: '認証エラー',
+      AUTH_ERROR: 'ログイン・権限の問題（再ログインまたは権限の確認）',
+      AUTH_EXPIRED: 'ログインの有効期限切れ',
+      AUTH_REQUIRED: '未ログインによる拒否',
+      AUTH_INVALID: 'ログイン情報が無効',
       SHEET_NOT_FOUND: 'データシート未検出',
       ROW_MISMATCH: 'ログ行の不一致（再読み込みしてください）',
       ROW_NOT_FOUND: 'ログ行が見つかりません',
@@ -959,7 +962,38 @@
           return RING_ADMIN_LOG_LABELS_[keys[i]];
         }
       }
+      if (/AUTH_EXPIRED/i.test(s)) return RING_ADMIN_LOG_LABELS_.AUTH_EXPIRED;
+      if (/AUTH_REQUIRED|AUTH_INVALID/i.test(s)) return RING_ADMIN_LOG_LABELS_.AUTH_REQUIRED;
+      if (/API_RATE_LIMIT|HTTP_429|429/i.test(s)) return RING_ADMIN_LOG_LABELS_.API_RATE_LIMIT;
+      if (/Failed to fetch|NETWORK/i.test(s)) return '通信できませんでした（回線・接続の確認）';
+      if (/^[A-Z0-9_]+$/.test(s)) return 'サーバー応答エラー（コード: ' + s + '）';
       return s;
+    }
+
+    /** 管理者画面トースト用（内部コードはログに残し、画面は平易な文言） */
+    function adminUserToastMessage_(err, fallback) {
+      var msg = err && err.message ? String(err.message).trim() : (typeof err === 'string' ? String(err).trim() : '');
+      if (typeof ringGasErrorToUserMessage_ === 'function' && msg) {
+        var mapped = ringGasErrorToUserMessage_(msg);
+        if (mapped) return mapped;
+      }
+      if (/AUTH_EXPIRED/i.test(msg)) return 'ログインの有効期限が切れました。もう一度ログインしてください。';
+      if (/AUTH_REQUIRED|AUTH_INVALID/i.test(msg)) return 'ログインが必要です。もう一度ログインしてください。';
+      if (/AI_ANALYSIS_FAILED/i.test(msg)) return 'AI分析に失敗しました。しばらくしてから再試行してください。';
+      if (/Failed to fetch|NETWORK_ERROR|NetworkError/i.test(msg)) {
+        return '通信できませんでした。接続を確認してください。';
+      }
+      if (msg && !/^[A-Z0-9_]+$/.test(msg)) return msg;
+      return fallback || '処理できませんでした。もう一度お試しください。';
+    }
+
+    function adminGateLoginError_(data, network) {
+      if (network) return '通信できませんでした。接続を確認してください。';
+      var code = data && data.error ? String(data.error).trim() : '';
+      if (/AUTH|PASSWORD|INVALID|DENIED/i.test(code)) {
+        return 'ログインIDまたはパスワードが正しくありません。';
+      }
+      return adminUserToastMessage_(code, 'ログインできませんでした。入力内容を確認してください。');
     }
 
     async function handleErrorDetailDeleteClick_(btn) {
@@ -1080,14 +1114,15 @@
         appendDashAiMessage_('user', q);
         if (input) input.value = '';
         var res = await sendToDashboardAi_Safe(q);
-        var reply = (res && res.reply) ? res.reply : ((res && res.error) ? ('エラー: ' + res.error) : '（応答なし）');
+        var reply = (res && res.reply) ? res.reply
+          : ((res && res.error) ? adminUserToastMessage_(res.error, 'AI分析に失敗しました。') : '（応答なし）');
         appendDashAiMessage_('bot', reply);
         if (res && res.success && res.reply) setLastDashAiReply_(reply);
       } catch (e) {
         console.error('[admin] submitDashboardAiQuestion_', e);
         var errMsg = '分析リクエストに失敗しました。しばらくしてから再度お試しください。';
         appendDashAiMessage_('bot', errMsg);
-        if (typeof showToast === 'function') showToast('error', e.message || 'AI分析に失敗しました');
+        if (typeof showToast === 'function') showToast('error', adminUserToastMessage_(e, 'AI分析に失敗しました。しばらくしてから再試行してください。'));
       } finally {
         if (btn) btn.disabled = false;
       }
@@ -1824,11 +1859,11 @@
           if (typeof showToast === 'function') showToast('success', '管理者セッションを発行しました');
           location.reload();
         } else {
-          if (typeof showToast === 'function') showToast('error', (data && data.error) || '失敗しました');
+          if (typeof showToast === 'function') showToast('error', adminGateLoginError_(data, false));
         }
       } catch (e) {
         if (typeof hideLoading === 'function') hideLoading();
-        if (typeof showToast === 'function') showToast('error', '通信エラー');
+        if (typeof showToast === 'function') showToast('error', adminGateLoginError_(null, true));
       }
     };
 
@@ -1869,11 +1904,10 @@
         console.error('[admin] loadAdminDashboardData', e);
         if (errEl) {
           errEl.style.display = 'block';
-          errEl.textContent = 'データの読み込みに失敗しました。' +
-            (e && e.message ? ' (' + e.message + ')' : '');
+          errEl.textContent = adminUserToastMessage_(e, 'データの読み込みに失敗しました。しばらくしてから再試行してください。');
         }
         if (typeof showToast === 'function') {
-          showToast('error', e.message || '読込に失敗しました');
+          showToast('error', adminUserToastMessage_(e, '読み込みに失敗しました。しばらくしてから再試行してください。'));
         }
       }
     }

@@ -198,7 +198,8 @@
       }
 
       function showCommError(title) {
-        showResult(title || '', '<p class="empty-msg">通信エラーが発生しました</p>');
+        var hint = '通信できませんでした。電波の良い場所で接続を確認してから、もう一度お試しください。';
+        showResult(title || '読み取り結果', '<p class="empty-msg">' + hint + '</p>');
       }
 
       function isAppIntroQr(parsed) {
@@ -234,7 +235,8 @@
           if (favRes && favRes.commError) {
             showCommError('かかりつけ登録');
           } else if (favRes && favRes.shopInfoFailed) {
-            showResult('かかりつけ登録', '<p class="empty-msg">店舗情報を取得できませんでした</p>');
+            showResult('かかりつけ登録',
+              '<p class="empty-msg">店舗情報を取得できませんでした。接続を確認してから再度読み取ってください。</p>');
           } else if (favRes && favRes.ok && !favRes.duplicate) {
             showResult('かかりつけ登録', '<p class="status-msg success">登録しました</p>');
           } else if (favRes && favRes.duplicate) {

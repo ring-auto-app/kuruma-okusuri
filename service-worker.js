@@ -1,4 +1,4 @@
-const CACHE_NAME = "car-nappy-v39";
+const CACHE_NAME = "car-nappy-v40";
 const OFFLINE_URL = "./offline.html";
 
 const PRECACHE_URLS = [
@@ -36,9 +36,9 @@ const PRECACHE_URLS = [
   "./ring-media-import.js",
   "./gemini-ocr.js",
   "./gemini-invoice-ocr.js",
-  "./ring-media-import.js?v=20261113-v36",
-  "./gemini-ocr.js?v=20261113-v36",
-  "./gemini-invoice-ocr.js?v=20261113-v36",
+  "./ring-media-import.js?v=20261114-v39",
+  "./gemini-ocr.js?v=20261114-v39",
+  "./gemini-invoice-ocr.js?v=20261114-v39",
   "./vendor/pdfjs/pdf.min.mjs",
   "./vendor/pdfjs/pdf.worker.min.mjs",
   "./manifest.json",
