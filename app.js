@@ -4845,13 +4845,46 @@ function ringFleetBookingCreateDefiniteError_(json) {
         || e === 'CLIENT_REQUEST_VOIDED' || e === 'CLIENT_REQUEST_ID_MISMATCH' || e === 'VIN_REQUIRED';
 }
 
+/**
+ * レンタカー予約 API エラーを利用者向け文言へ（内部コードは画面に出さない）
+ */
+function ringFleetBookingUserMessage_(code, fallback) {
+    var e = String(code || '').trim();
+    if (!e) return fallback || '処理できませんでした。しばらくしてから再試行してください。';
+    if (e === 'BOOKING_OVERLAP' || e === 'FLEET_VEHICLE_OUTSTANDING') {
+        return 'この期間は既に予約があるか、車両が未返却の貸出中です。空き状況を更新して選び直してください。';
+    }
+    if (e === 'BOOKING_CHECKOUT_TOO_EARLY') {
+        return '予約開始日の前には貸出開始できません。';
+    }
+    if (e === 'BOOKING_BASE_REV_REQUIRED' || e === 'BOOKING_CONFLICT') {
+        return '他の端末で予約が更新されました。画面を更新してから再試行してください。';
+    }
+    if (e === 'BOOKING_PATCH_INVALID') {
+        return '開始日の変更と貸出開始は同時にできません。先に開始日を保存してください。';
+    }
+    if (e === 'BOOKING_NOT_FOUND') return '予約が見つかりません。画面を更新してください。';
+    if (e === 'BOOKING_STATUS_INVALID') return 'この予約の状態では実行できません。';
+    if (e === 'BOOKING_DATES_REQUIRED' || e === 'BOOKING_DATES_INVALID') {
+        return '予約の期間を確認してください。';
+    }
+    if (e === 'CLIENT_REQUEST_VOIDED') return '前回の送信は無効化されています。内容を確認して再度お試しください。';
+    if (e === 'OFFLINE' || e === 'OFFLINE_OR_SESSION_CHANGED') {
+        return 'オフラインのため操作できません。接続を確認して再試行してください。';
+    }
+    if (/AUTH_|SESSION_|STALE_SESSION/.test(e)) {
+        return 'ログインの有効期限が切れました。もう一度ログインしてください。';
+    }
+    if (/NETWORK|TIMEOUT|HTTP_|Failed to fetch/i.test(e)) {
+        return '通信できませんでした。接続を確認してください。';
+    }
+    return fallback || '処理できませんでした。しばらくしてから再試行してください。';
+}
+
 function ringFleetBookingCreateRejectMessage_(json) {
     var e = json && json.error ? String(json.error).trim() : '';
-    if (e === 'BOOKING_OVERLAP' || e === 'FLEET_VEHICLE_OUTSTANDING') {
-        return 'この期間は既に予約が入っているか、車両は未返却の貸出中です。空き状況を更新して選び直してください。';
-    }
-    if (e === 'CLIENT_REQUEST_VOIDED') return 'この予約送信は無効化済みです。';
-    return (json && json.error) ? ('予約を保存できませんでした（' + json.error + '）') : '予約を保存できませんでした';
+    if (!e) return '予約を保存できませんでした。';
+    return ringFleetBookingUserMessage_(e, '予約を保存できませんでした。');
 }
 
 function ringFleetApplyDefiniteCreateReject_(profile, clientRequestId, createJson) {
@@ -6739,6 +6772,25 @@ function ringGasErrorToUserMessage_(errMsg, actionType) {
     if (/INVALID_JSON|HTTP_4\d{2}/i.test(msg) && actionType !== 'verify_session') {
         return 'サーバーからの応答を処理できませんでした。しばらくしてから再度お試しください';
     }
+    if (/AUTH_EXPIRED/i.test(msg)) {
+        return 'ログインの有効期限が切れました。もう一度ログインしてください。';
+    }
+    if (/AUTH_REQUIRED|AUTH_INVALID/i.test(msg)) {
+        return 'ログインが必要です。もう一度ログインしてください。';
+    }
+    if (/STALE_SESSION|SESSION_/i.test(msg)) {
+        return '別の画面に切り替わったため、この操作は完了しませんでした。もう一度お試しください。';
+    }
+    if (/^OFFLINE$/i.test(msg)) {
+        return 'オフラインのためサーバーに保存できません。接続を確認してください。';
+    }
+    if (/GAS保存に失敗|GAS_OCR_FAIL/i.test(msg)) {
+        return 'サーバーへの保存に失敗しました。しばらくしてから再度お試しください。';
+    }
+    if (/OCR_CANCELLED/i.test(msg)) return null;
+    if (/OCR_|GEMINI_/.test(msg) && !/DISABLED|NOT_CONFIGURED/.test(msg)) {
+        return '書類の読み取りに失敗しました。画像を確認して再試行してください。';
+    }
     return null;
 }
 
@@ -7393,7 +7445,7 @@ function ringRefreshPendingSyncBanner() {
     }
     var label = n
         ? '<strong class="ring-pending-sync-banner__badge">未送信</strong> ' +
-          '未送信のデータがあります（<span class="ring-pending-sync-banner__n">' + n + '</span>件）。接続後に送信します。'
+          'サーバーに届いていない変更が <span class="ring-pending-sync-banner__n">' + n + '</span> 件あります。接続後に自動送信します。'
         : null;
     ringRenderPendingSyncBannerRow_(el, 'pending', label, 'ring-pending-sync-send', '今すぐ再送', function (btn) {
                     btn.disabled = true;
@@ -7403,7 +7455,7 @@ function ringRefreshPendingSyncBanner() {
                         var left = getPendingRetryCount();
                         if (typeof showToast === 'function') {
                             showToast(left ? 'warning' : 'success',
-                                left ? '一部がまだ未送信です。通信状況をご確認ください。' : '再送を試みました。');
+                                left ? '一部がまだサーバーに届いていません。通信状況をご確認ください。' : 'サーバーへの送信を試みました。');
                         }
                     });
                 });
@@ -10365,6 +10417,7 @@ window.ringFleetBookingsSyncIsFresh_ = ringFleetBookingsSyncIsFresh_;
 window.ringFleetEnsureBookingsSyncedForRange_ = ringFleetEnsureBookingsSyncedForRange_;
 window.ringFleetBookingCreateDefiniteError_ = ringFleetBookingCreateDefiniteError_;
 window.ringFleetBookingCreateRejectMessage_ = ringFleetBookingCreateRejectMessage_;
+window.ringFleetBookingUserMessage_ = ringFleetBookingUserMessage_;
 window.ringFleetApplyDefiniteCreateReject_ = ringFleetApplyDefiniteCreateReject_;
 window.ringFleetGasFailureFromCatch_ = ringFleetGasFailureFromCatch_;
 window.mergeFleetBookingsForShop_ = mergeFleetBookingsForShop_;
@@ -10655,7 +10708,7 @@ var __ringLoadingBaseText = '';
  * @param {string} [text]
  * @param {{ cancelable?: boolean, onCancel?: () => void }} [opts]
  */
-function showLoading(title = "処理中", text = "少々お待ちください…", opts) {
+function showLoading(title = "お待ちください", text = "少々お待ちください…", opts) {
     opts = opts || {};
     injectLoadingOverlay();
     hideLoading(true);

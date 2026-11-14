@@ -37,6 +37,13 @@
     return ringRequestContextIsCurrent_(fleetPageContext);
   }
 
+  function fleetUserBookingErr_(code, fallback) {
+    if (typeof ringFleetBookingUserMessage_ === 'function') {
+      return ringFleetBookingUserMessage_(code, fallback);
+    }
+    return fallback || '処理できませんでした。しばらくしてから再試行してください。';
+  }
+
   function fleetRequireOnline_() {
     if (!fleetContextCurrent_()) return false;
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
@@ -1058,7 +1065,7 @@
     var isDeskPanel = host.id === 'fleetDetailPanel';
     if (!b) {
       if (isDeskPanel) {
-        host.innerHTML = '<h3>予約・詳細</h3><p class="ring-fleet-detail-placeholder">カレンダー上の予定を選択するか、車両から新規予約を登録してください。</p>';
+        host.innerHTML = '<h3>予約の詳細</h3><p class="ring-fleet-detail-placeholder">カレンダーで予定を選ぶか「＋ 新しい予約」から登録してください。<br>予約の保存だけでは貸出は始まりません。開始日に「貸出開始」を押してください。</p>';
       } else {
         host.innerHTML = '<p class="ring-fleet-detail-placeholder">予定が見つかりません</p>';
       }
@@ -1066,7 +1073,7 @@
     }
     var stLabel = fleetBookingStatusLabel_(b.status);
     var plate = fleetPlateSuffixForBooking_(b);
-    var head = isDeskPanel ? '<h3>予約・詳細</h3>' : '';
+    var head = isDeskPanel ? '<h3>予約の詳細</h3>' : '';
     var sheetDue = b.status === 'out' ||
       ((b.status === 'reserved' || b.status === 'confirmed') && fleetCheckoutGate_(b).ok);
     host.innerHTML = head + '<h4 style="margin:0 0 8px;font-size:15px;font-weight:900;">' + fleetEscape_(fleetVehicleName_(b.vin)) + '</h4>' +
@@ -1147,7 +1154,7 @@
       }
     }
     if (!fleetRequireOnline_()) return;
-    if (typeof showLoading === 'function') showLoading('保存中', '保存中…');
+    if (typeof showLoading === 'function') showLoading('保存中', '保存しています…');
     var json = null;
     try {
       var payload = {
@@ -1170,7 +1177,11 @@
     if (json && json.success) {
       await refreshBookings_();
       if (!fleetContextCurrent_()) return;
-      if (typeof showToast === 'function') showToast('success', '変更しました');
+      var okMsg = '予約情報を更新しました';
+      if (patch.status === 'out' && cur.status !== 'out') okMsg = '貸出を開始しました';
+      else if (patch.status === 'confirmed' && cur.status === 'reserved') okMsg = '予約を確定しました';
+      else if (patch.status === 'returned') okMsg = '返却を完了しました';
+      if (typeof showToast === 'function') showToast('success', okMsg);
     } else if (json && typeof showToast === 'function') {
       var err = String(json.error || '');
       if (err === 'BOOKING_CHECKOUT_TOO_EARLY') {
@@ -1182,7 +1193,7 @@
       } else if (err === 'BOOKING_PATCH_INVALID') {
         showToast('warning', '開始日の変更と貸出開始は同時にできません。');
       } else {
-        showToast('error', err || '更新に失敗しました');
+        showToast('error', fleetUserBookingErr_(err, '予約情報を更新できませんでした。'));
       }
     }
   }
@@ -1303,7 +1314,9 @@
         closeMobDetailSheet_({ clearSelection: true });
         selectedBookingId = '';
         renderDetailPanel_();
-        if (typeof showToast === 'function') showToast('success', result.outcome === 'resolved_update' ? '変更しました' : '予約しました');
+        if (typeof showToast === 'function') {
+          showToast('success', result.outcome === 'resolved_update' ? '予約情報を更新しました' : '予約を登録しました');
+        }
         refreshBookings_();
       }
       return;
@@ -1338,7 +1351,7 @@
       return;
     }
     if (result.outcome === 'error' && typeof showToast === 'function') {
-      showToast('error', (result.json && result.json.error) || '登録に失敗しました');
+      showToast('error', fleetUserBookingErr_(result.json && result.json.error, '予約を登録できませんでした。'));
     }
   }
 
@@ -1348,8 +1361,9 @@
       '<h3 style="margin:0 0 8px;font-size:15px;font-weight:900;">予約内容の確認</h3>' +
       '<p style="font-size:12px;font-weight:700;color:#475569">' + fleetEscape_(fleetVehicleName_(vin)) + '</p>' +
       '<p style="font-size:13px;font-weight:800;margin:8px 0;">' + fleetEscape_(startDate) + ' 〜 ' + fleetEscape_(endDate) + '</p>' +
-      '<p class="ring-fleet-avail-hint" style="margin-bottom:10px;">表示時点の空き状況です。保存時にサーバーで重複を確認します。</p>' +
-      '<button type="button" class="primary ring-fleet-confirm-save" id="fleetNewSaveBtn">予約を保存</button>';
+      '<p class="ring-fleet-avail-hint" style="margin-bottom:6px;">表示時点の空き状況です。保存時にサーバーで重複を確認します。</p>' +
+      '<p class="ring-fleet-avail-hint" style="margin-bottom:10px;font-size:11px;color:#64748b;">ここでは予約の登録のみ行います。お客様への貸出は、開始日に「貸出開始」を押してください。</p>' +
+      '<button type="button" class="primary ring-fleet-confirm-save" id="fleetNewSaveBtn">予約を登録</button>';
   }
 
   function fleetBindConfirmSave_(host, vin, startDate, endDate) {
@@ -1508,7 +1522,7 @@
       '>戻る</button><h2>' + fleetEscape_(title) + '</h2>' +
       '<button type="button" class="ring-fleet-wizard-close">閉じる</button></div>';
     if (!fleetBookingsSyncOk) {
-      inner += '<div class="ring-fleet-avail-warn ring-fleet-avail-offline">最新の貸出状況を確認できません。同期してから操作してください。</div>';
+      inner += '<div class="ring-fleet-avail-warn ring-fleet-avail-offline">最新の貸出状況を確認できません。「更新」してから操作してください。</div>';
     }
     if (wizardState.step === 'return_list') {
       var outs = ringFleetListActiveOutBookings_(profile, bookingsCache);
@@ -1573,7 +1587,7 @@
     var btn = document.getElementById('fleetReturnCompleteBtn');
     if (btn && btn.disabled) return;
     if (btn) btn.disabled = true;
-    if (typeof showLoading === 'function') showLoading('返却処理', '保存中…');
+    if (typeof showLoading === 'function') showLoading('返却の記録', '保存しています…');
     var json = null;
     try {
       var fresh = await fleetSyncBookingsFresh_();
@@ -1608,7 +1622,7 @@
       await refreshBookings_();
       if (!fleetContextCurrent_()) return;
       closeNewBookingWizard_();
-      if (typeof showToast === 'function') showToast('success', '返却を受け付けました');
+      if (typeof showToast === 'function') showToast('success', '返却を完了しました');
       return;
     }
     if (json && json.error === 'BOOKING_CONFLICT') {
@@ -1619,7 +1633,9 @@
       renderReturnReception_();
       return;
     }
-    if (typeof showToast === 'function') showToast('error', (json && json.error) || '返却処理に失敗しました');
+    if (typeof showToast === 'function') {
+      showToast('error', fleetUserBookingErr_(json && json.error, '返却を完了できませんでした。'));
+    }
   }
 
   function openNewBookingWizard_(preset) {

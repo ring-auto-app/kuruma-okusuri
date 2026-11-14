@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.json">
     <title>車のお薬手帳</title>
   <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20261113-v36"></script>
+  <script src="app.js?v=20261114-v39"></script>
   <script src="theme.js"></script>
   <style>
     :root {
@@ -651,7 +651,7 @@
           : 'メールアドレスまたはパスワードが違います'));
       } catch (err) {
         hideLoading();
-        showToast('error', '通信エラーが発生しました');
+        showToast('error', '通信できませんでした。接続を確認してください。');
       } finally {
         btn.disabled = false;
       }
@@ -713,7 +713,7 @@
         }
       } catch (e) {
         hideLoading();
-        showToast('error', '通信エラーが発生しました');
+        showToast('error', '通信できませんでした。接続を確認してください。');
       } finally {
         btn.disabled = false;
       }

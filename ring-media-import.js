@@ -469,9 +469,9 @@
         if (opts.discardNotice) opts.discardNotice.style.display = 'block';
 
         if (typeof showOcrAnalyzingOverlay === 'function') {
-            showOcrAnalyzingOverlay({ previewDataUrl: previewUrl, title: '読み取り中', sessionId: sessionId });
+            showOcrAnalyzingOverlay({ previewDataUrl: previewUrl, title: '書類を読み取っています', sessionId: sessionId });
         } else if (typeof showLoading === 'function') {
-            showLoading('読み取り中', '読み取り中…');
+            showLoading('書類を読み取っています', 'しばらくお待ちください…');
         }
 
         var result = null;

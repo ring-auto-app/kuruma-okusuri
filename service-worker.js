@@ -1,4 +1,4 @@
-const CACHE_NAME = "car-nappy-v38";
+const CACHE_NAME = "car-nappy-v39";
 const OFFLINE_URL = "./offline.html";
 
 const PRECACHE_URLS = [
@@ -18,9 +18,9 @@ const PRECACHE_URLS = [
   "./vehicles.html",
   "./rental_fleet.html",
   "./rental-fleet.js",
-  "./rental-fleet.js?v=20261114-v38",
+  "./rental-fleet.js?v=20261114-v39",
   "./rental-fleet.css",
-  "./rental-fleet.css?v=20261114-v38",
+  "./rental-fleet.css?v=20261114-v39",
   "./fleet_check_sheet.html",
   "./fleet-check-sheet.js",
   "./fleet-check-sheet.js?v=20261114-v38",
@@ -31,7 +31,7 @@ const PRECACHE_URLS = [
   "./vendor/pdf-lib.min.js",
   "./car-add-date.js",
   "./common.css",
-  "./app.js?v=20261113-v36",
+  "./app.js?v=20261114-v39",
   "./theme.js",
   "./ring-media-import.js",
   "./gemini-ocr.js",
@@ -50,12 +50,12 @@ const PRECACHE_URLS = [
 // Changing these files requires new hashes AND a new CACHE_NAME.
 // Both bare URLs (already-open pages) and versioned URLs must contain the same release bytes.
 const RELEASE_SHA256 = {
-  "./fleet_check_sheet.html": "5f152eecfdde832f6d11803b4465b90dd0664ee49f7f41bf59b81444f48cd8b1",
+  "./fleet_check_sheet.html": "c7fc457f0329c2f486a178ff64850b7fae3854495088e200b84b61af4d6f28cd",
   "./fleet-check-sheet.js": "be249a54c604743e79dac20135c993dfb09222a702c0a6aebf21eef171b11470",
   "./fleet-check-sheet.css": "28f02b775bdef1ebec4e8ba18d79d326c440ff2e3278e9164baa57e13ceaf50a",
   "./fleet-check-sheet-pdf.js": "35270399c2d15f4d1445a4581fecbadc920b4bfd15663d13a2ed496bb7947d7f",
-  "./rental_fleet.html": "3d118d5235fe6f59601394b0a6872e81c9ef40f3b1ab94c969687b08fd5c66cf",
-  "./rental-fleet.js": "953c7892d764ee70c36c1178aa808b4c5470cb1043db86b7edf5eefcb0e930af",
+  "./rental_fleet.html": "67a3e903ff7c6e0e05c205ee70f439fb4668e6c18dc2f49b218198b82bb65cce",
+  "./rental-fleet.js": "23c4f7765a70a6931cdd1da9620d3b1613389067026cd18340c0bfeff795b8bf",
   "./rental-fleet.css": "5d2fb5e5fe56827a1bd3dd9d8d9921c85e408bd022dd8a4a72158209b241125b"
 };
 const PRECACHE_KEYS = PRECACHE_URLS.map(url => new URL(url, self.location.href).href);
