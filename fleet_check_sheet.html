@@ -4,10 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#4b5563" />
-  <title>車両チェックシート</title>
+  <title>貸出・返却 チェックシート</title>
   <style>html[data-ring-check-loading] .ring-check-layout { visibility: hidden; }</style>
   <script>
-    // Never enable a mixed-release check sheet. No business storage is cleared on failure.
     (function () {
       var remaining = 3, failed = false;
       window.ringCheckAssetLoaded = function () {
@@ -34,49 +33,49 @@
     })();
   </script>
   <link rel="stylesheet" href="common.css">
-  <link rel="stylesheet" href="fleet-check-sheet.css?v=20261114-v38" integrity="sha256-EVmhKK7WTVeI8GjIH7VreCtlmPXeZuR0cU2isiaFlGk= sha256-KPArd1ve8evsTouhjXnTJsRA/y4yeOkWS6pX4Tzq9Qo=" crossorigin="anonymous" onload="ringCheckAssetLoaded()" onerror="ringCheckAssetFailed()">
-  <script src="app.js?v=20261114-v39"></script>
+  <link rel="stylesheet" href="fleet-check-sheet.css?v=20261114-v42" integrity="sha256-ycrkrvafkoyeJIuSNoPtNsJAzQBeG90MH7I+dJjsqkI= sha256-eeiCtwpSFNpjTjQsNAefmAssmHkwB7BFjT+syDvam/Q=" crossorigin="anonymous" onload="ringCheckAssetLoaded()" onerror="ringCheckAssetFailed()">
+  <script src="app.js?v=20261114-v42" integrity="sha256-aT+0fIlNYULT6ndA9A87tM0+/wa2bPJr9vgv3CWo34g= sha256-xOVotDaeCes3eJdwrlE3aDEuZqvnaJ9fWbjnvp0o2Is=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
   <script src="theme.js"></script>
 </head>
 <body class="ring-check-page">
   <div class="ring-check-layout">
     <header class="ring-check-top">
       <button type="button" id="ringCheckBack" class="ring-check-back">◁ 戻る</button>
-      <div id="ringCheckHeader"></div>
+      <div class="ring-check-top-main">
+        <h1 class="ring-check-page-title">貸出・返却 チェックシート</h1>
+        <div id="ringCheckHeader" class="ring-check-vehicle-line"></div>
+      </div>
       <div id="ringCheckAttention" class="ring-check-attention" hidden></div>
       <div id="ringCheckLocalBanner" class="ring-check-local-banner"></div>
-      <div id="ringCheckPhotoWarn" class="ring-check-photo-warn"></div>
+      <p id="ringCheckPhotoWarn" class="ring-check-photo-warn"></p>
     </header>
 
-    <nav class="ring-check-steps" id="ringCheckSteps" aria-label="チェックシート区分">
-      <button type="button" class="is-active" data-step="basic">基本</button>
-      <button type="button" data-step="inspection">点検</button>
-      <button type="button" data-step="tires">タイヤ</button>
-      <button type="button" data-step="diagram">展開図</button>
-      <button type="button" data-step="photos">写真</button>
-      <button type="button" data-step="pdf">PDF</button>
+    <nav class="ring-check-main-tabs" id="ringCheckSteps" aria-label="チェックシート区分">
+      <button type="button" class="is-active" data-step="exterior">外装（展開図）</button>
+      <button type="button" data-step="inspect">点検項目</button>
     </nav>
 
     <main id="ringCheckMain" class="ring-check-main">
-      <section class="ring-check-pane is-active" data-pane="basic" id="ringCheckPaneBasic"></section>
-      <section class="ring-check-pane" data-pane="inspection" id="ringCheckPaneInspection"></section>
-      <section class="ring-check-pane" data-pane="tires" id="ringCheckPaneTires"></section>
-      <section class="ring-check-pane" data-pane="diagram" id="ringCheckPaneDiagram">
-        <div class="ring-check-columns ring-check-diagram-column">
-          <div class="ring-check-diagram-wrap">
-            <h2 class="ring-check-section-title">車両展開図</h2>
-            <div id="ringCheckDiagramHost" class="ring-check-diagram-host"></div>
-          </div>
-          <aside class="ring-check-side">
-            <h2 class="ring-check-section-title">マーク一覧</h2>
-            <div id="ringCheckMarkList" class="ring-check-mark-list"></div>
-            <button type="button" id="ringCheckSaveSnap" class="ring-check-save-btn">この端末に保存（スナップショット）</button>
-          </aside>
+      <section class="ring-check-pane is-active" data-pane="exterior" id="ringCheckPaneExterior">
+        <div class="ring-check-diagram-wrap">
+          <p class="ring-check-hint ring-check-hint-compact">傷・へこみを付けたい場所をタップ。マークは端末に下書き保存されます。</p>
+          <div id="ringCheckDiagramHost" class="ring-check-diagram-host"></div>
         </div>
+        <aside class="ring-check-side ring-check-side-inline">
+          <h2 class="ring-check-section-title">マーク一覧</h2>
+          <div id="ringCheckMarkList" class="ring-check-mark-list"></div>
+          <button type="button" id="ringCheckSaveSnap" class="ring-check-save-btn">この端末に保存</button>
+        </aside>
         <div id="ringCheckDetail" class="ring-check-detail" hidden></div>
+        <section class="ring-check-subblock" id="ringCheckPanePhotos"></section>
+        <section class="ring-check-subblock" id="ringCheckPanePdf"></section>
       </section>
-      <section class="ring-check-pane" data-pane="photos" id="ringCheckPanePhotos"></section>
-      <section class="ring-check-pane" data-pane="pdf" id="ringCheckPanePdf"></section>
+
+      <section class="ring-check-pane" data-pane="inspect" id="ringCheckPaneInspect">
+        <section id="ringCheckPaneBasic"></section>
+        <section id="ringCheckPaneInspection"></section>
+        <section id="ringCheckPaneTires"></section>
+      </section>
     </main>
 
     <nav class="ring-check-toolbar" id="ringCheckMarkToolbar" aria-label="マーク操作" hidden>
@@ -89,7 +88,7 @@
   </div>
   <input type="file" id="ringCheckPhotoInput" accept="image/*" multiple hidden />
   <script src="vendor/pdf-lib.min.js"></script>
-  <script src="fleet-check-sheet.js?v=20261114-v38" integrity="sha256-rpZSqUshcq28CcSrCVXH+l1C9FVRBGG6uTWc9wY4lMI= sha256-viSaVMYEdD552sIBNcmT37CSIqcCwKauvyHu8XGxFHA=" crossorigin="anonymous" onload="ringCheckAssetLoaded()" onerror="ringCheckAssetFailed()"></script>
-  <script src="fleet-check-sheet-pdf.js?v=20261114-v38" integrity="sha256-eIhE5nHgLG7JtrrPg/2KWXLthFs6a/hw3jN9Om3hiJ0= sha256-NScDmcLRX00URaRYH+y63JILS/0VZj0Tou1Ja7eUfX8=" crossorigin="anonymous" onload="ringCheckAssetLoaded()" onerror="ringCheckAssetFailed()"></script>
+  <script src="fleet-check-sheet.js?v=20261114-v42" integrity="sha256-yXMYbQ2eEoIGSfMbVwDEDCVCeccs3SXJDGC0/nkUNMo= sha256-cBXKxzQEFsD0fqpr5prMEsyqeqgNr85n63VGoOkMLsw=" crossorigin="anonymous" onload="ringCheckAssetLoaded()" onerror="ringCheckAssetFailed()"></script>
+  <script src="fleet-check-sheet-pdf.js?v=20261114-v42" integrity="sha256-1MDGUrXhjYrg1v9DVWxzfQz95crOoTZ3kF+e0b6Cz9s= sha256-pN8saJslYgNTvY66UVR9Jm9U/qw1kZwlFV1oJ9MKm8I=" crossorigin="anonymous" onload="ringCheckAssetLoaded()" onerror="ringCheckAssetFailed()"></script>
 </body>
 </html>

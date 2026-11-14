@@ -10,8 +10,8 @@
   <link rel="manifest" href="manifest.json">
   <title>レンタカー・代車管理</title>
   <link rel="stylesheet" href="common.css">
-  <link rel="stylesheet" href="rental-fleet.css?v=20261114-v39">
-  <script src="app.js?v=20261114-v39"></script>
+  <link rel="stylesheet" href="rental-fleet.css?v=20261114-v42">
+  <script src="app.js?v=20261114-v42" integrity="sha256-aT+0fIlNYULT6ndA9A87tM0+/wa2bPJr9vgv3CWo34g= sha256-xOVotDaeCes3eJdwrlE3aDEuZqvnaJ9fWbjnvp0o2Is=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
   <script src="theme.js"></script>
 </head>
 <body class="ring-fleet-page">
@@ -44,22 +44,14 @@
       <label class="fleet-history-toggle ring-fleet-history-opt ring-fleet-mob-history"><input type="checkbox" id="fleetShowReturnedMob"> 返却済みを薄く表示</label>
 
       <section class="ring-fleet-mob-cal-section">
-        <div class="ring-fleet-mob-cal-mode">
-          <button type="button" class="is-active" data-mob-cal-mode="week">今週</button>
-          <button type="button" data-mob-cal-mode="month">月全体</button>
-        </div>
-        <div class="ring-fleet-cal-nav ring-fleet-mob-cal-nav" id="fleetMobCalNavWeek">
-          <button type="button" id="fleetMobWeekPrev">◀ 前週</button>
-          <button type="button" id="fleetMobWeekToday">今日</button>
-          <button type="button" id="fleetMobWeekNext">翌週 ▶</button>
-        </div>
-        <div class="ring-fleet-cal-nav ring-fleet-mob-cal-nav" id="fleetMobCalNavMonth" hidden>
+        <p class="ring-fleet-cal-month-title" data-cal-title="fleetCalMob">—</p>
+        <div class="ring-fleet-cal-nav ring-fleet-mob-cal-nav" id="fleetMobCalNavMonth">
           <button type="button" id="fleetCalPrev">◀ 前月</button>
           <button type="button" id="fleetCalToday">今日</button>
           <button type="button" id="fleetCalNext">翌月 ▶</button>
         </div>
-        <p class="ring-fleet-cal-month-title" data-cal-title="fleetCalMob" hidden>—</p>
         <div id="fleetCalMob"></div>
+        <p class="ring-fleet-cal-legend"><span class="ring-fleet-legend-swatch st-reserved"></span>予約中<span class="ring-fleet-legend-swatch st-out"></span>貸出中<span class="ring-fleet-legend-note">日付をタップするとその日の予定を表示</span></p>
         <div id="fleetMobDayAgenda" class="ring-fleet-mob-day-agenda" hidden></div>
       </section>
 
@@ -116,6 +108,7 @@
             </div>
           </div>
           <p class="ring-fleet-cal-pick-hint">日付をクリックすると空車検索の期間に反映されます（予約帯のクリックは予約詳細）</p>
+          <p class="ring-fleet-cal-legend"><span class="ring-fleet-legend-swatch st-reserved"></span>予約中<span class="ring-fleet-legend-swatch st-out"></span>貸出中</p>
           <div id="fleetCalDesk"></div>
         </section>
 
@@ -203,6 +196,6 @@
     <div id="fleetMobDetailHost" class="ring-fleet-mob-sheet-body"></div>
   </div>
 
-  <script src="rental-fleet.js?v=20261114-v39"></script>
+  <script src="rental-fleet.js?v=20261114-v42"></script>
 </body>
 </html>

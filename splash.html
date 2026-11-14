@@ -11,11 +11,11 @@
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
   <link rel="manifest" href="manifest.json">
     <title>車のお薬手帳</title>
-  
+
   <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20261114-v39"></script> 
+  <script src="app.js?v=20261114-v42" integrity="sha256-aT+0fIlNYULT6ndA9A87tM0+/wa2bPJr9vgv3CWo34g= sha256-xOVotDaeCes3eJdwrlE3aDEuZqvnaJ9fWbjnvp0o2Is=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
   <script src="theme.js"></script>
-  
+
   <style>
     html { height: 100%; }
     body {
@@ -31,7 +31,7 @@
       opacity: 1;
       transition: opacity 0.5s ease-out;
     }
-    
+
     body.fade-out {
       opacity: 0;
     }
@@ -39,29 +39,29 @@
     .splash-view {
       display: flex;
       flex-direction: column;
-      align-items: center; 
-      gap: 70px; 
+      align-items: center;
+      gap: 70px;
       animation: fadeIn 0.8s ease-in forwards;
     }
 
     .splash-icon {
-      width: 220px; 
+      width: 220px;
       height: auto;
       display: block;
     }
 
     .title-box {
-      width: 220px; 
+      width: 220px;
       display: flex;
       flex-direction: column;
-      align-items: flex-end; 
-      gap: 8px; 
+      align-items: flex-end;
+      gap: 8px;
     }
 
     .main-title {
       margin: 0;
       font-family: "Hiragino Sans", sans-serif;
-      font-weight: 800; 
+      font-weight: 800;
       font-size: 28px;
       color: #000;
       border-bottom: 2px solid #000;
@@ -73,7 +73,7 @@
     .sub-title {
       margin: 0;
       font-family: "Hiragino Mincho ProN", serif;
-      font-weight: 600; 
+      font-weight: 600;
       font-size: 20px;
       color: #000;
       border-bottom: 2px solid #000;
@@ -89,10 +89,10 @@
 
     @media (max-width: 520px) {
       .splash-icon {
-        width: 180px; 
+        width: 180px;
       }
       .title-box {
-        width: 180px; 
+        width: 180px;
       }
       .main-title {
         font-size: 24px;

@@ -603,11 +603,11 @@
 }
 
 .ring-fleet-cal-bar.st-confirmed {
-  background: #2563eb;
+  background: #f59e0b;
 }
 
 .ring-fleet-cal-bar.st-out {
-  background: #7c3aed;
+  background: #2563eb;
 }
 
 .ring-fleet-cal-bar.st-returned {
@@ -634,12 +634,40 @@
   color: #dc2626;
 }
 
+.ring-fleet-cal-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  margin: 8px 0 0;
+  font-size: 11px;
+  font-weight: 800;
+  color: #475569;
+}
+
+.ring-fleet-legend-swatch {
+  display: inline-block;
+  width: 18px;
+  height: 8px;
+  border-radius: 3px;
+  margin-left: 4px;
+}
+
+.ring-fleet-legend-swatch.st-reserved { background: #f59e0b; }
+.ring-fleet-legend-swatch.st-out { background: #2563eb; }
+
+.ring-fleet-legend-note {
+  flex-basis: 100%;
+  font-weight: 700;
+  color: #64748b;
+}
+
 .ring-fleet-cal-day-mark {
   display: block;
   width: 6px;
   height: 6px;
   border-radius: 99px;
-  background: #2563eb;
+  background: #94a3b8;
   margin: 3px auto 0;
 }
 
@@ -746,88 +774,15 @@
     margin-bottom: 14px;
   }
 
-  .ring-fleet-mob-cal-mode {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-    margin-bottom: 10px;
-  }
-
-  .ring-fleet-mob-cal-mode button {
-    min-height: 44px;
-    border: 2px solid var(--accent);
-    border-radius: 12px;
-    background: var(--paper);
-    font-size: 14px;
-    font-weight: 900;
-    color: var(--accent);
-    cursor: pointer;
-  }
-
-  .ring-fleet-mob-cal-mode button.is-active {
-    background: var(--accent);
-    color: #fff;
-  }
-
   .ring-fleet-mob-cal-nav {
     margin-bottom: 8px;
   }
 
   .ring-fleet-cal-month-title {
-    font-size: 14px;
+    font-size: 17px;
     font-weight: 900;
     text-align: center;
     margin: 0 0 8px;
-  }
-
-  .ring-fleet-mob-week-head {
-    display: grid;
-    grid-template-columns: repeat(7, 1fr);
-    gap: 4px;
-    margin-bottom: 8px;
-  }
-
-  .ring-fleet-mob-week-day {
-    min-height: 56px;
-    border: 1px solid #e2e8f0;
-    border-radius: 10px;
-    background: #fff;
-    padding: 4px 2px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 2px;
-    cursor: pointer;
-    font: inherit;
-    color: inherit;
-  }
-
-  .ring-fleet-mob-week-day .dow {
-    font-size: 10px;
-    font-weight: 800;
-    color: #64748b;
-  }
-
-  .ring-fleet-mob-week-day .num {
-    font-size: 16px;
-    font-weight: 900;
-  }
-
-  .ring-fleet-mob-week-day.is-today {
-    background: #dbeafe;
-  }
-
-  .ring-fleet-mob-week-day.is-selected {
-    outline: 2px solid var(--accent);
-    background: #eff6ff;
-  }
-
-  .ring-fleet-mob-week-day .has-booking {
-    width: 6px;
-    height: 6px;
-    border-radius: 99px;
-    background: #2563eb;
   }
 
   .ring-fleet-cal-mob .ring-fleet-cal-week {
@@ -835,10 +790,40 @@
   }
 
   .ring-fleet-cal-mob.is-month-compact .ring-fleet-cal-bar {
-    font-size: 0;
-    min-height: 8px;
-    max-height: 10px;
-    padding: 0;
+    font-size: 9px;
+    line-height: 12px;
+    min-height: 12px;
+    max-height: 14px;
+    padding: 0 3px;
+  }
+
+  .ring-fleet-mob-agenda-item.st-reserved,
+  .ring-fleet-mob-agenda-item.st-confirmed {
+    border-left: 5px solid #f59e0b;
+  }
+
+  .ring-fleet-mob-agenda-item.st-out {
+    border-left: 5px solid #2563eb;
+  }
+
+  .ring-fleet-mob-agenda-stale {
+    margin: 0 0 8px;
+    font-size: 11px;
+    font-weight: 800;
+    color: #b45309;
+  }
+
+  .ring-fleet-mob-agenda-new {
+    width: 100%;
+    min-height: 44px;
+    border: 2px dashed var(--accent);
+    border-radius: 12px;
+    background: #fff;
+    color: var(--accent);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 900;
+    cursor: pointer;
   }
 
   .ring-fleet-cal-mob.is-month-compact .ring-fleet-cal-marker {

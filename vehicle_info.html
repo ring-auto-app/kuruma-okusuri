@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.json">
     <title>車のお薬手帳</title>
   <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20261114-v39"></script>
+  <script src="app.js?v=20261114-v42" integrity="sha256-aT+0fIlNYULT6ndA9A87tM0+/wa2bPJr9vgv3CWo34g= sha256-xOVotDaeCes3eJdwrlE3aDEuZqvnaJ9fWbjnvp0o2Is=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
   <script src="theme.js"></script>
   <script src="car-add-date.js"></script>
   <script src="gemini-ocr.js?v=20261114-v39"></script>
@@ -566,22 +566,29 @@
       return { plateSuffix: plateSuffix };
     }
 
+    function vehicleListUrl() {
+      return typeof ringManagedVehicleListUrl_ === 'function' ? ringManagedVehicleListUrl_(targetVin) : 'vehicles.html';
+    }
+
     // 戻るボタンの設定（呼び出し元に応じて戻り先を変更）
     (function setBackBtn() {
       const btn = document.getElementById('backBtn');
       if (fromPage === 'factory_history') {
         btn.onclick = () => goBackSmart(`factory_history.html?vin=${encodeURIComponent(targetVin)}`);
       } else if (fromPage === 'history') {
-        btn.onclick = () => goBackSmart(`history.html?vin=${encodeURIComponent(targetVin)}`);
+        btn.onclick = function () {
+          var fleetQ = (typeof ringCameFromFleet_ === 'function' && ringCameFromFleet_(targetVin)) ? '&fleet=1' : '';
+          goBackSmart('history.html?vin=' + encodeURIComponent(targetVin) + fleetQ);
+        };
       } else {
-        btn.onclick = () => goBackSmart('vehicles.html');
+        btn.onclick = () => goBackSmart(vehicleListUrl());
       }
     })();
 
     window.addEventListener('DOMContentLoaded', () => {
       if (!targetVin) {
         alert("車両が見つかりません。");
-        location.replace('vehicles.html');
+        location.replace(vehicleListUrl());
         return;
       }
 
@@ -600,7 +607,7 @@
 
       if (!car) {
         alert("車両データが見つかりません。");
-        location.replace('vehicles.html');
+        location.replace(vehicleListUrl());
         return;
       }
 
@@ -866,7 +873,7 @@
           ? `factory_history.html?vin=${encodeURIComponent(targetVin)}`
           : fromPage === 'history'
           ? `history.html?vin=${encodeURIComponent(targetVin)}`
-          : 'vehicles.html';
+          : vehicleListUrl();
         setTimeout(() => location.replace(dest), res && res.queued ? 1600 : 1200);
       } catch (err) {
         console.error('[execSave]', err);
@@ -910,7 +917,7 @@
       function finishRemoveSuccess() {
         if (typeof hideLoading === 'function') hideLoading();
         if (typeof showToast === 'function') showToast('success', '削除しました');
-        setTimeout(function () { location.replace('vehicles.html'); }, 800);
+        setTimeout(function () { location.replace(vehicleListUrl()); }, 800);
       }
 
       try {

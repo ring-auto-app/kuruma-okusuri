@@ -1,5 +1,6 @@
 /* レンタカー・代車管理 Phase2 — カレンダー・予約（app.js の API / 日付ヘルパを利用） */
 (function () {
+  if (window.__ringAppLoadFailed) return;
   var profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : safeJsonParse(localStorage.getItem('nappy_profile_v1'), null);
   var userRole = profile ? (profile.shopType || profile.role) : '';
   var isBizMode = (userRole === 'factory' || userRole === 'dealer');
@@ -9,8 +10,6 @@
   var calYear = 0;
   var calMonth = 0;
   var mobileView = 'calendar';
-  var mobCalMode = 'week';
-  var mobWeekAnchorYmd = '';
   var mobSelectedYmd = '';
   var selectedVin = '';
   var selectedBookingId = '';
@@ -18,7 +17,14 @@
   var bookingsCache = [];
   var fleetSyncFromCache = false;
   var fleetBookingsSyncOk = false;
-  var fleetVehiclesSyncOk = true;
+  /** 前回サーバーから取得して端末に保存した予約がある（表示専用。操作の判定には fleetBookingsSyncOk を使う） */
+  var fleetBookingsHaveCache = false;
+  var fleetBookingsRefreshing = false;
+  /** このページ表示中にサーバーから取得できた月（'YYYY-M'） */
+  var fleetFreshMonths = {};
+  var fleetMonthRefreshTimer = null;
+  var fleetVehiclesSyncOk = false;
+  var fleetVehiclesLoading = true;
   var wizardState = null;
   var DESK_LIST_PAGE = 25;
   var deskListRendered = 0;
@@ -27,7 +33,6 @@
   var deskListLoadingMore = false;
   var deskAvailRange = { start: '', end: '' };
   var deskCalDrag = { active: false, moved: false, startYmd: '', endYmd: '', pointerId: null };
-  var mobRangeAnchorYmd = '';
   var fleetLoadGen = 0;
   var fleetBookingsReadGen = 0;
   var fleetHistoryReadGen = 0;
@@ -58,9 +63,17 @@
     if (fleetContextCurrent_()) return;
     fleetLoadGen++; fleetBookingsReadGen++; fleetHistoryReadGen++;
     fleetBookingsSyncOk = false; fleetVehiclesSyncOk = false;
+    fleetBookingsHaveCache = false; fleetFreshMonths = {};
+    if (fleetMonthRefreshTimer) { clearTimeout(fleetMonthRefreshTimer); fleetMonthRefreshTimer = null; }
     bookingsCache = []; deskListVehiclesCache = []; wizardState = null;
     selectedVin = ''; selectedBookingId = '';
     closeFleetRentalHistory_();
+    closeMobDetailSheet_();
+    ['fleetMobDetailHost','fleetDetailHost','fleetRentalHistoryBody','fleetRentalHistoryTitle'].forEach(function(id) {
+      var node = document.getElementById(id); if (node) node.textContent = '';
+    });
+    closeNewBookingWizard_();
+    fleetDisconnectDeskListObserver_();
     if (typeof hideLoading === 'function') hideLoading();
     var page = document.querySelector('.page-wrap');
     if (page) {
@@ -72,7 +85,11 @@
   window.addEventListener('ring-auth-context-changed', fleetInvalidateSessionView_);
   window.addEventListener('storage', fleetInvalidateSessionView_);
   window.addEventListener('pageshow', fleetInvalidateSessionView_);
-  window.addEventListener('offline', function () { fleetBookingsSyncOk = false; });
+  window.addEventListener('offline', function () {
+    fleetBookingsSyncOk = false;
+    fleetFreshMonths = {};
+    renderFleetSummary_();
+  });
 
   function fleetIsDesktop_() {
     return !!(window.matchMedia && window.matchMedia('(min-width: 960px)').matches);
@@ -132,8 +149,13 @@
     return 'login.html';
   }
 
+  function fleetFindVehicle_(vin) {
+    return ringFindFleetVehicleByVin_(fleetFleetOnly_(fleetMine_()), vin, profile).vehicle;
+  }
+
   function fleetCheckSheetUrl_(vin) {
-    return 'fleet_check_sheet.html?vin=' + encodeURIComponent(String(vin || '').trim());
+    var car = fleetFindVehicle_(vin);
+    return 'fleet_check_sheet.html?vin=' + encodeURIComponent(String(car ? car.vin : vin || '').trim());
   }
 
   function fleetEscape_(str) {
@@ -144,6 +166,9 @@
   }
 
   function fleetMine_() {
+    if (!fleetContextCurrent_()) return [];
+    var scope = ringFleetBookingsCacheKey_(profile);
+    if (!fleetVehiclesSyncOk && (!scope || !localStorage.getItem('ring_fleet_vehicle_snapshot:' + scope))) return [];
     return typeof ringLoadMyVehicles_ === 'function' ? ringLoadMyVehicles_(profile) : [];
   }
 
@@ -174,9 +199,7 @@
   }
 
   function fleetVehicleName_(vin) {
-    var v = fleetFleetOnly_(fleetMine_()).find(function (c) {
-      return String(c.vin || '').toUpperCase() === String(vin || '').toUpperCase();
-    });
+    var v = fleetFindVehicle_(vin);
     if (!v) return vin;
     return typeof ringVehicleListDisplayName_ === 'function' ? ringVehicleListDisplayName_(v) : (v.nickname || vin);
   }
@@ -188,9 +211,10 @@
 
   function fleetBookingsForMonth_(year, month) {
     return fleetBookingsForShop_(bookingsCache).filter(function (b) {
-      if (!showReturnedHistory && (b.status === 'returned' || b.status === 'cancelled')) return false;
+      if (b.status === 'cancelled') return false;
+      if (!showReturnedHistory && b.status === 'returned') return false;
       if (fleetTab !== 'fleet_all') {
-        var v = fleetFleetOnly_(fleetMine_()).find(function (c) { return String(c.vin) === String(b.vin); });
+        var v = fleetFindVehicle_(b.vin);
         if (!v) return false;
         var cat = typeof ringNormalizeVehicleCategory_ === 'function'
           ? ringNormalizeVehicleCategory_(v.vehicleCategory) : v.vehicleCategory;
@@ -224,8 +248,9 @@
 
   function fleetDeskListEmptyMessage_(filteredCount, allFleetCount) {
     if (filteredCount > 0) return '';
+    if (fleetVehiclesLoading) return '車両情報を取得中です…';
     if (!fleetVehiclesSyncOk) {
-      return '車両情報を確認できません。上部の同期状態を確認してください。';
+      return '車両情報を取得できません。接続を確認し再試行してください。';
     }
     if (allFleetCount === 0) return '登録車両がありません';
     return '該当する車両がありません';
@@ -256,9 +281,9 @@
       '<p><span class="ring-fleet-meta-label">次回点検</span>' + fleetEscape_(inspect) + '</p>' +
       '</div>' +
       '<div class="ring-fleet-veh-actions">' +
-      '<a href="vehicle_info.html?vin=' + encodeURIComponent(car.vin) + '" class="ring-fleet-action-btn">車両情報</a>' +
-      '<a href="history.html?vin=' + encodeURIComponent(car.vin) + '" class="ring-fleet-action-btn">整備履歴</a>' +
-      '<a href="inspection_biz.html?vin=' + encodeURIComponent(car.vin) + '" class="ring-fleet-action-btn">日常点検</a>' +
+      '<a href="vehicle_info.html?vin=' + encodeURIComponent(car.vin) + '&amp;from=rental_fleet" class="ring-fleet-action-btn" data-fleet-nav>車両情報</a>' +
+      '<a href="history.html?vin=' + encodeURIComponent(car.vin) + '&amp;from=rental_fleet" class="ring-fleet-action-btn" data-fleet-nav>整備履歴</a>' +
+      '<a href="inspection_biz.html?vin=' + encodeURIComponent(car.vin) + '&amp;from=rental_fleet" class="ring-fleet-action-btn" data-fleet-nav>日常点検</a>' +
       '<button type="button" class="ring-fleet-action-btn" data-fleet-rental-history="' + fleetEscape_(car.vin) + '">貸出履歴</button>' +
       '</div></article>';
   }
@@ -296,7 +321,7 @@
     var body = document.getElementById('fleetRentalHistoryBody');
     var title = document.getElementById('fleetRentalHistoryTitle');
     if (!modal || !body) return;
-    var car = fleetFleetOnly_(fleetMine_()).find(function (c) { return String(c.vin) === String(vin); });
+    var car = fleetFindVehicle_(vin);
     var name = car ? ringVehicleListDisplayName_(car) : fleetVehicleName_(vin);
     if (title) title.textContent = '貸出履歴 — ' + name;
     modal.hidden = false;
@@ -336,11 +361,26 @@
     modal.setAttribute('aria-hidden', 'true');
   }
 
+  function fleetBookingsDisplayable_() {
+    return fleetBookingsSyncOk || fleetBookingsHaveCache;
+  }
+
+  function fleetMonthKey_(year, month) {
+    return year + '-' + month;
+  }
+
+  function fleetVisibleMonthsFresh_() {
+    var nx = fleetCalNextMonth_(calYear, calMonth);
+    return !!(fleetFreshMonths[fleetMonthKey_(calYear, calMonth)] && fleetFreshMonths[fleetMonthKey_(nx.y, nx.m)]);
+  }
+
   function fleetRenderFromLocalCache_() {
     if (typeof loadFleetBookingsLocal_ === 'function') {
       fleetApplyBookingsCache_(loadFleetBookingsLocal_(profile));
       fleetBookingsSyncOk = false;
       fleetSyncFromCache = true;
+      fleetBookingsHaveCache = typeof ringFleetBookingsHasLocalSnapshot_ === 'function'
+        ? ringFleetBookingsHasLocalSnapshot_(profile) : bookingsCache.length > 0;
     }
     renderFleetSummary_();
     renderFleetList_(false);
@@ -351,7 +391,7 @@
   }
 
   function fleetListCardHtml_(vehicles) {
-    if (!vehicles.length) return '<div class="empty-msg">該当する車両がありません</div>';
+    if (!vehicles.length) return '<div class="empty-msg">' + fleetDeskListEmptyMessage_(0, fleetFleetOnly_(fleetMine_()).length) + '</div>';
     return vehicles.map(fleetSingleVehicleCardHtml_).join('');
   }
 
@@ -454,13 +494,24 @@
 
   function renderFleetSummary_() {
     var all = fleetFleetOnly_(fleetMine_());
-    var syncWarn = !fleetBookingsSyncOk || !fleetVehiclesSyncOk;
+    var syncWarn = !fleetBookingsSyncOk || !fleetVehiclesSyncOk || fleetVehiclesLoading;
     var warnText = '';
+    var bookingsUnknown = !fleetBookingsDisplayable_();
     if (syncWarn) {
       var parts = [];
       if (!fleetVehiclesSyncOk) parts.push('車両');
       if (!fleetBookingsSyncOk) parts.push('予約');
-      warnText = parts.join('・') + 'の最新情報を取得できません。表示は参考または未確定です。';
+      if (fleetVehiclesLoading) {
+        warnText = all.length ? '前回取得した車両情報を表示しています。最新情報を確認中…' : '車両情報を取得中です…';
+      } else if (fleetBookingsRefreshing && fleetVehiclesSyncOk) {
+        warnText = fleetBookingsHaveCache
+          ? '前回取得した情報を表示しています。最新情報を確認中…'
+          : '予約情報を読み込んでいます…';
+      } else if (fleetBookingsHaveCache && !fleetBookingsSyncOk) {
+        warnText = parts.join('・') + 'の最新情報を確認できません。前回取得した情報を表示しています。';
+      } else {
+        warnText = parts.join('・') + 'の最新情報を取得できません。表示は参考または未確定です。';
+      }
     }
     ['fleetSummaryHint', 'fleetMobSummaryHint'].forEach(function (hid) {
       var hintEl = document.getElementById(hid);
@@ -481,8 +532,8 @@
     }
     setStat('fleetStatTotal', all.length, !fleetVehiclesSyncOk && !all.length);
     var outs = ringFleetListActiveOutBookings_(profile, bookingsCache);
-    setStat('fleetStatOut', outs.length, !fleetBookingsSyncOk);
-    var today = ringFormatDateToYmdLocal_(new Date());
+    setStat('fleetStatOut', outs.length, bookingsUnknown);
+    var today = ringFormatDateToYmdJst_(new Date());
     var list = fleetBookingsForShop_(bookingsCache);
     var startToday = list.filter(function (b) {
       return b && b.startDate === today && b.status !== 'cancelled' && b.status !== 'returned';
@@ -490,21 +541,23 @@
     var endToday = list.filter(function (b) {
       return b && b.endDate === today && (b.status === 'out' || b.status === 'confirmed');
     }).length;
-    setStat('fleetStatStartToday', startToday, !fleetBookingsSyncOk);
-    setStat('fleetStatEndToday', endToday, !fleetBookingsSyncOk);
-    setStat('fleetMobStatOut', outs.length, !fleetBookingsSyncOk);
-    setStat('fleetMobStatEndToday', endToday, !fleetBookingsSyncOk);
-    setStat('fleetMobStatStartToday', startToday, !fleetBookingsSyncOk);
+    setStat('fleetStatStartToday', startToday, bookingsUnknown);
+    setStat('fleetStatEndToday', endToday, bookingsUnknown);
+    setStat('fleetMobStatOut', outs.length, bookingsUnknown);
+    setStat('fleetMobStatEndToday', endToday, bookingsUnknown);
+    setStat('fleetMobStatStartToday', startToday, bookingsUnknown);
   }
 
   function renderDeskTodayPanel_() {
     var host = document.getElementById('fleetDeskTodayPanel');
     if (!host) return;
-    if (!fleetBookingsSyncOk) {
-      host.innerHTML = '<p style="margin:0;color:#b91c1c;font-weight:800;">本日の予定を取得できません</p>';
+    if (!fleetBookingsDisplayable_()) {
+      host.innerHTML = fleetBookingsRefreshing
+        ? '<p style="margin:0;color:#64748b;font-weight:700;">本日の予定を読み込んでいます…</p>'
+        : '<p style="margin:0;color:#b91c1c;font-weight:800;">本日の予定を取得できません</p>';
       return;
     }
-    var today = ringFormatDateToYmdLocal_(new Date());
+    var today = ringFormatDateToYmdJst_(new Date());
     var list = fleetBookingsForShop_(bookingsCache);
     var lines = [];
     list.forEach(function (b) {
@@ -553,31 +606,12 @@
     return new Date(+p[0], +p[1] - 1, +p[2]);
   }
 
-  function fleetWeekDaysFromAnchor_(anchorYmd) {
-    var d = fleetYmdToDate_(anchorYmd);
-    var dow = d.getDay();
-    var start = new Date(d);
-    start.setDate(start.getDate() - dow);
-    var week = [];
-    for (var i = 0; i < 7; i++) {
-      var cd = new Date(start);
-      cd.setDate(start.getDate() + i);
-      week.push({
-        ymd: ringFormatDateToYmdLocal_(cd),
-        d: cd.getDate(),
-        y: cd.getFullYear(),
-        m: cd.getMonth() + 1
-      });
-    }
-    return week;
-  }
-
   function fleetBookingsForRange_(startYmd, endYmd) {
     return fleetBookingsForShop_(bookingsCache).filter(function (b) {
-      if (!b) return false;
-      if (!showReturnedHistory && (b.status === 'returned' || b.status === 'cancelled')) return false;
+      if (!b || b.status === 'cancelled') return false;
+      if (!showReturnedHistory && b.status === 'returned') return false;
       if (fleetTab !== 'fleet_all') {
-        var v = fleetFleetOnly_(fleetMine_()).find(function (c) { return String(c.vin) === String(b.vin); });
+        var v = fleetFindVehicle_(b.vin);
         if (!v) return false;
         var cat = typeof ringNormalizeVehicleCategory_ === 'function'
           ? ringNormalizeVehicleCategory_(v.vehicleCategory) : v.vehicleCategory;
@@ -596,12 +630,12 @@
   }
 
   function fleetBookingStatusLabel_(st) {
-    var map = { reserved: '予約', confirmed: '予約確定', out: '貸出中', returned: '返却済', cancelled: 'キャンセル' };
+    var map = { reserved: '予約中', confirmed: '予約中', out: '貸出中', returned: '返却済', cancelled: 'キャンセル' };
     return map[String(st || '').toLowerCase()] || st;
   }
 
   function fleetPlateSuffixForBooking_(b) {
-    var car = fleetFleetOnly_(fleetMine_()).find(function (c) { return String(c.vin) === String(b.vin); });
+    var car = fleetFindVehicle_(b.vin);
     return fleetPlateLabelForCar_(car);
   }
 
@@ -613,25 +647,32 @@
       host.innerHTML = '';
       return;
     }
-    if (!fleetBookingsSyncOk) {
+    var newBtn = '<button type="button" class="ring-fleet-mob-agenda-new" data-agenda-new="' + fleetEscape_(mobSelectedYmd) + '">＋ この日から予約</button>';
+    if (!fleetBookingsDisplayable_()) {
       host.hidden = false;
-      host.innerHTML = '<h3>' + fleetEscape_(mobSelectedYmd) + '</h3><p style="margin:0;color:#b45309;font-weight:800;">この日の予定を取得できません</p>';
+      host.innerHTML = '<h3>' + fleetEscape_(mobSelectedYmd) + '</h3>' + (fleetBookingsRefreshing
+        ? '<p style="margin:0;color:#64748b;font-weight:700;">予定を読み込んでいます…</p>'
+        : '<p style="margin:0;color:#b45309;font-weight:800;">この日の予定を取得できません</p>');
       return;
     }
+    var staleNote = fleetBookingsSyncOk ? ''
+      : '<p class="ring-fleet-mob-agenda-stale">前回取得した情報です' + (fleetBookingsRefreshing ? '（最新を確認中）' : '（最新情報を確認できません）') + '</p>';
     var bookings = fleetBookingsForRange_(mobSelectedYmd, mobSelectedYmd);
     if (!bookings.length) {
       host.hidden = false;
-      host.innerHTML = '<h3>' + fleetEscape_(mobSelectedYmd) + '</h3><p style="margin:0;font-weight:700;color:#64748b;">予定はありません</p>';
+      host.innerHTML = '<h3>' + fleetEscape_(mobSelectedYmd) + '</h3>' + staleNote +
+        '<p style="margin:0;font-weight:700;color:#64748b;">予定はありません</p>' + newBtn;
       return;
     }
     host.hidden = false;
-    host.innerHTML = '<h3>' + fleetEscape_(mobSelectedYmd) + ' の予定</h3>' + bookings.map(function (b) {
-      return '<button type="button" class="ring-fleet-mob-agenda-item" data-booking-id="' + fleetEscape_(b.bookingId) + '">' +
+    host.innerHTML = '<h3>' + fleetEscape_(mobSelectedYmd) + ' の予定</h3>' + staleNote + bookings.map(function (b) {
+      var st = String(b.status || 'reserved').toLowerCase();
+      return '<button type="button" class="ring-fleet-mob-agenda-item st-' + fleetEscape_(st) + '" data-booking-id="' + fleetEscape_(b.bookingId) + '">' +
         '<strong>' + fleetEscape_(fleetVehicleName_(b.vin)) + '</strong>' +
         '<span>下4桁 ' + fleetEscape_(fleetPlateSuffixForBooking_(b)) + ' · ' +
         fleetEscape_(fleetBookingStatusLabel_(b.status)) + ' · ' +
         fleetEscape_(b.startDate) + '〜' + fleetEscape_(b.endDate) + '</span></button>';
-    }).join('');
+    }).join('') + newBtn;
   }
 
   function renderDeskEmptyState_() {
@@ -655,9 +696,9 @@
   }
 
   function initCalMonth_() {
-    var now = new Date();
-    calYear = now.getFullYear();
-    calMonth = now.getMonth() + 1;
+    var now = ringFormatDateToYmdJst_(new Date()).split('-');
+    calYear = Number(now[0]);
+    calMonth = Number(now[1]);
   }
 
   function renderFleetList_(preserveScroll) {
@@ -671,15 +712,15 @@
     }).length;
     ['cntAll', 'cntAllDesk'].forEach(function (id) {
       var el = document.getElementById(id);
-      if (el) el.textContent = pack.allFleet.length;
+      if (el) el.textContent = !fleetVehiclesSyncOk && !pack.allFleet.length ? '—' : pack.allFleet.length;
     });
     ['cntRental', 'cntRentalDesk'].forEach(function (id) {
       var el = document.getElementById(id);
-      if (el) el.textContent = rentalN;
+      if (el) el.textContent = !fleetVehiclesSyncOk && !pack.allFleet.length ? '—' : rentalN;
     });
     ['cntLoaner', 'cntLoanerDesk'].forEach(function (id) {
       var el = document.getElementById(id);
-      if (el) el.textContent = loanerN;
+      if (el) el.textContent = !fleetVehiclesSyncOk && !pack.allFleet.length ? '—' : loanerN;
     });
     syncFleetSearchClear_();
     var vehicles = pack.vehicles;
@@ -737,13 +778,10 @@
     var vehicles = fleetFilteredVehicles_().vehicles;
     var bookings = fleetBookingsForMonth_(y, m);
     var isMobCompact = hostId === 'fleetCalMob' && String(classWeek || '').indexOf('is-month-compact') >= 0;
-    var todayYmd = ringFormatDateToYmdLocal_(new Date());
+    var todayYmd = ringFormatDateToYmdJst_(new Date());
     var title = y + '年' + m + '月';
     var titleEl = document.querySelector('[data-cal-title="' + hostId + '"]');
-    if (titleEl) {
-      titleEl.textContent = title;
-      if (hostId === 'fleetCalMob') titleEl.hidden = mobCalMode === 'week';
-    }
+    if (titleEl) titleEl.textContent = title;
 
     var html = '<div class="ring-fleet-cal-grid"><div class="ring-fleet-cal-dow">' +
       ['日','月','火','水','木','金','土'].map(function (d) { return '<span>' + d + '</span>'; }).join('') + '</div>';
@@ -775,8 +813,8 @@
         if (!bar) return;
         var st = String(b.status || 'reserved').toLowerCase();
         var label = fleetVehicleName_(b.vin).slice(0, 8);
-        var barLabel = isMobCompact ? '·' : label;
-        var tip = fleetVehicleName_(b.vin) + ' ' + b.startDate + '〜' + b.endDate;
+        var barLabel = isMobCompact ? (bar.span >= 2 ? label : '') : label;
+        var tip = fleetVehicleName_(b.vin) + ' ' + fleetBookingStatusLabel_(st) + ' ' + b.startDate + '〜' + b.endDate;
         html += '<button type="button" class="ring-fleet-cal-bar st-' + st + '" style="grid-column:' +
           (bar.startCol + 1) + ' / span ' + bar.span + ';" data-booking-id="' + fleetEscape_(b.bookingId) + '"' +
           ' title="' + fleetEscape_(tip) + '" aria-label="' + fleetEscape_(tip) + '">' +
@@ -900,65 +938,13 @@
     host.addEventListener('pointercancel', endDrag);
   }
 
-  function renderMobWeekCalendar_() {
-    var host = document.getElementById('fleetCalMob');
-    if (!host) return;
-    if (!mobWeekAnchorYmd) mobWeekAnchorYmd = ringFormatDateToYmdLocal_(new Date());
-    var week = fleetWeekDaysFromAnchor_(mobWeekAnchorYmd);
-    var weekCells = week.map(function (cell) {
-      return { y: cell.y, m: cell.m, d: cell.d, ymd: cell.ymd };
-    });
-    var bookings = fleetBookingsForRange_(week[0].ymd, week[6].ymd);
-    var todayYmd = ringFormatDateToYmdLocal_(new Date());
-    var titleEl = document.querySelector('[data-cal-title="fleetCalMob"]');
-    if (titleEl) {
-      titleEl.hidden = false;
-      titleEl.textContent = week[0].ymd.replace(/-/g, '/') + ' 〜 ' + week[6].ymd.replace(/-/g, '/');
-    }
-    var dow = ['日','月','火','水','木','金','土'];
-    var head = '<div class="ring-fleet-mob-week-head">';
-    week.forEach(function (cell, i) {
-      var cls = 'ring-fleet-mob-week-day';
-      if (cell.ymd === todayYmd) cls += ' is-today';
-      if (cell.ymd === mobSelectedYmd) cls += ' is-selected';
-      var n = fleetBookingCountOnDay_(cell.ymd, bookings);
-      head += '<button type="button" class="' + cls + '" data-cal-ymd="' + fleetEscape_(cell.ymd) + '">' +
-        '<span class="dow">' + dow[i] + '</span><span class="num">' + cell.d + '</span>' +
-        (n ? '<span class="has-booking" aria-hidden="true"></span>' : '') + '</button>';
-    });
-    head += '</div>';
-    var html = head + '<div class="ring-fleet-cal-grid"><div class="ring-fleet-cal-dow">' +
-      dow.map(function (d) { return '<span>' + d + '</span>'; }).join('') + '</div>';
-    html += '<div class="ring-fleet-cal-week ring-fleet-cal-mob">';
-    weekCells.forEach(function (cell) {
-      var cls = cell.ymd === todayYmd ? 'ring-fleet-cal-day is-today' : 'ring-fleet-cal-day';
-      if (cell.ymd === mobSelectedYmd) cls += ' is-selected';
-      html += '<button type="button" class="' + cls + '" data-cal-ymd="' + fleetEscape_(cell.ymd) + '"><div>' + cell.d + '</div></button>';
-    });
-    html += '<div class="ring-fleet-cal-bars">';
-    for (var col = 0; col < 7; col++) html += '<div></div>';
-    bookings.forEach(function (b) {
-      var bar = ringFleetBookingBarInWeek_(b, weekCells);
-      if (!bar) return;
-      var st = String(b.status || 'reserved').toLowerCase();
-      var tip = fleetVehicleName_(b.vin) + ' ' + b.startDate + '〜' + b.endDate;
-      var label = fleetVehicleName_(b.vin).slice(0, 8);
-      html += '<button type="button" class="ring-fleet-cal-bar st-' + st + '" style="grid-column:' +
-        (bar.startCol + 1) + ' / span ' + bar.span + ';" data-booking-id="' + fleetEscape_(b.bookingId) + '"' +
-        ' title="' + fleetEscape_(tip) + '">' + fleetEscape_(label) + '</button>';
-    });
-    html += '</div></div></div>';
-    host.innerHTML = html;
-  }
-
   function renderCalendars_() {
     if (fleetIsDesktop_()) {
       renderDeskDualCalendar_();
       renderCalendarInto_('fleetCalMob', 'ring-fleet-cal-mob', calYear, calMonth);
       return;
     }
-    if (mobCalMode === 'week') renderMobWeekCalendar_();
-    else renderCalendarInto_('fleetCalMob', 'ring-fleet-cal-mob is-month-compact', calYear, calMonth);
+    renderCalendarInto_('fleetCalMob', 'ring-fleet-cal-mob is-month-compact', calYear, calMonth);
   }
 
   function closeMobDetailSheet_(opts) {
@@ -978,7 +964,7 @@
   }
 
   function openMobDetailSheet_() {
-    if (fleetIsDesktop_() || !selectedBookingId) return;
+    if (!fleetContextCurrent_() || fleetIsDesktop_() || !selectedBookingId) return;
     var sheet = document.getElementById('fleetMobDetailSheet');
     var back = document.getElementById('fleetMobDetailBackdrop');
     var host = document.getElementById('fleetMobDetailHost');
@@ -1033,7 +1019,6 @@
         note.textContent = '予約は完了しています。貸出開始は ' + (canOut.minStartDate || b.startDate) + ' から行えます。';
         actions.appendChild(note);
       }
-      if (b.status === 'reserved') addBtn('予約を確定', 'confirmed', false);
       addBtn('キャンセル', 'cancelled', false);
     }
     if (b.status === 'out') {
@@ -1175,12 +1160,12 @@
     }
     if (!fleetContextCurrent_()) return;
     if (json && json.success) {
-      await refreshBookings_();
-      if (!fleetContextCurrent_()) return;
       var okMsg = '予約情報を更新しました';
       if (patch.status === 'out' && cur.status !== 'out') okMsg = '貸出を開始しました';
-      else if (patch.status === 'confirmed' && cur.status === 'reserved') okMsg = '予約を確定しました';
+      else if (patch.status === 'cancelled') okMsg = '予約をキャンセルしました';
       else if (patch.status === 'returned') okMsg = '返却を完了しました';
+      if (patch.status === 'cancelled') selectedBookingId = '';
+      fleetRenderAfterServerWrite_();
       if (typeof showToast === 'function') showToast('success', okMsg);
     } else if (json && typeof showToast === 'function') {
       var err = String(json.error || '');
@@ -1314,10 +1299,14 @@
         closeMobDetailSheet_({ clearSelection: true });
         selectedBookingId = '';
         renderDetailPanel_();
+        if (typeof loadFleetBookingsLocal_ === 'function' && typeof ringFleetPersistBookingLocally_ === 'function' &&
+            !loadFleetBookingsLocal_(profile).some(function (x) { return x && String(x.bookingId) === String(bk.bookingId); })) {
+          ringFleetPersistBookingLocally_(profile, bk);
+        }
+        fleetRenderAfterServerWrite_();
         if (typeof showToast === 'function') {
           showToast('success', result.outcome === 'resolved_update' ? '予約情報を更新しました' : '予約を登録しました');
         }
-        refreshBookings_();
       }
       return;
     }
@@ -1414,7 +1403,7 @@
     selectedBookingId = '';
     var host = document.getElementById('fleetDetailPanel');
     if (!host) return;
-    var today = ringFormatDateToYmdLocal_(new Date());
+    var today = ringFormatDateToYmdJst_(new Date());
     var s = startDate || today;
     var e = endDate || today;
     host.innerHTML = fleetConfirmPanelHtml_(vin, s, e, '');
@@ -1452,7 +1441,7 @@
   }
 
   function fleetOutBookingCardHtml_(b, pickAttr) {
-    var car = fleetFleetOnly_(fleetMine_()).find(function (c) { return String(c.vin) === String(b.vin); });
+    var car = fleetFindVehicle_(b.vin);
     var name = car ? ringVehicleListDisplayName_(car) : fleetVehicleName_(b.vin);
     var catLabel = car ? ringVehicleCategoryLabelJa_(car.vehicleCategory) : '';
     var plate = fleetPlateLabelForCar_(car);
@@ -1619,9 +1608,8 @@
     }
     if (!fleetContextCurrent_()) return;
     if (json && json.success) {
-      await refreshBookings_();
-      if (!fleetContextCurrent_()) return;
       closeNewBookingWizard_();
+      fleetRenderAfterServerWrite_();
       if (typeof showToast === 'function') showToast('success', '返却を完了しました');
       return;
     }
@@ -1639,7 +1627,7 @@
   }
 
   function openNewBookingWizard_(preset) {
-    var today = ringFormatDateToYmdLocal_(new Date());
+    var today = ringFormatDateToYmdJst_(new Date());
     wizardState = Object.assign({
       kind: 'booking',
       step: 'choose',
@@ -1919,15 +1907,33 @@
     });
   }
 
-  async function refreshBookings_(loadShop, loadGen) {
+  /**
+   * 表示中の月と翌月をサーバーから取得し直す。取得中も手元の表示（前回取得分）は消さない。
+   * 新しい呼び出しが始まった後に古い応答が返っても画面へは反映しない（fleetBookingsReadGen）。
+   * opts.quiet: 月移動・保存後の裏更新ではトーストを出さない（画面上部の案内で知らせる）。
+   */
+  async function refreshBookings_(loadShop, loadGen, opts) {
     if (!fleetContextCurrent_()) return false;
+    var quiet = !!(opts && opts.quiet);
     var readGen = ++fleetBookingsReadGen;
-    fleetBookingsSyncOk = false;
-    fleetSyncFromCache = false;
-    var res1 = await syncFleetBookingsFromServer(calYear, calMonth);
-    if (!fleetContextCurrent_() || readGen !== fleetBookingsReadGen) return false;
-    var nm = fleetCalNextMonth_(calYear, calMonth);
-    var res2 = await syncFleetBookingsFromServer(nm.y, nm.m);
+    var y1 = calYear, m1 = calMonth;
+    var nm = fleetCalNextMonth_(y1, m1);
+    fleetBookingsRefreshing = true;
+    renderFleetSummary_();
+    var results;
+    try {
+      results = await Promise.all([
+        syncFleetBookingsFromServer(y1, m1),
+        syncFleetBookingsFromServer(nm.y, nm.m)
+      ]);
+    } catch (e) {
+      results = [{ ok: false, bookings: [], error: 'NETWORK' }, { ok: false, bookings: [], error: 'NETWORK' }];
+    } finally {
+      if (readGen === fleetBookingsReadGen) fleetBookingsRefreshing = false;
+    }
+    var res1 = results[0], res2 = results[1];
+    if (res1 && res1.ok) fleetFreshMonths[fleetMonthKey_(y1, m1)] = true;
+    if (res2 && res2.ok) fleetFreshMonths[fleetMonthKey_(nm.y, nm.m)] = true;
     if (!fleetContextCurrent_() || readGen !== fleetBookingsReadGen) return false;
     if (loadGen != null && (loadGen !== fleetLoadGen || fleetCurrentShopId_() !== loadShop)) {
       return false;
@@ -1937,8 +1943,10 @@
       : (res2.bookings && res2.bookings.length ? res2.bookings : (res1.bookings || []));
     fleetApplyBookingsCache_(mergedList.length ? mergedList : (res1.bookings || []));
     fleetSyncFromCache = !!((res1 && res1.fromCache && !res1.ok) || (res2 && res2.fromCache && !res2.ok));
-    fleetBookingsSyncOk = !!(res1 && res1.ok && res2 && res2.ok);
-    if (!fleetBookingsSyncOk && typeof showToast === 'function') {
+    var bothOk = !!(res1 && res1.ok && res2 && res2.ok);
+    if (bothOk) fleetBookingsHaveCache = true;
+    fleetBookingsSyncOk = bothOk && y1 === calYear && m1 === calMonth;
+    if (!bothOk && !quiet && typeof showToast === 'function') {
       if (fleetSyncFromCache && (mergedList || []).length) {
         showToast('warning', 'サーバーと同期できませんでした。自店舗の保存済み予約を表示しています。');
       } else if ((res1 && res1.error === 'NETWORK') || (res2 && res2.error === 'NETWORK')) {
@@ -1946,10 +1954,43 @@
       }
     }
     renderFleetList_(true);
-    renderCalendars_();
     renderDetailPanel_();
     renderDeskOutPanel_();
     return fleetBookingsSyncOk;
+  }
+
+  /** 月移動の直後は手元の予約で即描画し、サーバー確認は少し待ってからまとめて 1 回行う */
+  function fleetScheduleMonthRefresh_() {
+    if (fleetMonthRefreshTimer) clearTimeout(fleetMonthRefreshTimer);
+    fleetMonthRefreshTimer = setTimeout(function () {
+      fleetMonthRefreshTimer = null;
+      if (!fleetContextCurrent_()) return;
+      refreshBookings_(null, null, { quiet: true });
+    }, 250);
+  }
+
+  function fleetRenderCalendarMonth_() {
+    if (!fleetVisibleMonthsFresh_()) fleetBookingsSyncOk = false;
+    renderCalendars_();
+    renderMobDayAgenda_();
+    renderFleetSummary_();
+    fleetScheduleMonthRefresh_();
+  }
+
+  /**
+   * サーバー保存が成功した直後の反映。app.js 側でサーバー応答の予約を端末保存済みなので、
+   * それを読み直して描画し、他スタッフの変更との突き合わせは裏で行う（月・選択・スクロールは維持）。
+   */
+  function fleetRenderAfterServerWrite_() {
+    if (!fleetContextCurrent_()) return;
+    if (typeof loadFleetBookingsLocal_ === 'function') {
+      fleetApplyBookingsCache_(loadFleetBookingsLocal_(profile));
+      fleetBookingsHaveCache = true;
+    }
+    renderFleetList_(true);
+    renderDetailPanel_();
+    renderDeskOutPanel_();
+    refreshBookings_(null, null, { quiet: true });
   }
 
   function setFleetTab_(tab) {
@@ -1964,45 +2005,60 @@
     calMonth += delta;
     if (calMonth > 12) { calMonth = 1; calYear++; }
     if (calMonth < 1) { calMonth = 12; calYear--; }
-    refreshBookings_();
+    var sel = String(mobSelectedYmd || '').split('-');
+    if (sel.length < 2 || +sel[0] !== calYear || +sel[1] !== calMonth) mobSelectedYmd = '';
+    fleetRenderCalendarMonth_();
   }
 
-  function shiftMobWeek_(delta) {
-    if (!mobWeekAnchorYmd) mobWeekAnchorYmd = ringFormatDateToYmdLocal_(new Date());
-    var d = fleetYmdToDate_(mobWeekAnchorYmd);
-    d.setDate(d.getDate() + delta * 7);
-    mobWeekAnchorYmd = ringFormatDateToYmdLocal_(d);
-    renderCalendars_();
-    renderMobDayAgenda_();
-  }
-
-  function setMobCalMode_(mode) {
-    mobCalMode = mode === 'month' ? 'month' : 'week';
-    document.querySelectorAll('[data-mob-cal-mode]').forEach(function (btn) {
-      btn.classList.toggle('is-active', btn.getAttribute('data-mob-cal-mode') === mobCalMode);
-    });
-    var navWeek = document.getElementById('fleetMobCalNavWeek');
-    var navMonth = document.getElementById('fleetMobCalNavMonth');
-    if (navWeek) navWeek.hidden = mobCalMode !== 'week';
-    if (navMonth) navMonth.hidden = mobCalMode !== 'month';
-    renderCalendars_();
-    renderMobDayAgenda_();
+  function fleetCalGoToday_() {
+    initCalMonth_();
+    mobSelectedYmd = ringFormatDateToYmdJst_(new Date());
+    fleetRenderCalendarMonth_();
   }
 
   function fleetSelectMobDay_(ymd) {
     if (!ymd) return;
     mobSelectedYmd = ymd;
-    if (mobCalMode === 'week') {
-      mobWeekAnchorYmd = ymd;
-    } else {
-      var parts = ymd.split('-');
-      if (parts.length >= 2) {
-        calYear = +parts[0];
-        calMonth = +parts[1];
-      }
+    var parts = ymd.split('-');
+    if (parts.length >= 2 && (+parts[0] !== calYear || +parts[1] !== calMonth)) {
+      calYear = +parts[0];
+      calMonth = +parts[1];
+      fleetRenderCalendarMonth_();
+      return;
     }
     renderCalendars_();
     renderMobDayAgenda_();
+  }
+
+  var FLEET_VIEW_STATE_KEY = 'ring_fleet_view_state_v1';
+
+  /** 車両情報・整備履歴・日常点検へ移る前に、一覧の開閉・タブ・スクロール位置を覚えておく */
+  function fleetSaveViewState_() {
+    try {
+      var panel = document.getElementById('fleetMobListPanel');
+      sessionStorage.setItem(FLEET_VIEW_STATE_KEY, JSON.stringify({
+        shop: fleetCurrentShopId_(),
+        scope: ringFleetBackScope_(),
+        listOpen: !!(panel && !panel.hidden),
+        tab: fleetTab,
+        scrollY: window.scrollY || 0,
+        listScroll: panel ? panel.scrollTop : 0,
+        year: calYear,
+        month: calMonth,
+        at: Date.now()
+      }));
+    } catch (e) { /* ignore */ }
+  }
+
+  function fleetTakeViewState_() {
+    try {
+      var raw = safeJsonParse(sessionStorage.getItem(FLEET_VIEW_STATE_KEY), null);
+      sessionStorage.removeItem(FLEET_VIEW_STATE_KEY);
+      if (!raw || !raw.scope || raw.scope !== ringFleetBackScope_() || raw.shop !== fleetCurrentShopId_() || Date.now() - (raw.at || 0) > 2 * 60 * 60 * 1000) return null;
+      return raw;
+    } catch (e) {
+      return null;
+    }
   }
 
   async function loadFleetPage_(manual) {
@@ -2010,15 +2066,20 @@
     var loadShop = fleetCurrentShopId_();
     var loadGen = ++fleetLoadGen;
     if (manual && typeof showLoading === 'function') showLoading('更新中', '読み込み中…');
-    fleetVehiclesSyncOk = true;
-    if (typeof syncVehiclesFromServer === 'function') {
-      try { await syncVehiclesFromServer(); } catch (e) { fleetVehiclesSyncOk = false; }
+    fleetVehiclesLoading = true;
+    // 車両と予約は互いに独立した読み取りなので並行して取得する（表示は手元の情報で先に出ている）
+    var vehiclesP = typeof syncVehiclesFromServer === 'function'
+      ? syncVehiclesFromServer({returnStatus:true}).catch(function () { return {ok:false}; })
+      : Promise.resolve({ok:false});
+    var bookingsP = refreshBookings_(loadShop, loadGen);
+    var vehiclesResult = await vehiclesP;
+    if (fleetContextCurrent_() && loadGen === fleetLoadGen && fleetCurrentShopId_() === loadShop) {
+      fleetVehiclesLoading = false;
+      fleetVehiclesSyncOk = !!(vehiclesResult && vehiclesResult.ok);
+      if (fleetVehiclesSyncOk) { var scope = ringFleetBookingsCacheKey_(profile); if (scope) localStorage.setItem('ring_fleet_vehicle_snapshot:' + scope, '1'); }
+      renderFleetList_(true);
     }
-    if (!fleetContextCurrent_() || loadGen !== fleetLoadGen || fleetCurrentShopId_() !== loadShop) {
-      if (manual && fleetContextCurrent_() && typeof hideLoading === 'function') hideLoading();
-      return;
-    }
-    var ok = await refreshBookings_(loadShop, loadGen);
+    var ok = await bookingsP;
     if (!ok || !fleetContextCurrent_() || loadGen !== fleetLoadGen || fleetCurrentShopId_() !== loadShop) {
       if (manual && fleetContextCurrent_() && typeof hideLoading === 'function') hideLoading();
       return;
@@ -2035,8 +2096,7 @@
     }
     document.getElementById('backBtn').onclick = function () { location.href = fleetHomeUrl_(); };
     initCalMonth_();
-    mobWeekAnchorYmd = ringFormatDateToYmdLocal_(new Date());
-    mobSelectedYmd = mobWeekAnchorYmd;
+    mobSelectedYmd = ringFormatDateToYmdJst_(new Date());
     fleetCacheKey = 'rental_fleet:' + (profile.shopId || profile.userId || 'unknown');
 
     var canEdit = ringCanEditManagedVehicles_(profile);
@@ -2087,7 +2147,7 @@
     var deskStart = document.getElementById('fleetDeskAvailStart');
     var deskEnd = document.getElementById('fleetDeskAvailEnd');
     if (deskStart && deskEnd) {
-      var td = ringFormatDateToYmdLocal_(new Date());
+      var td = ringFormatDateToYmdJst_(new Date());
       deskStart.value = td;
       deskEnd.value = td;
       bindFleetDateField_(deskStart);
@@ -2095,7 +2155,7 @@
     }
     document.getElementById('fleetCalPrev').onclick = function () { shiftCalMonth_(-1); };
     document.getElementById('fleetCalNext').onclick = function () { shiftCalMonth_(1); };
-    document.getElementById('fleetCalToday').onclick = function () { initCalMonth_(); refreshBookings_(); };
+    document.getElementById('fleetCalToday').onclick = function () { fleetCalGoToday_(); };
 
     function onShowReturnedChange(checked) {
       showReturnedHistory = !!checked;
@@ -2111,20 +2171,6 @@
     if (showRetDesk) showRetDesk.onchange = function (ev) { onShowReturnedChange(ev.target.checked); };
     if (showRetMob) showRetMob.onchange = function (ev) { onShowReturnedChange(ev.target.checked); };
 
-    document.querySelectorAll('[data-mob-cal-mode]').forEach(function (btn) {
-      btn.addEventListener('click', function () { setMobCalMode_(btn.getAttribute('data-mob-cal-mode')); });
-    });
-    var wPrev = document.getElementById('fleetMobWeekPrev');
-    var wNext = document.getElementById('fleetMobWeekNext');
-    var wToday = document.getElementById('fleetMobWeekToday');
-    if (wPrev) wPrev.onclick = function () { shiftMobWeek_(-1); };
-    if (wNext) wNext.onclick = function () { shiftMobWeek_(1); };
-    if (wToday) wToday.onclick = function () {
-      mobWeekAnchorYmd = ringFormatDateToYmdLocal_(new Date());
-      mobSelectedYmd = mobWeekAnchorYmd;
-      renderCalendars_();
-      renderMobDayAgenda_();
-    };
     var listOpen = document.getElementById('fleetMobListOpen');
     var listClose = document.getElementById('fleetMobListClose');
     var listPanel = document.getElementById('fleetMobListPanel');
@@ -2156,6 +2202,7 @@
     closeMobDetailSheet_({ clearSelection: false });
 
     document.body.addEventListener('click', function (ev) {
+      if (!fleetContextCurrent_()) { ev.preventDefault(); fleetInvalidateSessionView_(); return; }
       var bar = ev.target.closest('[data-booking-id]');
       if (bar && bar.closest('#fleetCalMob, #fleetMobDayAgenda, #fleetCalDesk')) {
         selectedBookingId = bar.getAttribute('data-booking-id');
@@ -2164,15 +2211,26 @@
       }
       var calDay = ev.target.closest('[data-cal-ymd]');
       if (calDay && calDay.closest('#fleetCalMob') && !ev.target.closest('.ring-fleet-cal-bar')) {
-        var ymdMob = calDay.getAttribute('data-cal-ymd');
-        if (!mobRangeAnchorYmd) {
-          mobRangeAnchorYmd = ymdMob;
-          fleetSelectMobDay_(ymdMob);
-        } else {
-          var rMob = fleetDeskRangeBetween_(mobRangeAnchorYmd, ymdMob);
-          mobRangeAnchorYmd = '';
-          openNewBookingWizard_({ mode: 'by_date', step: 'dates', startDate: rMob.start, endDate: rMob.end });
-        }
+        fleetSelectMobDay_(calDay.getAttribute('data-cal-ymd'));
+        return;
+      }
+      var agendaNew = ev.target.closest('[data-agenda-new]');
+      if (agendaNew) {
+        var ymdNew = agendaNew.getAttribute('data-agenda-new');
+        openNewBookingWizard_({ mode: 'by_date', step: 'dates', startDate: ymdNew, endDate: ymdNew });
+        return;
+      }
+      if (ev.target.closest('[data-fleet-nav]')) {
+        fleetSaveViewState_();
+        // 遷移先の DOMContentLoaded を待たず、クリック時点で戻り先を確定する
+        try {
+          var navA = ev.target.closest('a[data-fleet-nav]');
+          var navHref = navA && navA.getAttribute('href');
+          if (navHref && typeof ringNoteFleetBackOriginForVin_ === 'function') {
+            var navVin = new URL(navHref, location.href).searchParams.get('vin');
+            ringNoteFleetBackOriginForVin_(navVin);
+          }
+        } catch (eNavOrigin) { /* ignore */ }
         return;
       }
       var vinRow = ev.target.closest('[data-vin]');
@@ -2209,7 +2267,18 @@
         if (ev.target === histModal) closeFleetRentalHistory_();
       };
     }
+    var viewState = fleetTakeViewState_();
+    if (viewState) {
+      if (viewState.tab && viewState.tab !== fleetTab) setFleetTab_(viewState.tab);
+      if (viewState.year && viewState.month) { calYear = viewState.year; calMonth = viewState.month; }
+    }
     fleetRenderFromLocalCache_();
+    if (viewState) {
+      if (viewState.listOpen && listOpen) listOpen.click();
+      var panelRestore = document.getElementById('fleetMobListPanel');
+      if (panelRestore && viewState.listScroll) panelRestore.scrollTop = viewState.listScroll;
+      if (viewState.scrollY && typeof ringRestoreScrollY_ === 'function') ringRestoreScrollY_(viewState.scrollY);
+    }
     loadFleetPage_(false);
   });
 })();

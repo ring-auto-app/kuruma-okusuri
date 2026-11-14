@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.json">
     <title>車のお薬手帳</title>
   <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20261114-v39"></script>
+  <script src="app.js?v=20261114-v42" integrity="sha256-aT+0fIlNYULT6ndA9A87tM0+/wa2bPJr9vgv3CWo34g= sha256-xOVotDaeCes3eJdwrlE3aDEuZqvnaJ9fWbjnvp0o2Is=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
   <script src="theme.js"></script>
   <style>
     :root {
@@ -101,7 +101,7 @@
 <body>
   <div class="container">
     <div class="header">
-      <a onclick="goBackSmart('vehicles.html')" class="back-link">◁ 管理車両一覧へ戻る</a>
+      <a id="inspBackLink" class="back-link" href="javascript:void(0)">◁ 管理車両一覧へ戻る</a>
       <div>
         <h1 class="title">日常点検</h1>
         <p class="sub-title" id="profileSubTitle">整備記録</p>
@@ -174,6 +174,17 @@
     
     window.addEventListener('DOMContentLoaded', () => {
       const subTitleEl = document.getElementById('profileSubTitle');
+      const inspBack = document.getElementById('inspBackLink');
+      const vinForBack = (new URLSearchParams(window.location.search).get('vin') || '').trim();
+      if (inspBack) {
+        if (typeof ringCameFromFleet_ === 'function' && ringCameFromFleet_(vinForBack)) {
+          inspBack.textContent = '◁ レンタカー・代車管理へ戻る';
+        }
+        inspBack.onclick = function () {
+          goBackSmart(typeof ringManagedVehicleListUrl_ === 'function'
+            ? ringManagedVehicleListUrl_(vinForBack) : 'vehicles.html');
+        };
+      }
       
       if (profile) {
         if (profile.shopType === 'factory') {
@@ -207,7 +218,7 @@
         if (profile && typeof isVinRegisteredForInspection === 'function') {
           if (!isVinRegisteredForInspection(targetVin, profile)) {
             if (typeof showToast === 'function') showToast('error', 'この車両は管理車両に登録されていません。');
-            location.replace('vehicles.html');
+            location.replace(typeof ringManagedVehicleListUrl_ === 'function' ? ringManagedVehicleListUrl_(targetVin) : 'vehicles.html');
             return;
           }
         }
@@ -508,7 +519,7 @@
         }
         const dest = isEdit
           ? ('daily_history.html?vin=' + encodeURIComponent(vin))
-          : 'vehicles.html';
+          : (typeof ringManagedVehicleListUrl_ === 'function' ? ringManagedVehicleListUrl_(vin) : 'vehicles.html');
         if (maintState === 'failed') {
           showToast('warning', (gasResult.queued
             ? '未送信です。接続後に送信します。'

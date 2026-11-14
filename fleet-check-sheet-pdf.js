@@ -177,22 +177,7 @@
     return { png: dataUrlToUint8_(canvas.toDataURL('image/png')), width: canvas.width, height: canvas.height, lineHeight: lh };
   }
 
-  function regionBoxFromSvg_(region) {
-    var map = {
-      bumper_front: { x: 130, y: 20, w: 160, h: 44 },
-      body_top: { x: 80, y: 80, w: 260, h: 200 },
-      side_left: { x: 20, y: 80, w: 50, h: 200 },
-      side_right: { x: 350, y: 80, w: 50, h: 200 },
-      bumper_rear: { x: 130, y: 296, w: 160, h: 44 },
-      tire_FL: { x: 21, y: 366, w: 68, h: 68 },
-      tire_FR: { x: 331, y: 366, w: 68, h: 68 },
-      tire_RL: { x: 21, y: 466, w: 68, h: 68 },
-      tire_RR: { x: 331, y: 466, w: 68, h: 68 }
-    };
-    return map[region] || map.body_top;
-  }
-
-  function diagramToPng_(C, marks) {
+  function diagramToPng_(C, marks, positions) {
     if (typeof document === 'undefined' || !C) return new Uint8Array(0);
     var wrap = document.createElement('div');
     wrap.style.position = 'fixed';
@@ -213,11 +198,12 @@
     }
     var html = '';
     (marks || []).forEach(function (m) {
-      var box = regionBoxFromSvg_(m.region);
-      var cx = box.x + box.w * m.nx;
-      var cy = box.y + box.h * m.ny;
+      var point = C.markPointOnSvg_(svg, m);
+      if (!point) return;
+      var cx = point.x, cy = point.y;
+      if (positions) positions.push({id:m.id, region:m.region, x:cx, y:cy});
       if (m.type === 'scratch') {
-        html += '<g transform="translate(' + cx + ',' + cy + ')"><circle r="10" fill="#000"/><text x="0" y="1" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="900" fill="#fff">●</text></g>';
+        html += '<g transform="translate(' + cx + ',' + cy + ')"><circle r="10" fill="#000"/></g>';
       } else if (m.type === 'dent') {
         html += '<g transform="translate(' + cx + ',' + cy + ')"><text x="0" y="1" text-anchor="middle" dominant-baseline="central" font-size="20" font-weight="900" fill="#000">×</text></g>';
       } else {
@@ -305,153 +291,91 @@
     return matches ? matches.length : 0;
   }
 
+  /** Draw in PDF points at 3x resolution. All overflow notes are preserved in appended pages. */
   async function generateCheckSheetPdf_(opts) {
     opts = opts || {};
-    var C = opts.core;
-    var PDFLib = opts.PDFLib || (typeof PDFLib !== 'undefined' ? PDFLib : null);
-    if (!C || !PDFLib) throw new Error('PDF_LIBS_UNAVAILABLE');
-    var record = C.normalizeRecord_(opts.record || {});
-    var vehicle = opts.vehicle || {};
-    var marks = C.cloneMarks_(opts.marks || record.marks || []);
-    var photos = Array.isArray(opts.photos) ? opts.photos.slice(0, C.PHOTO_MAX) : [];
-
-    var pdfDoc = await PDFLib.PDFDocument.create();
-    var page = pdfDoc.addPage([A4W, A4H]);
-    var y = A4H - MARGIN;
-    var drawW = A4W - MARGIN * 2;
-    var fullPageH = A4H - MARGIN * 2;
-
-    function ensureSpace_(neededH) {
-      if (y - neededH < MARGIN) {
-        page = pdfDoc.addPage([A4W, A4H]);
-        y = A4H - MARGIN;
-      }
+    var C = opts.core, lib = opts.PDFLib || (typeof window !== 'undefined' && window.PDFLib);
+    if (!C || !lib || typeof document === 'undefined') throw new Error('PDF_ENV_UNAVAILABLE');
+    var record = C.normalizeRecord_(JSON.parse(JSON.stringify(opts.record || {})));
+    var vehicle = opts.vehicle || {}, marks = C.cloneMarks_(opts.marks || record.marks || []);
+    var photos = (opts.photos || []).filter(function(p){return p && p.dataUrl;});
+    if (photos.length > C.PHOTO_MAX) throw new Error('PHOTO_LIMIT');
+    if (document.fonts && document.fonts.ready) await document.fonts.ready;
+    var pdfDoc = await lib.PDFDocument.create(), layouts = [], pageCanvases = [];
+    var navy = '#18344e', blue = '#e9f1f8', grey = '#526272', ink = '#162c40';
+    var margin = 28, width = A4W - margin * 2, gap = 14, leftW = 280, rightW = width - leftW - gap;
+    var ctx, canvas, pageLayout, pageIndex = 0;
+    function newCanvas_() {
+      canvas = document.createElement('canvas'); canvas.width = Math.ceil(A4W * 3); canvas.height = Math.ceil(A4H * 3);
+      ctx = canvas.getContext('2d'); ctx.scale(3,3); ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,A4W,A4H);
+      ctx.textBaseline = 'top'; pageLayout = []; layouts.push(pageLayout); pageCanvases.push(canvas); pageIndex++;
     }
-
-    async function drawRasterBlock_(title, lines, fontSize) {
-      var block = rasterTextBlock_(lines, { title: title, fontSize: fontSize || 13 });
-      var drawH = (block.height / block.width) * drawW;
-      ensureSpace_(drawH);
-      var png = await pdfDoc.embedPng(block.png);
-      page.drawImage(png, { x: MARGIN, y: y - drawH, width: drawW, height: drawH });
-      y -= drawH + GAP;
+    function font_(size, bold) { ctx.font = (bold ? '700 ' : '400 ') + size + 'px ' + FONT_STACK; }
+    function lines_(text, w, size) { font_(size,false); return wrapLines_(ctx,String(text || ''),w); }
+    function text_(text,x,y,w,size,bold,color,kind) {
+      var lines = lines_(text,w,size), lh = size * 1.4;
+      font_(size,bold); ctx.fillStyle = color || ink;
+      lines.forEach(function(line,i){ctx.fillText(line,x,y+i*lh);});
+      var h = lines.length * lh;
+      pageLayout.push({type:kind || 'text',text:String(text),x:x,y:y,width:w,height:h,fontSize:size}); return h;
     }
-
-    async function addRasterPaginated_(title, rawLines, fontSize) {
-      fontSize = fontSize || 13;
-      var ctx = makeMeasureCtx_(fontSize);
-      var wrapped = expandLinesWithWrap_(ctx, rawLines, RASTER_W - 24);
-      var pageIdx = 0;
-      var pos = 0;
-      while (pos < wrapped.length) {
-        var avail = y - MARGIN;
-        var maxLines = maxLinesForHeight_(fontSize, pageIdx === 0, avail);
-        if (maxLines < 1) {
-          page = pdfDoc.addPage([A4W, A4H]);
-          y = A4H - MARGIN;
-          pageIdx = 0;
-          avail = y - MARGIN;
-          maxLines = maxLinesForHeight_(fontSize, true, avail);
-        }
-        var chunkPages = paginateLines_(wrapped.slice(pos), maxLines);
-        var chunk = chunkPages[0] || [];
-        if (!chunk.length) break;
-        var chunkTitle = pageIdx === 0 ? title : (title + '（続き）');
-        var block = rasterTextBlock_(chunk, { title: chunkTitle, fontSize: fontSize });
-        var drawH = (block.height / block.width) * drawW;
-        if (drawH > fullPageH - GAP) {
-          chunk = chunk.slice(0, Math.max(1, Math.floor(chunk.length / 2)));
-          block = rasterTextBlock_(chunk, { title: chunkTitle, fontSize: fontSize });
-          drawH = (block.height / block.width) * drawW;
-        }
-        ensureSpace_(drawH);
-        var png = await pdfDoc.embedPng(block.png);
-        page.drawImage(png, { x: MARGIN, y: y - drawH, width: drawW, height: drawH });
-        y -= drawH + GAP;
-        pos += chunk.length;
-        pageIdx++;
-      }
+    function fill_(x,y,w,h,color) { ctx.fillStyle=color;ctx.fillRect(x,y,w,h); }
+    function heading_(title,x,y,w) { fill_(x,y,w,21,blue);text_(title,x+7,y+4,w-14,10,true,navy);return y+25; }
+    function title_(subtitle) {
+      fill_(margin,24,4,29,navy);text_('貸出・返却 チェックシート',margin+13,26,width-20,18,true,navy);
+      if(subtitle)text_(subtitle,margin,63,width,10,false,grey);
     }
-
-    var metaLines = [
-      '点検用途：' + C.purposeLabel_(record.meta.purpose),
-      '点検日：' + record.meta.inspectionDate,
-      '車両名：' + String(vehicle.displayName || vehicle.nickname || vehicle.vin || ''),
-      '区分：' + String(vehicle.categoryLabel || ''),
-      'ナンバー：' + (typeof ringFormatFleetPlateDisplay_ === 'function'
-        ? (ringFormatFleetPlateDisplay_(vehicle) || '未登録') : String(vehicle.plateSuffix || '未登録')),
-      'VIN：' + String(vehicle.vin || record.vin || ''),
-      '走行距離：' + (record.meta.odometerKm ? record.meta.odometerKm + ' km' : '未入力'),
-      '燃料残量：' + C.fuelLabel_(record.meta.fuelLevel),
-      '記録ID：' + record.recordId
-    ];
-
-    await drawRasterBlock_('RinG-Auto 車両チェックシート', metaLines, 15);
-    await addRasterPaginated_('日常点検結果', buildInspectionLines_(C, record), 12);
-    await addRasterPaginated_('マーク別メモ', buildMarkLines_(C, marks).length ? buildMarkLines_(C, marks) : ['（マークなし）'], 12);
-
-    if (record.meta.overallMemo) {
-      var memoCtx = makeMeasureCtx_(12);
-      var memoLines = expandLinesWithWrap_(memoCtx, [record.meta.overallMemo], RASTER_W - 24);
-      await addRasterPaginated_('総合メモ', memoLines, 12);
+    var positions = [], diagramBytes = await diagramToPng_(C,marks,positions);
+    async function image_(data) {
+      return new Promise(function(resolve,reject){var img=new Image();img.onload=function(){resolve(img);};img.onerror=function(){reject(new Error('PHOTO_DECODE_FAILED'));};img.src=data;});
     }
-
-    var diagramPng = await diagramToPng_(C, marks);
-    if (diagramPng.length) {
-      var dpng = await pdfDoc.embedPng(diagramPng);
-      var dH = drawW * (1120 / 840);
-      ensureSpace_(dH);
-      page.drawImage(dpng, { x: MARGIN, y: y - dH, width: drawW, height: dH });
-      y -= dH + GAP;
+    function fitImage_(img,x,y,w,h,type) {
+      var factor=Math.min(w/img.width,h/img.height),dw=img.width*factor,dh=img.height*factor;
+      var dx=x+(w-dw)/2,dy=y+(h-dh)/2;ctx.drawImage(img,dx,dy,dw,dh);
+      pageLayout.push({type:type,x:dx,y:dy,width:dw,height:dh,sourceWidth:img.width,sourceHeight:img.height});
     }
-
-    for (var pi = 0; pi < photos.length; pi++) {
-      var ph = photos[pi];
-      if (!ph || !ph.dataUrl) continue;
-      var bytes = imageToPngBytes_(ph.dataUrl);
-      if (!bytes.length) continue;
-      var embed;
-      try {
-        if (ph.dataUrl.indexOf('image/png') >= 0) embed = await pdfDoc.embedPng(bytes);
-        else embed = await pdfDoc.embedJpg(bytes);
-      } catch (e) {
-        continue;
-      }
-      page = pdfDoc.addPage([A4W, A4H]);
-      y = A4H - MARGIN;
-      var pW = drawW;
-      var pH = pW * 0.65;
-      var photoTitle = '写真 ' + (pi + 1) + (ph.caption ? ' — ' + ph.caption : '');
-      var titleBlock = rasterTextBlock_([''], { title: photoTitle, fontSize: 12 });
-      var titleH = (titleBlock.height / titleBlock.width) * drawW;
-      ensureSpace_(titleH + pH);
-      var titlePng = await pdfDoc.embedPng(titleBlock.png);
-      page.drawImage(titlePng, { x: MARGIN, y: y - titleH, width: drawW, height: titleH });
-      y -= titleH + GAP;
-      page.drawImage(embed, { x: MARGIN, y: y - pH, width: pW, height: pH });
-      y -= pH + GAP;
+    var notes=[];
+    function note_(label,value){if(value)notes.push(label+'：'+value);}
+    note_('共通メモ',record.meta.overallMemo);
+    C.INSPECTION_SECTIONS.forEach(function(sec){var block=record.inspection.sections[sec.id];note_(sec.title,block.sectionMemo);sec.items.forEach(function(it){note_(sec.title+' / '+it.label,block.items[it.key].memo);});});
+    C.TIRE_WHEELS.forEach(function(w){var t=record.inspection.tires[w];note_('タイヤ '+w,t.wheelMemo);C.TIRE_CHECKS.forEach(function(it){note_(w+' / '+it.label,t.items[it.key].memo);});});
+    var regionLabels={body_top:'車体上面',bumper_front:'前バンパー',bumper_rear:'後バンパー',side_left:'左側面',side_right:'右側面',tire_FL:'タイヤ FL',tire_FR:'タイヤ FR',tire_RL:'タイヤ RL',tire_RR:'タイヤ RR'};
+    marks.forEach(function(m,i){note_('マーク '+(i+1)+' '+C.markSymbol_(m.type)+' '+(regionLabels[m.region]||m.region),m.memo);});
+    newCanvas_(); title_();
+    var plate=typeof ringFormatFleetPlateDisplay_==='function' ? ringFormatFleetPlateDisplay_(vehicle) : vehicle.plateSuffix;
+    var fields=[['車両名',vehicle.displayName||vehicle.nickname||vehicle.vehicleName||'未入力'],['ナンバー',plate||'未登録'],['VIN',vehicle.vin||record.vin||''],['点検日',record.meta.inspectionDate||'未入力'],['点検用途',C.purposeLabel_(record.meta.purpose)],['走行距離',record.meta.odometerKm?record.meta.odometerKm+' km':'未入力'],['燃料残量',C.fuelLabel_(record.meta.fuelLevel)]];
+    var y=64,colW=(width-gap)/2;
+    for(var fi=0;fi<fields.length;fi+=2){var rowH=0;for(var fj=0;fj<2&&fi+fj<fields.length;fj++){var f=fields[fi+fj],x=margin+fj*(colW+gap);var label=f[0]+'：'+f[1];var ls=lines_(label,colW,10);if(ls.length>2){note_(f[0]+'（全文）',f[1]);label=ls.slice(0,2).join('\n')+'…（追記）';}rowH=Math.max(rowH,text_(label,x,y,colW,10,false));}y+=rowH+4;}
+    y+=6;var sectionTop=y;
+    C.INSPECTION_SECTIONS.forEach(function(sec){y=heading_(sec.title,margin,y,leftW);var block=record.inspection.sections[sec.id];sec.items.forEach(function(it,index){var item=block.items[it.key],labelW=leftW-65;var rowH=Math.max(17,lines_(it.label,labelW-12,9.5).length*13.3+4);if(index%2===0)fill_(margin,y,leftW,rowH,'#f5f7fa');text_(it.label,margin+6,y+2,labelW-12,9.5,false);text_(C.STATUS_LABELS[item.status]||'未確認',margin+labelW,y+2,61,9.5,item.status==='check',item.status==='check'?'#9a460b':ink);y+=rowH;});y+=7;});
+    var rx=margin+leftW+gap,ry=heading_('外装・傷記録',rx,sectionTop,rightW),diagramH=rightW*560/420;
+    if(diagramBytes.length){var bin='';for(var di=0;di<diagramBytes.length;di++)bin+=String.fromCharCode(diagramBytes[di]);var diagram=await image_('data:image/png;base64,'+btoa(bin));fitImage_(diagram,rx,ry,rightW,diagramH,'diagram');}
+    ry+=diagramH+5;ry+=text_('● 傷   × へこみ   □ その他',rx,ry,rightW,9.5,true);ry+=text_(marks.length+'か所 ／ FL:左前 FR:右前\nRL:左後 RR:右後',rx,ry+4,rightW,9,false,grey)+4;
+    y=Math.max(y,ry)+4;
+    y=heading_('タイヤ 4輪',margin,y,width);
+    var labelW=135,cellW=(width-labelW)/4;
+    fill_(margin,y,width,19,'#f1f4f8');text_('点検項目',margin+6,y+3,labelW-12,9.5,true);
+    C.TIRE_WHEELS.forEach(function(w,i){text_(w,margin+labelW+i*cellW+6,y+3,cellW-12,9.5,true);});y+=21;
+    C.TIRE_CHECKS.forEach(function(it,index){if(index%2===0)fill_(margin,y,width,18,'#f5f7fa');text_(it.label,margin+6,y+3,labelW-12,9.5,false);C.TIRE_WHEELS.forEach(function(w,i){var status=record.inspection.tires[w].items[it.key].status;text_(C.STATUS_LABELS[status]||'未確認',margin+labelW+i*cellW+6,y+3,cellW-12,9.5,status==='check',status==='check'?'#9a460b':ink);});y+=18;});
+    text_('実測空気圧',margin+6,y+3,labelW-12,9.5,false);var pressureH=18;
+    C.TIRE_WHEELS.forEach(function(w,i){var t=record.inspection.tires[w],value=t.pressureValue?t.pressureValue+' '+(t.pressureUnit||'kPa'):'—';pressureH=Math.max(pressureH,text_(value,margin+labelW+i*cellW+6,y+3,cellW-12,9.5,false)+4);});y+=pressureH+8;
+    // Notes overflow after the optional photo page. Nothing is silently cropped.
+    var noteLines=[];notes.forEach(function(n){lines_(n,width-12,9.5).forEach(function(l){noteLines.push(l);});});
+    var notePos=0;y=heading_('共通メモ・記録',margin,y,width);
+    var recordFooter='記録ID：'+String(record.recordId||'');
+    var available=Math.max(0,Math.floor((A4H-51-y)/13.3));
+    if(noteLines.length>available)available=Math.max(0,available-1);
+    if(!noteLines.length)text_('メモなし',margin+6,y,width-12,9.5,false,grey);
+    while(notePos<noteLines.length&&notePos<available){text_(noteLines[notePos++],margin+6,y,width-12,9.5,false,undefined,'note');y+=13.3;}
+    if(notePos<noteLines.length)text_('続きは追記ページに掲載',margin+6,y,width-12,9.5,true,grey);
+    text_(recordFooter,margin,A4H-42,width,8,false,grey);
+    if(photos.length){newCanvas_();title_('写真 ／ '+(vehicle.vin||record.vin||''));var rows=Math.ceil(photos.length/2),cols=photos.length===1?1:2,cellW=(width-gap*(cols-1))/cols,cellH=(A4H-116-gap*(rows-1))/rows;
+      for(var pi=0;pi<photos.length;pi++){var ph=photos[pi],img=await image_(ph.dataUrl),px=margin+(pi%cols)*(cellW+gap),py=88+Math.floor(pi/cols)*(cellH+gap);var caption=String(ph.caption||ph.description||ph.memo||'');var cap=caption?lines_(caption,cellW,9.5):[];var short=cap.slice(0,2);if(cap.length>2){notes.push('写真 '+(pi+1)+'：'+caption);noteLines.push.apply(noteLines,lines_('写真 '+(pi+1)+'：'+caption,width-12,9.5));short[1]+='…';}var label='写真 '+(pi+1)+(short.length?'  '+short.join('\n'):'');var captionH=lines_(label,cellW,9.5).length*13.3+6;fitImage_(img,px,py,cellW,cellH-captionH,'photo');text_(label,px,py+cellH-captionH+3,cellW,9.5,false);}
     }
-
-    var sigLines = ['担当者署名：', '_________________________________', '確認日：____年____月____日'];
-    var sigBlockH = rasterBlockHeightPdf_(sigLines.length, 14, true);
-    ensureSpace_(sigBlockH);
-    await drawRasterBlock_('署名欄（手書き記入）', sigLines, 14);
-
-    var pages = pdfDoc.getPages();
-    for (var i = 0; i < pages.length; i++) {
-      pages[i].drawText(String(i + 1) + ' / ' + pages.length, {
-        x: A4W - MARGIN - 40,
-        y: 20,
-        size: 9
-      });
-    }
-
-    var pdfBytes = await pdfDoc.save();
-    return {
-      bytes: pdfBytes,
-      fileName: C.pdfFileName_(new Date()),
-      pageCount: pages.length
-    };
+    while(notePos<noteLines.length){newCanvas_();title_('共通メモ・過去の個別メモ（続き）');y=90;while(notePos<noteLines.length&&y+13.3<A4H-40){text_(noteLines[notePos++],margin+6,y,width-12,9.5,false,undefined,'note');y+=13.3;}}
+    for(var p=0;p<pageCanvases.length;p++){canvas=pageCanvases[p];ctx=canvas.getContext('2d');font_(9,false);ctx.fillStyle=grey;ctx.fillText((p+1)+' / '+pageCanvases.length,A4W-60,A4H-21);var imgPng=await pdfDoc.embedPng(dataUrlToUint8_(canvas.toDataURL('image/png')));var page=pdfDoc.addPage([A4W,A4H]);page.drawImage(imgPng,{x:0,y:0,width:A4W,height:A4H});}
+    var pages=pdfDoc.getPages();
+    return {bytes:await pdfDoc.save(),fileName:'貸出返却_チェックシート_'+String(record.meta.inspectionDate||'').replace(/[^0-9]/g,'')+'.pdf',pageCount:pages.length,layout:layouts,markPositions:positions};
   }
 
   return {

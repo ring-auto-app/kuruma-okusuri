@@ -255,31 +255,51 @@
   margin-bottom: 8px;
 }
 
+.ring-check-page-title {
+  font-size: 17px;
+  font-weight: 900;
+  margin: 2px 0 4px;
+  line-height: 1.25;
+}
+.ring-check-vehicle-line { margin: 0 0 8px; }
+.ring-check-vehicle-line .ring-check-veh-name {
+  font-size: 14px;
+  font-weight: 900;
+  margin: 0;
+}
+.ring-check-vehicle-line .ring-check-meta {
+  font-size: 12px;
+  margin: 2px 0 0;
+}
+.ring-check-hint-compact { margin: 0 0 8px; }
+
+.ring-check-main-tabs,
 .ring-check-steps {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
   margin-bottom: 12px;
 }
+.ring-check-main-tabs button,
 .ring-check-steps button {
-  min-height: 40px;
+  min-height: 48px;
   border: 2px solid #cbd5e1;
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--paper);
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 900;
 }
+.ring-check-main-tabs button.is-active,
 .ring-check-steps button.is-active {
   border-color: var(--accent);
   background: var(--accent);
   color: #fff;
 }
-@media (min-width: 720px) {
-  .ring-check-steps { grid-template-columns: repeat(6, 1fr); }
-}
 
 .ring-check-pane { display: none; }
 .ring-check-pane.is-active { display: block; }
+.ring-check-subblock { margin-top: 14px; }
+.ring-check-side-inline { margin-top: 12px; }
 
 .ring-check-form-card {
   background: var(--paper, #fff);
@@ -332,16 +352,82 @@
   cursor: pointer;
   margin: 8px 0;
 }
+.ring-check-insp-group {
+  background: var(--paper, #fff);
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+.ring-check-insp-cat {
+  font-size: 13px;
+  font-weight: 900;
+  margin: 0 0 8px;
+  color: #334155;
+}
 .ring-check-insp-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  margin: 8px 0;
+  margin: 10px 0;
 }
-.ring-check-insp-label { flex: 1; font-size: 12px; font-weight: 800; }
+.ring-check-insp-label {
+  flex: 1 1 100%;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.35;
+  writing-mode: horizontal-tb;
+  white-space: normal;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+@media (min-width: 420px) {
+  .ring-check-insp-label { flex: 1 1 40%; }
+}
+.ring-check-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1 1 auto;
+}
+.ring-check-opt-radio { position: absolute; opacity: 0; pointer-events: none; }
+.ring-check-opt-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 52px;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 2px solid #cbd5e1;
+  border-radius: 999px;
+  background: #fff;
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+}
+.ring-check-opt-radio:checked + .ring-check-opt-label {
+  border-color: var(--accent);
+  background: rgba(37, 99, 235, 0.12);
+  color: var(--accent);
+}
 .ring-check-insp-row select { min-width: 110px; }
 .ring-check-insp-memo { margin-top: -4px; margin-bottom: 10px; }
 .ring-check-pressure-extra input { max-width: 88px; }
+.ring-check-legacy-memo {
+  margin: 12px 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b;
+}
+.ring-check-legacy-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #475569;
+}
 
 .ring-check-photo-warn,
 .ring-check-photo-note {

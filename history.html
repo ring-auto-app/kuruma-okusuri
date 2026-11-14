@@ -13,7 +13,7 @@
     <title>車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20261114-v39"></script>
+  <script src="app.js?v=20261114-v42" integrity="sha256-aT+0fIlNYULT6ndA9A87tM0+/wa2bPJr9vgv3CWo34g= sha256-xOVotDaeCes3eJdwrlE3aDEuZqvnaJ9fWbjnvp0o2Is=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
   <script src="theme.js"></script>
   
   <style>
@@ -147,7 +147,7 @@
 <body>
   <div class="container">
     <header class="header">
-      <a onclick="goBackSmart('vehicles.html')" class="back-link">≪戻る</a>
+      <a id="historyBackLink" class="back-link" href="javascript:void(0)">≪戻る</a>
       <h1 class="title">整備履歴</h1>
     </header>
 
@@ -252,6 +252,18 @@
     }
 
     window.addEventListener('DOMContentLoaded', () => {
+      // 戻るは init 待ちにせずすぐ有効化（履歴読込遅延で車両一覧へ誤遷移しない）
+      var backEarly = document.getElementById('historyBackLink');
+      if (backEarly) {
+        if (typeof ringCameFromFleet_ === 'function' && ringCameFromFleet_(vin)) {
+          backEarly.textContent = '≪レンタカー・代車管理へ戻る';
+        }
+        backEarly.onclick = function () {
+          goBackSmart(typeof ringManagedVehicleListUrl_ === 'function'
+            ? ringManagedVehicleListUrl_(vin) : 'vehicles.html');
+        };
+      }
+
       var hasLocal = false;
       if (vin) {
         hasLocal = (typeof getMaintenanceLogsByVin === 'function')
@@ -317,7 +329,17 @@
         document.getElementById("carNickname").innerText = "";
         document.getElementById("carVin").innerText = vin;
       }
-      document.getElementById("vehicleInfoBtn").href = `vehicle_info.html?vin=${encodeURIComponent(vin)}&from=history`;
+      var fromFleet = typeof ringCameFromFleet_ === 'function' && ringCameFromFleet_(vin);
+      document.getElementById("vehicleInfoBtn").href = 'vehicle_info.html?vin=' + encodeURIComponent(vin) +
+        '&from=history' + (fromFleet ? '&fleet=1' : '');
+      var back = document.getElementById('historyBackLink');
+      if (back) {
+        if (fromFleet) back.textContent = '≪レンタカー・代車管理へ戻る';
+        back.onclick = function () {
+          goBackSmart(typeof ringManagedVehicleListUrl_ === 'function'
+            ? ringManagedVehicleListUrl_(vin) : 'vehicles.html');
+        };
+      }
 
       renderHistory();
     }

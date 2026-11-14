@@ -4637,6 +4637,62 @@ function ringFleetBookingsShopKey_(profile) {
     return '';
 }
 
+/** Cache namespace digest: never persist credentials in cache keys. SHA-256, UTF-8. */
+function ringFleetCacheDigest_(text) {
+    var bytes = unescape(encodeURIComponent(text)), words = [], h = [], k = [], prime = 2;
+    function rotr(x, n) { return (x >>> n) | (x << (32 - n)); }
+    while (k.length < 64) {
+        var isPrime = true;
+        for (var d = 2; d * d <= prime; d++) if (prime % d === 0) { isPrime = false; break; }
+        if (isPrime) { if (h.length < 8) h.push((Math.sqrt(prime) * 4294967296) | 0); k.push((Math.cbrt(prime) * 4294967296) | 0); }
+        prime++;
+    }
+    for (var i = 0; i < bytes.length; i++) words[i >> 2] = (words[i >> 2] || 0) | bytes.charCodeAt(i) << (24 - (i % 4) * 8);
+    words[bytes.length >> 2] = (words[bytes.length >> 2] || 0) | 0x80 << (24 - (bytes.length % 4) * 8);
+    var blocks = Math.ceil((bytes.length + 9) / 64);
+    words[blocks * 16 - 1] = bytes.length * 8;
+    for (var off = 0; off < blocks * 16; off += 16) {
+        var w = [], a = h.slice();
+        for (i = 0; i < 64; i++) {
+            if (i < 16) w[i] = words[off + i] | 0;
+            else { var x = w[i - 15], y = w[i - 2]; w[i] = (w[i - 16] + (rotr(x,7)^rotr(x,18)^(x>>>3)) + w[i - 7] + (rotr(y,17)^rotr(y,19)^(y>>>10))) | 0; }
+            var t1 = (a[7] + (rotr(a[4],6)^rotr(a[4],11)^rotr(a[4],25)) + ((a[4]&a[5])^(~a[4]&a[6])) + k[i] + w[i]) | 0;
+            var t2 = ((rotr(a[0],2)^rotr(a[0],13)^rotr(a[0],22)) + ((a[0]&a[1])^(a[0]&a[2])^(a[1]&a[2]))) | 0;
+            a = [(t1+t2)|0,a[0],a[1],a[2],(a[3]+t1)|0,a[4],a[5],a[6]];
+        }
+        for (i = 0; i < 8; i++) h[i] = (h[i] + a[i]) | 0;
+    }
+    return h.map(function(n){return (n>>>0).toString(16).padStart(8,'0');}).join('');
+}
+
+var ringFleetCacheKeyMemo_ = null;
+function ringFleetBookingsCacheKey_(profile) {
+    var current = getCurrentProfile();
+    var ctx = ringCaptureRequestContext_();
+    if (!profile || !current || !ctx.token || !profile.shopId || !profile.userId ||
+        String(profile.shopId) !== String(current.shopId) || String(profile.userId) !== String(current.userId)) return '';
+    if (!ringFleetCacheKeyMemo_ || ringFleetCacheKeyMemo_.scope !== ctx.scope) ringFleetCacheKeyMemo_ = {scope:ctx.scope,key:'session-v2:' + ringFleetCacheDigest_(ctx.scope)};
+    return ringFleetCacheKeyMemo_.key;
+}
+
+/** Resolve canonical VIN only within the current shop. Never guess between duplicate rows.
+ * The original VIN remains the draft/storage key. */
+function ringFindFleetVehicleByVin_(list, vin, profile) {
+    var sid = String(profile && profile.shopId || '').trim();
+    var key = _normalize(String(vin || ''));
+    var matches = (list || []).filter(function(v) {
+        return v && sid && key && String(v.shopId || '').trim() === sid && _normalize(String(v.vin || '')) === key;
+    });
+    return { vehicle: matches.length === 1 ? matches[0] : null, error: matches.length > 1 ? 'AMBIGUOUS_VIN' : (matches.length ? '' : 'VEHICLE_NOT_FOUND') };
+}
+
+/** この店舗の予約を一度でもサーバーから取得・保存済みか（空配列も「取得済み」） */
+function ringFleetBookingsHasLocalSnapshot_(profile) {
+    var shopKey = ringFleetBookingsCacheKey_(profile);
+    if (!shopKey) return false;
+    return Array.isArray(ringFleetBookingsStore_()[shopKey]);
+}
+
 function ringFleetBookingShopId_(b) {
     return b ? String(b.shopId || '').trim() : '';
 }
@@ -4901,7 +4957,7 @@ function ringFleetPersistBookingLocally_(profile, booking) {
     var list = loadFleetBookingsLocal_(profile);
     var id = String(booking.bookingId || '').trim();
     var idx = list.findIndex(function (b) { return String(b.bookingId) === id; });
-    if (idx >= 0) list[idx] = booking;
+    if (idx >= 0) list[idx] = ringFleetNewerBooking_(list[idx], booking);
     else list.push(booking);
     saveFleetBookingsForShop_(profile, list);
 }
@@ -5171,45 +5227,43 @@ async function ringFleetHandleCreateBookingSubmit_(profile, input) {
 }
 
 function loadFleetBookingsLocal_(profile) {
-    profile = profile || (typeof getCurrentProfile === 'function' ? getCurrentProfile() : null);
-    var shopKey = ringFleetBookingsShopKey_(profile);
-    if (!shopKey) return [];
-    migrateLegacyFleetBookingsForShop_(profile);
-    var store = ringFleetBookingsStore_();
-    var list = Array.isArray(store[shopKey]) ? store[shopKey] : [];
-    return list.filter(function (b) {
-        return b && String(b.shopId || '').trim() === shopKey;
-    });
+    profile = profile || getCurrentProfile();
+    var key = ringFleetBookingsCacheKey_(profile);
+    if (!key) return [];
+    // Old shop-only/unknown-user buckets are retained, but never presented as this user's data.
+    var list = ringFleetBookingsStore_()[key];
+    return ringFleetBookingsShopScoped_(profile, Array.isArray(list) ? list : []);
 }
 
 function saveFleetBookingsForShop_(profile, list) {
-    profile = profile || (typeof getCurrentProfile === 'function' ? getCurrentProfile() : null);
-    var shopKey = ringFleetBookingsShopKey_(profile);
-    if (!shopKey) return;
-    var safeList = (Array.isArray(list) ? list : []).filter(function (b) {
-        return b && String(b.shopId || '').trim() === shopKey;
-    });
+    profile = profile || getCurrentProfile();
+    var key = ringFleetBookingsCacheKey_(profile);
+    if (!key) return;
     var store = ringFleetBookingsStore_();
-    store[shopKey] = safeList;
+    store[key] = ringFleetBookingsShopScoped_(profile, list);
     localStorage.setItem(DB_FLEET_BOOKINGS_BY_SHOP, JSON.stringify(store));
+}
+
+function ringFleetNewerBooking_(local, incoming) {
+    if (!local) return Object.assign({}, incoming);
+    var oldRev = Number(local.serverRev), newRev = Number(incoming.serverRev);
+    var oldKnown = Number.isSafeInteger(oldRev) && oldRev > 0;
+    var newKnown = Number.isSafeInteger(newRev) && newRev > 0;
+    // Unknown/equal versions cannot prove that a different snapshot supersedes a known one.
+    if ((oldKnown && (!newKnown || newRev <= oldRev)) || (!oldKnown && !newKnown)) return Object.assign({}, local);
+    return Object.assign({}, incoming);
 }
 
 function mergeFleetBookingsForShop_(serverList, profile) {
     if (!profile || !profile.shopId) return [];
-    var shopId = String(profile.shopId).trim();
     var map = new Map();
-    (Array.isArray(serverList) ? serverList : []).forEach(function (b) {
-        if (!b || String(b.shopId || '').trim() !== shopId) return;
-        map.set(String(b.bookingId || '').trim(), Object.assign({}, b));
-    });
-    loadFleetBookingsLocal_(profile).forEach(function (b) {
-        if (!b || String(b.shopId || '').trim() !== shopId) return;
+    loadFleetBookingsLocal_(profile).forEach(function(b) { if (b.bookingId) map.set(String(b.bookingId), b); });
+    ringFleetBookingsShopScoped_(profile, serverList).forEach(function(b) {
         var id = String(b.bookingId || '').trim();
-        if (!id || map.has(id)) return;
-        var st = String(b.status || '').trim().toLowerCase();
-        if (st === 'out') return;
-        map.set(id, Object.assign({}, b));
+        if (id) map.set(id, ringFleetNewerBooking_(map.get(id), b));
     });
+    // Month reads are partial snapshots, including out rows from other months. Absence is not deletion.
+    // Keep returned/cancelled rows as revision tombstones against delayed earlier reads.
     return Array.from(map.values());
 }
 
@@ -5260,7 +5314,20 @@ async function syncFleetBookingsFromServer(year, month) {
         if (!json || json.success !== true) {
             return ringFleetReadFailure_((json && json.error) || 'GET_FLEET_BOOKINGS_FAILED', cachedOnly);
         }
-        var merged = mergeFleetBookingsForShop_(json.bookings || [], profile);
+        var incoming = (json.bookings || []).slice();
+        // An out booking may have been returned outside this month's range on another device.
+        // Resolve only missing out VINs via the existing history read, instead of treating absence as deletion.
+        var missingVins = [];
+        loadFleetBookingsLocal_(profile).forEach(function(b) {
+            if (b.status === 'out' && !incoming.some(function(row){return row.bookingId === b.bookingId;}) && missingVins.indexOf(b.vin) < 0) missingVins.push(b.vin);
+        });
+        for (var vi = 0; vi < missingVins.length; vi++) {
+            var history = await syncFleetBookingsForVinHistory_(missingVins[vi]);
+            if (!ringRequestContextIsCurrent_(requestContext) || ringFleetReadSerials_[readKey] !== readSerial) return ringFleetReadFailure_('STALE_SESSION', []);
+            if (!history.ok) return ringFleetReadFailure_(history.error || 'GET_FLEET_BOOKINGS_FAILED', loadFleetBookingsLocal_(profile));
+            incoming = incoming.concat(history.bookings);
+        }
+        var merged = mergeFleetBookingsForShop_(incoming, profile);
         saveFleetBookingsForShop_(profile, merged);
         return { ok: true, fromCache: false, bookings: merged };
     } catch (e) {
@@ -5293,7 +5360,7 @@ async function updateFleetBookingOnServer_(payload) {
         var list = loadFleetBookingsLocal_(prof);
         var id = String(json.booking.bookingId || '').trim();
         var idx = list.findIndex(function (b) { return String(b.bookingId) === id; });
-        if (idx >= 0) list[idx] = json.booking;
+        if (idx >= 0) list[idx] = ringFleetNewerBooking_(list[idx], json.booking);
         else list.push(json.booking);
         saveFleetBookingsForShop_(prof, list);
     }
@@ -5699,20 +5766,21 @@ function mergeVehiclesLocalAndServer(localList, serverList, opts) {
 /**
  * 車両一覧画面用: get_vehicles でサーバとローカルをマージして保存
  */
-async function syncVehiclesFromServer() {
-    if (ringIsDemoGasOffline_()) return loadVehicles();
+async function syncVehiclesFromServer(options) {
+    function result(ok, error) { var vehicles = loadVehicles(); return options && options.returnStatus ? {ok:ok, error:error || '', vehicles:vehicles} : vehicles; }
+    if (ringIsDemoGasOffline_()) return result(false, 'OFFLINE');
     const token = typeof ringResolveActiveAuthToken === 'function'
         ? ringResolveActiveAuthToken()
         : localStorage.getItem("ring_auth_token");
-    if (!token) return loadVehicles();
+    if (!token) return result(false, 'AUTH_REQUIRED');
     var requestContext = ringCaptureRequestContext_();
     var readSerial = ++ringVehicleReadSerial_;
     const profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
     try {
         const json = await sendToGAS_Safe("get_vehicles", {});
-        if (!ringRequestContextIsCurrent_(requestContext) || readSerial !== ringVehicleReadSerial_) return loadVehicles();
+        if (!ringRequestContextIsCurrent_(requestContext) || readSerial !== ringVehicleReadSerial_) return result(false, 'STALE_SESSION');
         if (!json || json.success === false || !Array.isArray(json.vehicles)) {
-            return loadVehicles();
+            return result(false, (json && json.error) || 'GET_VEHICLES_FAILED');
         }
         const merged = mergeVehiclesLocalAndServer(loadVehicles(), json.vehicles, {
             profile: profile,
@@ -5729,9 +5797,9 @@ async function syncVehiclesFromServer() {
                 ringReconcileVehicleRetryQueueAfterGetVehicles_(profile);
             }
         } catch (eRec) { /* ignore */ }
-        return loadVehicles();
+        return result(true);
     } catch (e) {
-        return loadVehicles();
+        return result(false, String(e && e.message || e));
     }
 }
 
@@ -10653,6 +10721,76 @@ function ringBackFromSupportPage() {
     }
     if (typeof ringGoToTopMenu === 'function') ringGoToTopMenu();
 }
+
+/**
+ * レンタカー・代車管理から開いた車両ページの戻り先。
+ * URL の from=rental_fleet を起点に、同じ店舗・同じ車両の間だけ sessionStorage で引き継ぐ
+ * （整備履歴 → 車両情報 → 整備履歴 → 戻る でもレンタカー管理へ戻れるように）。
+ */
+var RING_FLEET_BACK_ORIGIN_KEY = 'ring_fleet_back_origin_v1';
+var RING_FLEET_BACK_ORIGIN_TTL_MS = 2 * 60 * 60 * 1000;
+
+function ringFleetBackScope_() {
+    var p = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
+    return p ? ringFleetBookingsCacheKey_(p) : '';
+}
+
+function ringClearFleetBackOrigin_() {
+    try { sessionStorage.removeItem(RING_FLEET_BACK_ORIGIN_KEY); } catch (e) { /* ignore */ }
+}
+
+/** レンタカー管理からの遷移元を VIN 単位で即時記録（遷移先の読込完了を待たない） */
+function ringNoteFleetBackOriginForVin_(vin) {
+    try {
+        var v = _normalize(String(vin || ''));
+        if (!v || !/(?:^|\/)rental_fleet\.html$/.test(location.pathname || '') || !ringFleetBackScope_()) return;
+        sessionStorage.setItem(RING_FLEET_BACK_ORIGIN_KEY, JSON.stringify({
+            vin: v, scope: ringFleetBackScope_(), at: Date.now()
+        }));
+    } catch (e) { /* ignore */ }
+}
+
+function ringNoteFleetBackOrigin_() {
+    // Destination query parameters are hints only; the origin must have recorded the navigation.
+}
+
+function ringCameFromFleet_(vin) {
+    try {
+        var params = new URLSearchParams(location.search || '');
+        var raw = safeJsonParse(sessionStorage.getItem(RING_FLEET_BACK_ORIGIN_KEY), null);
+        var age = raw ? Date.now() - raw.at : -1;
+        if (!raw || !raw.at || age < 0 || age > RING_FLEET_BACK_ORIGIN_TTL_MS) return false;
+        var v = _normalize(String(vin || params.get('vin') || ''));
+        var scope = ringFleetBackScope_();
+        return !!v && !!scope && raw.vin === v && raw.scope === scope;
+    } catch (e) { return false; }
+}
+
+/** 車両一覧への戻り先（レンタカー管理から来た場合は rental_fleet.html） */
+function ringManagedVehicleListUrl_(vin) {
+    return ringCameFromFleet_(vin) ? 'rental_fleet.html' : 'vehicles.html';
+}
+
+(function ringInitFleetBackOrigin_() {
+    function run() {
+        try {
+            if (typeof location === 'undefined' || typeof sessionStorage === 'undefined') return;
+            var path = String(location.pathname || '');
+            if (/(?:^|\/)(?:vehicles|rental_fleet|factory_home|dealer_home|user_home)\.html$/.test(path)) {
+                ringClearFleetBackOrigin_();
+            } else {
+                ringNoteFleetBackOrigin_();
+            }
+        } catch (e) { /* ignore */ }
+    }
+    // from=rental_fleet は head の app.js 読込時点で即記録（次画面へ早遷移しても失わない）
+    try { run(); } catch (eInitFleetBack) { /* ignore */ }
+    if (typeof document !== 'undefined' && document.readyState === 'loading' && document.addEventListener) {
+        document.addEventListener('DOMContentLoaded', run);
+    } else if (typeof setTimeout === 'function') {
+        setTimeout(run, 0);
+    }
+})();
 
 /**
  * 戻る処理。第1引数に URL を渡した場合は replace で遷移（履歴への push を避ける）。
