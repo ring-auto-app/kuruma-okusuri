@@ -589,7 +589,7 @@
   }
 
   function fleetBookingStatusLabel_(st) {
-    var map = { reserved: '予約', confirmed: '確定', out: '貸出中', returned: '返却済', cancelled: 'キャンセル' };
+    var map = { reserved: '予約', confirmed: '予約確定', out: '貸出中', returned: '返却済', cancelled: 'キャンセル' };
     return map[String(st || '').toLowerCase()] || st;
   }
 
@@ -986,6 +986,22 @@
     document.body.classList.add('ring-fleet-sheet-open');
   }
 
+  function fleetCheckoutGate_(b) {
+    return typeof ringFleetCheckoutStartAllowed_ === 'function'
+      ? ringFleetCheckoutStartAllowed_(b)
+      : { ok: false, error: 'BOOKING_STATUS_INVALID' };
+  }
+
+  function fleetCheckoutGateOrToast_(b) {
+    var gate = fleetCheckoutGate_(b);
+    if (gate.ok) return true;
+    var msg = gate.error === 'BOOKING_CHECKOUT_TOO_EARLY'
+      ? '予約開始日（' + (gate.minStartDate || b.startDate) + '）以降に貸出開始できます。'
+      : 'この予約の状態では貸出開始できません。';
+    if (typeof showToast === 'function') showToast('warning', msg);
+    return false;
+  }
+
   function bindBookingDetailActions_(host, b) {
     var actions = host.querySelector('.ring-fleet-detail-actions');
     if (!actions) return;
@@ -1000,19 +1016,17 @@
       btn.onclick = function () { fleetUpdateBooking_(b.bookingId, { status: status }); };
       actions.appendChild(btn);
     }
-    if (b.status === 'reserved') { addBtn('貸出確定', 'confirmed', true); addBtn('キャンセル', 'cancelled', false); }
-    if (b.status === 'confirmed') {
-      var canOut = typeof ringFleetCheckoutStartAllowed_ === 'function'
-        ? ringFleetCheckoutStartAllowed_(b)
-        : { ok: true };
+    if (b.status === 'reserved' || b.status === 'confirmed') {
+      var canOut = fleetCheckoutGate_(b);
       if (canOut.ok) {
         addBtn('貸出開始', 'out', true);
       } else if (canOut.error === 'BOOKING_CHECKOUT_TOO_EARLY') {
         var note = document.createElement('p');
         note.className = 'ring-fleet-checkout-early-hint';
-        note.textContent = '貸出開始は ' + (canOut.minStartDate || b.startDate) + ' 以降です。先に開始日を変更してください。';
+        note.textContent = '予約は完了しています。貸出開始は ' + (canOut.minStartDate || b.startDate) + ' から行えます。';
         actions.appendChild(note);
       }
+      if (b.status === 'reserved') addBtn('予約を確定', 'confirmed', false);
       addBtn('キャンセル', 'cancelled', false);
     }
     if (b.status === 'out') {
@@ -1053,10 +1067,14 @@
     var stLabel = fleetBookingStatusLabel_(b.status);
     var plate = fleetPlateSuffixForBooking_(b);
     var head = isDeskPanel ? '<h3>予約・詳細</h3>' : '';
+    var sheetDue = b.status === 'out' ||
+      ((b.status === 'reserved' || b.status === 'confirmed') && fleetCheckoutGate_(b).ok);
     host.innerHTML = head + '<h4 style="margin:0 0 8px;font-size:15px;font-weight:900;">' + fleetEscape_(fleetVehicleName_(b.vin)) + '</h4>' +
       '<p style="margin:0 0 8px;font-size:12px;font-weight:700;color:#475569">下4桁：' + fleetEscape_(plate) + '<br>状態：' + fleetEscape_(stLabel) + '<br>' +
       fleetEscape_(b.startDate) + ' 〜 ' + fleetEscape_(b.endDate) + '</p>' +
-      '<a class="car-info-btn" style="width:100%;margin-bottom:12px;display:inline-flex;justify-content:center;" href="' + fleetEscape_(fleetCheckSheetUrl_(b.vin)) + '">📋 チェックシート</a>' +
+      (sheetDue
+        ? '<a class="car-info-btn" style="width:100%;margin-bottom:12px;display:inline-flex;justify-content:center;" href="' + fleetEscape_(fleetCheckSheetUrl_(b.vin)) + '">📋 チェックシート（貸出・返却時）</a>'
+        : '') +
       '<div class="ring-fleet-field"><label>返却予定日</label><input type="date" class="fleet-detail-end" value="' + fleetEscape_(b.endDate) + '"></div>' +
       '<div class="ring-fleet-detail-actions"></div>';
     bindBookingDetailActions_(host, b);
@@ -1086,16 +1104,25 @@
         }
         return;
       }
-      var gate = typeof ringFleetCheckoutStartAllowed_ === 'function'
-        ? ringFleetCheckoutStartAllowed_(cur)
-        : { ok: true };
-      if (!gate.ok) {
-        var msg = gate.error === 'BOOKING_CHECKOUT_TOO_EARLY'
-          ? '予約開始日（' + (gate.minStartDate || cur.startDate) + '）以降に貸出開始できます。'
-          : 'この予約の状態では貸出開始できません。';
-        if (typeof showToast === 'function') showToast('warning', msg);
+      if (!fleetCheckoutGateOrToast_(cur)) return;
+      var freshOut = await fleetSyncBookingsFresh_();
+      if (!fleetRequireOnline_()) return;
+      if (!freshOut || !freshOut.ok) {
+        if (typeof showToast === 'function') {
+          showToast('error', '最新の予約状況を確認できないため貸出開始していません。接続を確認して再試行してください。');
+        }
         return;
       }
+      cur = bookingsCache.find(function (b) { return b.bookingId === bookingId; });
+      if (!cur) {
+        if (typeof showToast === 'function') showToast('warning', 'この予約は見つかりませんでした。画面を更新してください。');
+        return;
+      }
+      if (baseServerRevMissing_(cur)) {
+        if (typeof showToast === 'function') showToast('warning', '予約の最新状態を取得してから貸出開始してください。');
+        return;
+      }
+      if (!fleetCheckoutGateOrToast_(cur)) return;
     }
     if (!fleetBookingsSyncOk) {
       var offline = typeof navigator !== 'undefined' && navigator.onLine === false;
@@ -1271,12 +1298,13 @@
     if (result.outcome === 'success' || result.outcome === 'resolved_update' || result.outcome === 'resolved_new') {
       var bk = result.json && result.json.booking;
       if (bk) {
+        // Saving a reservation completes registration; checkout is a separate action opened from the calendar.
         closeNewBookingWizard_();
-        refreshBookings_().then(function () {
-          selectedBookingId = bk.bookingId;
-          renderDetailPanel_();
-        });
-        if (typeof showToast === 'function') showToast('success', result.outcome === 'resolved_update' ? '変更しました' : '登録しました');
+        closeMobDetailSheet_({ clearSelection: true });
+        selectedBookingId = '';
+        renderDetailPanel_();
+        if (typeof showToast === 'function') showToast('success', result.outcome === 'resolved_update' ? '変更しました' : '予約しました');
+        refreshBookings_();
       }
       return;
     }

@@ -1,12 +1,40 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="ja" data-ring-check-loading>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#4b5563" />
   <title>車両チェックシート</title>
+  <style>html[data-ring-check-loading] .ring-check-layout { visibility: hidden; }</style>
+  <script>
+    // Never enable a mixed-release check sheet. No business storage is cleared on failure.
+    (function () {
+      var remaining = 3, failed = false;
+      window.ringCheckAssetLoaded = function () {
+        remaining -= 1;
+        if (!failed && remaining === 0) document.documentElement.removeAttribute('data-ring-check-loading');
+      };
+      window.ringCheckAssetFailed = function () {
+        failed = true;
+        function show() {
+          if (document.getElementById('ringCheckUpdateError')) return;
+          var box = document.createElement('div');
+          box.id = 'ringCheckUpdateError';
+          box.setAttribute('role', 'alert');
+          box.style.cssText = 'padding:24px;background:white;color:#222;position:fixed;inset:0;z-index:10000;overflow:auto';
+          var message = document.createElement('p');
+          message.textContent = '画面の更新ファイルを読み込めませんでした。通信を確認して再読み込みしてください。保存済みの下書き・未送信データは保持されています。';
+          var retry = document.createElement('button');
+          retry.type = 'button'; retry.textContent = '再読み込み';
+          retry.onclick = function () { location.reload(); };
+          box.append(message, retry); document.body.appendChild(box);
+        }
+        if (document.body) show(); else document.addEventListener('DOMContentLoaded', show, { once: true });
+      };
+    })();
+  </script>
   <link rel="stylesheet" href="common.css">
-  <link rel="stylesheet" href="fleet-check-sheet.css">
+  <link rel="stylesheet" href="fleet-check-sheet.css?v=20261114-v38" integrity="sha256-EVmhKK7WTVeI8GjIH7VreCtlmPXeZuR0cU2isiaFlGk= sha256-KPArd1ve8evsTouhjXnTJsRA/y4yeOkWS6pX4Tzq9Qo=" crossorigin="anonymous" onload="ringCheckAssetLoaded()" onerror="ringCheckAssetFailed()">
   <script src="app.js?v=20261113-v36"></script>
   <script src="theme.js"></script>
 </head>
@@ -60,14 +88,8 @@
     </nav>
   </div>
   <input type="file" id="ringCheckPhotoInput" accept="image/*" multiple hidden />
-  <div id="ringCheckPhotoModal" class="ring-check-photo-modal" hidden>
-    <div class="ring-check-photo-modal-inner">
-      <button type="button" id="ringCheckPhotoModalClose" class="ring-check-photo-modal-close">閉じる</button>
-      <img id="ringCheckPhotoModalImg" alt="拡大プレビュー" />
-    </div>
-  </div>
   <script src="vendor/pdf-lib.min.js"></script>
-  <script src="fleet-check-sheet.js"></script>
-  <script src="fleet-check-sheet-pdf.js"></script>
+  <script src="fleet-check-sheet.js?v=20261114-v38" integrity="sha256-rpZSqUshcq28CcSrCVXH+l1C9FVRBGG6uTWc9wY4lMI= sha256-viSaVMYEdD552sIBNcmT37CSIqcCwKauvyHu8XGxFHA=" crossorigin="anonymous" onload="ringCheckAssetLoaded()" onerror="ringCheckAssetFailed()"></script>
+  <script src="fleet-check-sheet-pdf.js?v=20261114-v38" integrity="sha256-eIhE5nHgLG7JtrrPg/2KWXLthFs6a/hw3jN9Om3hiJ0= sha256-NScDmcLRX00URaRYH+y63JILS/0VZj0Tou1Ja7eUfX8=" crossorigin="anonymous" onload="ringCheckAssetLoaded()" onerror="ringCheckAssetFailed()"></script>
 </body>
 </html>

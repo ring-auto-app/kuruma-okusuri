@@ -672,7 +672,10 @@
       pane.classList.toggle('is-active', pane.getAttribute('data-pane') === step);
     });
     var tb = document.getElementById('ringCheckMarkToolbar');
-    if (tb) tb.hidden = step !== 'diagram';
+    if (tb) {
+      tb.hidden = step !== 'diagram';
+      tb.classList.toggle('is-visible', step === 'diagram');
+    }
     document.body.classList.toggle('ring-check-on-diagram', step === 'diagram');
   }
 
@@ -794,25 +797,42 @@
     });
   }
 
+  /** The modal exists in the DOM only while a real photo is shown, so no stylesheet can surface an empty one. */
   function closePhotoModal_() {
-    var modal = document.getElementById('ringCheckPhotoModal');
-    var img = document.getElementById('ringCheckPhotoModalImg');
-    if (modal) {
-      modal.hidden = true;
-      modal.setAttribute('aria-hidden', 'true');
-    }
-    if (img) img.removeAttribute('src');
+    document.querySelectorAll('#ringCheckPhotoModal, .ring-check-photo-modal').forEach(function (modal) {
+      if (modal.parentNode) modal.parentNode.removeChild(modal);
+    });
     document.body.classList.remove('ring-check-photo-modal-open');
   }
 
   function openPhotoModal_(objectUrl) {
     if (!objectUrl) return;
-    var modal = document.getElementById('ringCheckPhotoModal');
-    var img = document.getElementById('ringCheckPhotoModalImg');
-    if (!modal || !img) return;
+    closePhotoModal_();
+    var modal = document.createElement('div');
+    modal.id = 'ringCheckPhotoModal';
+    modal.className = 'ring-check-photo-modal is-open';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-label', '写真の拡大表示');
+    var inner = document.createElement('div');
+    inner.className = 'ring-check-photo-modal-inner';
+    var closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.id = 'ringCheckPhotoModalClose';
+    closeBtn.className = 'ring-check-photo-modal-close';
+    closeBtn.textContent = '閉じる';
+    var img = document.createElement('img');
+    img.id = 'ringCheckPhotoModalImg';
+    img.alt = '';
     img.src = objectUrl;
-    modal.hidden = false;
-    modal.setAttribute('aria-hidden', 'false');
+    inner.appendChild(closeBtn);
+    inner.appendChild(img);
+    modal.appendChild(inner);
+    closeBtn.addEventListener('click', function (ev) { ev.preventDefault(); closePhotoModal_(); });
+    modal.addEventListener('click', function (ev) {
+      if (ev.target === modal) closePhotoModal_();
+    });
+    document.body.appendChild(modal);
     document.body.classList.add('ring-check-photo-modal-open');
   }
 
@@ -933,14 +953,6 @@
         if (typeof showToast === 'function') showToast('error', '画像を読み込めませんでした');
       }
     });
-    var modalClose = document.getElementById('ringCheckPhotoModalClose');
-    var modal = document.getElementById('ringCheckPhotoModal');
-    if (modalClose) modalClose.onclick = function (ev) { ev.preventDefault(); closePhotoModal_(); };
-    if (modal) {
-      modal.onclick = function (ev) {
-        if (ev.target === modal) closePhotoModal_();
-      };
-    }
     closePhotoModal_();
   }
 
