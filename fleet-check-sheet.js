@@ -26,7 +26,7 @@
     { id: 'unknown', label: '未選択' }
   ];
   var CHECK_STATUS = ['good', 'check', 'unconfirmed'];
-  var STATUS_LABELS = { good: '良好', check: '要確認', unconfirmed: '未確認' };
+  var STATUS_LABELS = { good: '良好', check: '要確認', unconfirmed: '未確認', na: '対象外' };
   var INSPECTION_SECTIONS = [
     {
       id: 'engine',
@@ -75,6 +75,108 @@
     'body_top', 'bumper_front', 'bumper_rear', 'side_left', 'side_right',
     'tire_FL', 'tire_FR', 'tire_RL', 'tire_RR'
   ];
+
+  // Keep the original sixteen items and twenty tire results; this is only a UI grouping.
+  var PRACTICAL_GROUPS = [
+    {title:'安全・走行',items:[
+      {id:'brake',label:'ブレーキ',refs:['cabin.brake_pedal']},
+      {id:'parking',label:'駐車ブレーキ',refs:['cabin.parking_brake']},
+      {id:'seatbelt',label:'シートベルト',refs:['rental.seatbelt']},
+      {id:'warning',label:'警告灯',refs:['cabin.warning_lamps']},
+      {id:'engine_start',label:'エンジン始動・異音',refs:['rental.engine_start']}]},
+    {title:'灯火類',items:[{id:'lights',label:'灯火類',refs:['exterior.headlight','exterior.turn_signal','exterior.brake_lamp','exterior.tail_lamp']}]},
+    {title:'視界・操作',items:[
+      {id:'wiper',label:'ワイパーの作動',refs:['rental.wiper']},
+      {id:'washer',label:'ウォッシャーの作動',refs:['rental.washer']},
+      {id:'mirrors',label:'ミラー',refs:['cabin.mirrors']},
+      {id:'horn',label:'ホーン',refs:['cabin.horn']}]},
+    {title:'エンジンルーム',items:INSPECTION_SECTIONS[0].items.map(function(it){return {id:it.key,label:it.label,refs:['engine.'+it.key]};})},
+    {title:'車内・装備',items:[
+      {id:'aircon',label:'エアコンの効き',refs:['rental.aircon'],optional:true},
+      {id:'etc',label:'ETC車載器の作動確認',refs:['rental.etc'],optional:true},
+      {id:'navigation',label:'カーナビの作動',refs:['rental.navigation'],optional:true},
+      {id:'recorder',label:'ドライブレコーダーの作動',refs:['rental.recorder'],optional:true},
+      {id:'cabin_light',label:'室内灯',refs:['rental.cabin_light'],optional:true}]},
+    {title:'室内状態',items:[
+      {id:'cleaning',label:'清掃状態',refs:['rental.cleaning']},
+      {id:'smell',label:'におい',refs:['rental.smell']},
+      {id:'interior_damage',label:'汚れ・破れ・傷の有無',refs:['rental.interior_damage']}]}
+  ];
+  var OPTION_FIELDS = [
+    {id:'child_seat',label:'チャイルドシート'},{id:'junior_seat',label:'ジュニアシート'},
+    {id:'etc_card',label:'ETCカード'},{id:'winter_tires',label:'スタッドレスタイヤ'},
+    {id:'chains',label:'タイヤチェーン'},{id:'other',label:'その他貸出備品'}
+  ];
+  var GUIDANCE_FIELDS = [
+    {id:'fuel',label:'燃料の返却条件'},{id:'contact',label:'事故・故障時の連絡方法'},
+    {id:'insurance',label:'保険・免責・NOCなどの確認'},{id:'conditions',label:'禁煙・ペット等の利用条件'},
+    {id:'return_time',label:'返却時間・延長手続き'},{id:'condition',label:'車両状態と貸出備品の確認'}
+  ];
+  var INTERIOR_REGIONS = ['dashboard','driver_seat','passenger_seat','rear_seat','cargo'];
+  var INTERIOR_TYPES = {stain:'△',tear:'#',scuff:'○'};
+  var PRESSURE_UNITS = ['kPa','bar','kgf/cm²','psi'];
+  function normalizePractical_(r) {
+    var sections=r.inspection.sections;
+    if(!sections.rental)sections.rental={sectionMemo:'',items:{}};
+    var items=sections.rental.items;
+    PRACTICAL_GROUPS.forEach(function(g){g.items.forEach(function(it){it.refs.forEach(function(ref){
+      var bits=ref.split('.');
+      if(bits[0]==='rental'&&!items[bits[1]]) {
+        var old=(bits[1]==='wiper'||bits[1]==='washer')&&sections.exterior.items.wiper_washer;
+        items[bits[1]]=old?JSON.parse(JSON.stringify(old)):defaultItemState_();
+      }
+    });});});
+    if(!Array.isArray(r.interiorMarks))r.interiorMarks=[];
+    if(!r.rentalOptions)r.rentalOptions={};
+    OPTION_FIELDS.forEach(function(o){if(!r.rentalOptions[o.id])r.rentalOptions[o.id]={issued:false,returned:false,note:''};});
+    if(!r.customerGuidance)r.customerGuidance={};
+    GUIDANCE_FIELDS.forEach(function(g){if(r.customerGuidance[g.id]==null)r.customerGuidance[g.id]='';});
+    if(r.customerExplained==null)r.customerExplained=false;
+    return r;
+  }
+  function practicalItems_(){return PRACTICAL_GROUPS.reduce(function(out,g){return out.concat(g.items);},[]);}
+  function tireRefs_(){var refs=[];TIRE_WHEELS.forEach(function(w){TIRE_CHECKS.forEach(function(t){refs.push('tire.'+w+'.'+t.key);});});return refs;}
+  function itemAt_(r,ref){var a=ref.split('.');return a[0]==='tire'?r.inspection.tires[a[1]].items[a[2]]:r.inspection.sections[a[0]].items[a[1]];}
+  function groupedStatus_(r,refs){
+    var st=refs.map(function(ref){return itemAt_(r,ref).status;});
+    if(st.indexOf('check')>=0)return 'check';
+    if(st.every(function(x){return x==='na';}))return 'na';
+    return st.every(function(x){return x==='good'||x==='na';})?'good':'unconfirmed';
+  }
+  function toggleGood_(r,refs,good) {
+    if(groupedStatus_(r,refs)==='check')return false;
+    refs.forEach(function(ref){var it=itemAt_(r,ref);if(it.status!=='na')it.status=good?'good':'unconfirmed';});
+    return true;
+  }
+  function practicalWarnings_(r) {
+    var result={check:0,unconfirmed:0};
+    practicalItems_().concat([{refs:tireRefs_()}]).forEach(function(it){var st=groupedStatus_(r,it.refs);if(st==='check'||st==='unconfirmed')result[st]++;});
+    if(r.inspection.sections.exterior.items.body_look.status==='check')result.check++;
+    result.interiorMarks=(r.interiorMarks||[]).length;
+    return result;
+  }
+  function newInteriorMark_(region,nx,ny,type,memo){
+    return {id:newMarkId_(),region:region,nx:clamp01_(nx),ny:clamp01_(ny),type:INTERIOR_TYPES[type]?type:'stain',memo:String(memo||'')};
+  }
+  function interiorSvgMarkup_(){
+    return '<svg class="ring-check-diagram" viewBox="0 0 420 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="室内配置図。上が前。一般的な乗用車の配置です。">' +
+      '<defs><style>.ir{fill:#f3f7fb;stroke:#53677d;stroke-width:2.2;stroke-linejoin:round}.il{font:700 15px sans-serif;fill:#304c67;pointer-events:none}.ig{fill:#ddeaf2;stroke:#829aae;stroke-width:1.5}</style></defs>' +
+      '<path d="M210 12l-8 12h16z" fill="#18344e"/><text class="il" x="210" y="46" text-anchor="middle">前</text>' +
+      '<path d="M112 66Q210 40 308 66Q342 96 342 158V458Q338 511 300 526H120Q82 511 78 458V158Q78 96 112 66Z" fill="none" stroke="#bcc9d5" stroke-width="2"/>' +
+      '<g data-region="dashboard"><path class="ir" d="M111 82Q210 58 309 82L322 137Q210 121 98 137Z"/><circle class="ig" cx="276" cy="113" r="22"/></g>' +
+      '<text class="il" x="192" y="106" text-anchor="middle">ダッシュボード</text>' +
+      '<g data-region="passenger_seat"><path class="ir" d="M106 165Q148 152 190 165L198 252Q148 268 98 252Z"/><path class="ig" d="M118 172H178L172 212H124Z"/><path class="ig" d="M124 220H172L168 252H128Z"/><rect class="ig" x="132" y="242" width="40" height="20" rx="8"/></g>' +
+      '<text class="il" x="148" y="272" text-anchor="middle">助手席</text>' +
+      '<g data-region="driver_seat"><path class="ir" d="M230 165Q272 152 314 165L322 252Q272 268 222 252Z"/><path class="ig" d="M242 172H302L296 212H248Z"/><path class="ig" d="M248 220H296L292 252H252Z"/><rect class="ig" x="256" y="242" width="40" height="20" rx="8"/></g>' +
+      '<text class="il" x="274" y="272" text-anchor="middle">運転席</text>' +
+      '<g data-region="rear_seat"><rect class="ir" x="108" y="322" width="204" height="90" rx="17"/><path class="ig" d="M119 334H301V356H119Z"/></g>' +
+      '<text class="il" x="210" y="387" text-anchor="middle">後部座席</text>' +
+      '<g data-region="cargo"><path class="ir" d="M107 436H313L306 494Q210 519 114 494Z"/></g>' +
+      '<text class="il" x="210" y="475" text-anchor="middle">荷室</text>' +
+      '<text x="210" y="551" text-anchor="middle" font-size="11" fill="#526272">一般的な配置（座席数・左右配置は実車を確認）</text>' +
+      '<g id="ringCheckMarksLayerPdf"></g></svg>';
+  }
+
   var TYPE_MAP = { scratch: '●', dent: '×', other: '□' };
   var TAP_MOVE_PX = 12;
 
@@ -266,6 +368,7 @@
     } else {
       record.inspection = mergeInspectionForm_(defaultInspectionForm_(), record.inspection);
     }
+    normalizePractical_(record);
     record.schemaVersion = SCHEMA;
     return record;
   }
@@ -282,7 +385,7 @@
           Object.keys(ps.items).forEach(function (ik) {
             var cur = base.sections[sid].items[ik] || defaultItemState_();
             var pu = ps.items[ik] || {};
-            if (pu.status && CHECK_STATUS.indexOf(pu.status) >= 0) cur.status = pu.status;
+            if (pu.status && (CHECK_STATUS.indexOf(pu.status) >= 0 || (sid === 'rental' && pu.status === 'na'))) cur.status = pu.status;
             if (pu.memo != null) cur.memo = String(pu.memo);
             base.sections[sid].items[ik] = cur;
           });
@@ -370,9 +473,53 @@
       inspection: source && source.inspection
         ? mergeInspectionForm_(defaultInspectionForm_(), source.inspection)
         : defaultInspectionForm_(),
+      interiorMarks: cloneMarks_(source && source.interiorMarks),
+      rentalOptions: source && source.rentalOptions ? JSON.parse(JSON.stringify(source.rentalOptions)) : {},
+      customerGuidance: source && source.customerGuidance ? JSON.parse(JSON.stringify(source.customerGuidance)) : {},
+      customerExplained: !!(source && source.customerExplained),
+      draftOwnerUserId: source && source.draftOwnerUserId || '',
       localOnly: true
     };
     return normalizeRecord_(copy);
+  }
+
+  function latestMarkSource_(snapshots, shopId, vin, userId) {
+    var key = shopVinKey_(shopId, vin);
+    vin = String(vin || '').trim().toUpperCase();
+    userId = String(userId || '');
+    return (Array.isArray(snapshots) ? snapshots : []).find(function (s) {
+      if (!s || s.kind !== 'snapshot') return false;
+      if (s.shopVin && s.shopVin !== key) return false;
+      if (s.vin && String(s.vin).trim().toUpperCase() !== vin) return false;
+      if (s.shopId && String(s.shopId).trim() !== String(shopId || '').trim()) return false;
+      if (s.draftOwnerUserId && s.draftOwnerUserId !== userId) return false;
+      return true;
+    }) || null;
+  }
+
+  function freshActiveRecord_(shopId, vin, userId, markBundle) {
+    markBundle = markBundle || {};
+    var rec = {
+      id: storageId_(shopId, vin, 'active'),
+      shopVin: shopVinKey_(shopId, vin),
+      shopId: shopId,
+      vin: String(vin || '').trim().toUpperCase(),
+      kind: 'active',
+      schemaVersion: SCHEMA,
+      recordId: newRecordId_(),
+      parentId: null,
+      savedAt: new Date().toISOString(),
+      marks: cloneMarks_(markBundle.marks),
+      interiorMarks: cloneMarks_(markBundle.interiorMarks),
+      meta: defaultMeta_(),
+      inspection: defaultInspectionForm_(),
+      rentalOptions: {},
+      customerGuidance: {},
+      customerExplained: false,
+      draftOwnerUserId: String(userId || ''),
+      localOnly: true
+    };
+    return normalizeRecord_(rec);
   }
 
   function openDb_() {
@@ -406,15 +553,30 @@
     });
   }
 
-  function idbPut_(record) {
+  function idbPutRecords_(records) {
     return openDb_().then(function (db) {
-      return new Promise(function (resolve, reject) {
-        var tx = db.transaction(STORE, 'readwrite');
-        tx.objectStore(STORE).put(record);
-        tx.oncomplete = function () { resolve(record); };
-        tx.onerror = function () { reject(tx.error); };
-      });
+      try {
+        return new Promise(function (resolve, reject) {
+          var tx = db.transaction(STORE, 'readwrite');
+          var error;
+          tx.oncomplete = function () { resolve(); };
+          tx.onabort = function () { reject(error || tx.error || new Error('IndexedDB write aborted')); };
+          try {
+            var store = tx.objectStore(STORE);
+            records.forEach(function (record) { store.put(record); });
+          } catch (e) {
+            error = e;
+            tx.abort();
+          }
+        });
+      } finally {
+        db.close();
+      }
     });
+  }
+
+  function idbPut_(record) {
+    return idbPutRecords_([record]).then(function () { return record; });
   }
 
   function idbListSnapshots_(shopVin) {
@@ -447,69 +609,84 @@
     return idbPut_(record);
   }
 
-  function snapshotDraft_(record) {
+  function makeSnapshot_(record) {
     normalizeRecord_(record);
     var rid = record.recordId || newRecordId_();
-    var snap = Object.assign({}, record, {
+    return Object.assign({}, record, {
       id: storageId_(record.shopId, record.vin, 'snapshot::' + rid + '::' + Date.now()),
       kind: 'snapshot',
       recordId: rid,
       parentId: record.parentId || null,
       savedAt: new Date().toISOString()
     });
-    return idbPut_(snap).then(function () { return snap; });
+  }
+
+  function snapshotDraft_(record) {
+    return idbPut_(makeSnapshot_(record));
+  }
+
+  function saveSnapshotAndNextDraft_(record, nextDraft) {
+    var snap = makeSnapshot_(record);
+    return idbPutRecords_([snap, nextDraft]).then(function () { return snap; });
   }
 
   /**
-   * 汎用乗用車の上面展開図。region のヒット領域座標は旧図と互換（nx/ny は領域内相対）。
-   * viewBox 0 0 420 560。画面と PDF は markPointOnSvg_ で実 SVG の getBBox を共用する。
+   * 9 個の既存 region / nx / ny を維持した上面展開図。保存キーや記録は変換しない。
+   * ラベルはヒット領域の外に置き、画面と PDF で同じ getBBox による相対座標を使う。
    */
   function diagramSvgMarkup_() {
-    return '<svg class="ring-check-diagram" viewBox="0 0 420 560" xmlns="http://www.w3.org/2000/svg">' +
+    var svg = '<svg class="ring-check-diagram" viewBox="0 0 420 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="車両展開図。上が前、下が後。車体の外周に左前・右前・左後・右後タイヤ。">' +
       '<defs><style>' +
-      '.rg{fill:#eef2f7;stroke:#475569;stroke-width:2.2}' +
-      '.rg-inner{fill:#f8fafc;stroke:#94a3b8;stroke-width:1.4}' +
-      '.rl{font-size:10px;font-weight:700;fill:#64748b}' +
-      '.rt{fill:#cbd5e1;stroke:#334155;stroke-width:2}' +
-      '.rt-hub{fill:#f1f5f9;stroke:#64748b;stroke-width:1.2}' +
+      '.rg{fill:#f4f7fb;stroke:#53677d;stroke-width:2.2;stroke-linejoin:round}' +
+      '.glass{fill:#dceaf3;stroke:#829aae;stroke-width:1.5}' +
+      '.seam{fill:none;stroke:#95a5b6;stroke-width:1.4;stroke-linecap:round}' +
+      '.rl{font:700 12px sans-serif;fill:#415970;pointer-events:none}' +
+      '.direction{font:700 13px sans-serif;fill:#18344e;pointer-events:none}' +
+      '.tw{fill:#dde4ec;stroke:#425469;stroke-width:2.6}' +
+      '.wh{fill:#edf2f7;stroke:#7d94a8;stroke-width:1.6}' +
       '</style></defs>' +
-      /* 前バンパー */
-      '<g data-region="bumper_front">' +
-      '<path class="rg" d="M145 22h130c18 0 30 10 34 22v12c-8 8-36 12-99 12s-91-4-99-12V44c4-12 16-22 34-22z"/>' +
-      '<text class="rl" x="210" y="48" text-anchor="middle">前</text></g>' +
-      /* 車両上面（ボンネット・ルーフ・トランク） */
+      '<path d="M210 18l-7 10h14z" fill="#18344e" pointer-events="none"/><text class="direction" x="210" y="44" text-anchor="middle">前</text>' +
+      '<g data-region="bumper_front"><path class="rg" d="M142 61Q210 47 278 61L289 82Q210 96 131 82Z"/>' +
+      '<path class="seam" d="M153 77Q210 84 267 77"/></g>' +
+      '<text class="rl" x="210" y="72" text-anchor="middle">前バンパー</text>' +
       '<g data-region="body_top">' +
-      '<path class="rg" d="M96 82h228c14 0 22 10 22 22v156c0 12-8 20-22 20H96c-14 0-22-8-22-20V104c0-12 8-22 22-22z"/>' +
-      '<path class="rg-inner" d="M118 98h184c8 0 12 5 12 11v36c0 6-4 11-12 11H118c-8 0-12-5-12-11v-36c0-6 4-11 12-11z"/>' +
-      '<path class="rg-inner" d="M128 168h164c6 0 10 4 10 9v48c0 5-4 9-10 9H128c-6 0-10-4-10-9v-48c0-5 4-9 10-9z"/>' +
-      '<path class="rg-inner" d="M132 238h156c6 0 10 3 10 8v18c0 5-4 8-10 8H132c-6 0-10-3-10-8v-18c0-5 4-8 10-8z"/>' +
-      '<text class="rl" x="210" y="124" text-anchor="middle">ボンネット</text>' +
-      '<text class="rl" x="210" y="198" text-anchor="middle">ルーフ</text>' +
-      '<text class="rl" x="210" y="258" text-anchor="middle">トランク</text></g>' +
-      /* 左側面（ドア展開） */
-      '<g data-region="side_left">' +
-      '<path class="rg" d="M24 88h42c6 0 10 6 10 12v168c0 6-4 12-10 12H24c-6 0-10-6-10-12V100c0-6 4-12 10-12z"/>' +
-      '<path class="rg-inner" d="M30 118h28v48H30z"/><path class="rg-inner" d="M30 178h28v52H30z"/>' +
-      '<text class="rl" transform="rotate(-90 45 180)" x="45" y="180" text-anchor="middle">左側面</text></g>' +
-      /* 右側面 */
-      '<g data-region="side_right">' +
-      '<path class="rg" d="M354 88h42c6 0 10 6 10 12v168c0 6-4 12-10 12h-42c-6 0-10-6-10-12V100c0-6 4-12 10-12z"/>' +
-      '<path class="rg-inner" d="M362 118h28v48h-28z"/><path class="rg-inner" d="M362 178h28v52h-28z"/>' +
-      '<text class="rl" transform="rotate(90 375 180)" x="375" y="180" text-anchor="middle">右側面</text></g>' +
-      /* 後バンパー */
-      '<g data-region="bumper_rear">' +
-      '<path class="rg" d="M145 300h130c18 0 30 8 34 18v16c-8 8-36 12-99 12s-91-4-99-12v-16c4-10 16-18 34-18z"/>' +
-      '<text class="rl" x="210" y="326" text-anchor="middle">後</text></g>' +
-      /* タイヤ */
-      '<g data-region="tire_FL"><circle class="rt" cx="55" cy="400" r="34"/><circle class="rt-hub" cx="55" cy="400" r="12"/><text class="rl" x="55" y="444" text-anchor="middle">FL</text></g>' +
-      '<g data-region="tire_FR"><circle class="rt" cx="365" cy="400" r="34"/><circle class="rt-hub" cx="365" cy="400" r="12"/><text class="rl" x="365" y="444" text-anchor="middle">FR</text></g>' +
-      '<g data-region="tire_RL"><circle class="rt" cx="55" cy="500" r="34"/><circle class="rt-hub" cx="55" cy="500" r="12"/><text class="rl" x="55" y="544" text-anchor="middle">RL</text></g>' +
-      '<g data-region="tire_RR"><circle class="rt" cx="365" cy="500" r="34"/><circle class="rt-hub" cx="365" cy="500" r="12"/><text class="rl" x="365" y="544" text-anchor="middle">RR</text></g>' +
-      '<g id="ringCheckMarksLayerPdf"></g></svg>';
+      '<path class="rg" d="M161 105Q210 94 259 105Q278 121 282 160L288 235V375Q286 423 269 446Q210 462 151 446Q134 423 132 375V235L138 160Q142 121 161 105Z"/>' +
+      '<path class="seam" d="M151 126Q210 110 269 126M143 192Q210 178 277 192"/>' +
+      '<path class="glass" d="M146 203Q210 188 274 203L261 244Q210 234 159 244Z"/>' +
+      '<path class="rg" d="M159 252Q210 242 261 252V344Q210 353 159 344Z"/>' +
+      '<path class="glass" d="M159 355Q210 365 261 355L273 385Q210 400 147 385Z"/>' +
+      '<path class="seam" d="M148 411Q210 423 272 411M139 229L146 350M281 229L274 350"/>' +
+      '<path d="M147 116l22-5-3 12-24 8zM273 116l-22-5 3 12 24 8z" fill="#deebf2" stroke="#829aae"/>' +
+      '</g>' +
+      '<text class="rl" x="210" y="161" text-anchor="middle">ボンネット</text>' +
+      '<text class="rl" x="210" y="302" text-anchor="middle">ルーフ</text>' +
+      '<text class="rl" x="210" y="438" text-anchor="middle">後部上面</text>' +
+      '<g data-region="side_left"><path class="rg" d="M74 148Q47 157 36 186L22 242V345Q28 390 65 414L84 402V168Z"/>' +
+      '<path class="glass" d="M69 193L49 226 39 265H69ZM39 280H69V351L46 340Z"/>' +
+      '<path class="seam" d="M25 273H83M75 240v16M75 299v16"/></g>' +
+      '<text class="rl" transform="rotate(-90 14 286)" x="14" y="286" text-anchor="middle">左側面</text>' +
+      '<g data-region="side_right"><path class="rg" d="M346 148Q373 157 384 186L398 242V345Q392 390 355 414L336 402V168Z"/>' +
+      '<path class="glass" d="M351 193L371 226 381 265H351ZM381 280H351V351L374 340Z"/>' +
+      '<path class="seam" d="M395 273H337M345 240v16M345 299v16"/></g>' +
+      '<text class="rl" transform="rotate(90 406 286)" x="406" y="286" text-anchor="middle">右側面</text>' +
+      '<g data-region="bumper_rear"><path class="rg" d="M139 470Q210 485 281 470L285 493Q210 512 135 493Z"/>' +
+      '<path class="seam" d="M154 494Q210 505 266 494"/></g>' +
+      '<text class="rl" x="210" y="493" text-anchor="middle">後バンパー</text>' +
+      '<text class="direction" x="210" y="540" text-anchor="middle">後</text>';
+    // Four independent targets around the body; unchanged region names preserve legacy records.
+    [{id:'FL',cx:100,cy:176,label:'左前'}, {id:'FR',cx:320,cy:176,label:'右前'},
+     {id:'RL',cx:100,cy:360,label:'左後'}, {id:'RR',cx:320,cy:360,label:'右後'}].forEach(function (t) {
+      var or = 26, ir = 13;
+      svg += '<g data-region="tire_' + t.id + '">' +
+        '<circle class="tw" cx="' + t.cx + '" cy="' + t.cy + '" r="' + or + '"/>' +
+        '<circle class="wh" cx="' + t.cx + '" cy="' + t.cy + '" r="' + ir + '"/></g>' +
+        '<text class="rl" x="' + t.cx + '" y="' + (t.cy - or - 8) + '" text-anchor="middle">' + t.label + '</text>';
+    });
+    return svg + '<g id="ringCheckMarksLayerPdf"></g></svg>';
   }
 
   function markPointOnSvg_(svg, mark) {
-    if (!svg || !mark || REGIONS.indexOf(mark.region) < 0) return null;
+    if (!svg || !mark || REGIONS.concat(INTERIOR_REGIONS).indexOf(mark.region) < 0) return null;
     var g = svg.querySelector('[data-region="' + mark.region + '"]');
     if (!g) return null;
     var box = g.getBBox();
@@ -517,6 +694,9 @@
   }
 
   return {
+    PRACTICAL_GROUPS: PRACTICAL_GROUPS, practicalItems_: practicalItems_, tireRefs_: tireRefs_, itemAt_: itemAt_, groupedStatus_: groupedStatus_, toggleGood_: toggleGood_, practicalWarnings_: practicalWarnings_,
+    OPTION_FIELDS: OPTION_FIELDS, GUIDANCE_FIELDS: GUIDANCE_FIELDS, PRESSURE_UNITS: PRESSURE_UNITS,
+    INTERIOR_REGIONS: INTERIOR_REGIONS, INTERIOR_TYPES: INTERIOR_TYPES, newInteriorMark_: newInteriorMark_, interiorSvgMarkup_: interiorSvgMarkup_,
     DB_NAME: DB_NAME,
     SCHEMA: SCHEMA,
     PHOTO_MAX: PHOTO_MAX,
@@ -536,9 +716,12 @@
     markSymbol_: markSymbol_,
     applyUndo_: applyUndo_,
     copyRecordForEdit_: copyRecordForEdit_,
+    latestMarkSource_: latestMarkSource_,
+    freshActiveRecord_: freshActiveRecord_,
     loadActiveDraft_: loadActiveDraft_,
     saveActiveDraft_: saveActiveDraft_,
     snapshotDraft_: snapshotDraft_,
+    saveSnapshotAndNextDraft_: saveSnapshotAndNextDraft_,
     idbListSnapshots_: idbListSnapshots_,
     idbGet_: idbGet_,
     TAP_MOVE_PX: TAP_MOVE_PX,
@@ -575,6 +758,7 @@
     mode: 'scratch',
     marks: [],
     undo: [],
+    interiorMarks: [], interiorUndo: [], diagramKind: 'exterior', openChecks: {},
     record: null,
     vehicle: null,
     selectedMarkId: '',
@@ -583,10 +767,16 @@
     pendingMarkTap: null,
     windowPointerBound: false,
     detailMarkId: '',
-    step: 'basic',
+    step: 'inspect',
     photos: [],
     photosSessionOnly: true,
-    pdfBusy: false
+    pdfBusy: false,
+    saveBackBusy: false,
+    snapshotBusy: false,
+    draftWrites: new Set(),
+    uiLock: null,
+    shellBound: false,
+    editorBound: false
   };
 
   function esc_(s) {
@@ -603,8 +793,185 @@
     return result.vehicle;
   }
 
+
+  function activeMarks_(){return state.diagramKind==='interior'?state.interiorMarks:state.marks;}
+  function setActiveMarks_(marks){if(state.diagramKind==='interior')state.interiorMarks=marks;else state.marks=marks;}
+  function activeUndo_(){return state.diagramKind==='interior'?state.interiorUndo:state.undo;}
+  function currentSymbol_(type){return state.diagramKind==='interior'?C.INTERIOR_TYPES[type]:C.markSymbol_(type);}
+  function setDiagramKind_(kind){
+    if(!checkContext_())return;
+    state.diagramKind=kind==='interior'?'interior':'exterior';state.selectedMarkId='';state.detailMarkId='';state.pendingPlace=null;state.pendingMarkTap=null;
+    var interior=state.diagramKind==='interior',labels=interior?[['stain','△','汚れ'],['tear','#','破れ'],['scuff','○','傷']]:[['scratch','●','傷'],['dent','×','へこみ'],['other','□','その他']];
+    var buttons=document.querySelectorAll('#ringCheckMarkToolbar [data-check-mode]');
+    labels.forEach(function(x,i){buttons[i].setAttribute('data-check-mode',x[0]);buttons[i].innerHTML='<span aria-hidden="true">'+x[1]+'</span> '+x[2];});
+    document.querySelectorAll('[data-diagram-kind]').forEach(function(b){b.classList.toggle('is-active',b.dataset.diagramKind===state.diagramKind);b.setAttribute('aria-pressed',String(b.dataset.diagramKind===state.diagramKind));});
+    bindDiagram_();setMode_(interior?'stain':'scratch');
+  }
+  var pageContext = null;
+  function checkContext_(){
+    if(!pageContext||ringRequestContextIsCurrent_(pageContext))return true;
+    closePhotoModal_();revokePhotoUrls_(state.photos);state.photos=[];state.marks=[];state.interiorMarks=[];state.record=null;
+    var layout=document.querySelector('.ring-check-layout');if(layout)layout.innerHTML='<p role="alert">利用者が変更されました。現在のアカウントで開き直してください。</p><a href="rental_fleet.html">レンタカー管理へ</a>';
+    return false;
+  }
+  function checkContextOrWarn_(actionLabel){
+    if(checkContext_())return true;
+    if(typeof showToast==='function')showToast('warning','アカウントまたは店舗が変わったため、'+(actionLabel||'操作')+'できません。ページを開き直してください。');
+    return false;
+  }
+  function uiLockHint_(){
+    if(state.uiLock==='legacy')return '旧下書きを引き継ぐまで、外装・点検の編集はできません。「戻る」は利用できます。';
+    if(state.uiLock==='other_user')return '別の利用者の下書きのため編集できません。「戻る」でレンタカー管理へ戻れます。';
+    return '現在は編集できません。';
+  }
+  function goBackToFleet_(){
+    if(document.referrer&&document.referrer.indexOf('rental_fleet')>=0)history.back();
+    else location.href='rental_fleet.html';
+  }
+  function applyUiLock_(lock){
+    state.uiLock=lock||null;
+    var locked=!!lock;
+    document.querySelectorAll('#ringCheckSteps [data-step], .ring-check-diagram-tabs [data-diagram-kind]').forEach(function(el){
+      el.disabled=locked;
+      el.setAttribute('aria-disabled',locked?'true':'false');
+      el.classList.toggle('is-locked',locked);
+    });
+    var tb=document.getElementById('ringCheckMarkToolbar');
+    if(tb){tb.hidden=locked||state.step!=='exterior';tb.classList.toggle('is-visible',!locked&&state.step==='exterior');}
+    document.body.classList.toggle('ring-check-ui-locked',locked);
+    if (locked) {
+      document.querySelectorAll('[data-pane]').forEach(function (pane) { pane.classList.remove('is-active'); });
+      document.querySelectorAll('#ringCheckSteps [data-step]').forEach(function (btn) { btn.classList.remove('is-active'); });
+    }
+  }
+  function hideGuardHost_(){
+    var host=document.getElementById('ringCheckGuardHost');
+    if(host){host.hidden=true;host.innerHTML='';}
+  }
+  function bindShellNavigationOnce_(){
+    if(state.shellBound)return;
+    state.shellBound=true;
+    var back=document.getElementById('ringCheckBack');
+    if(back)back.addEventListener('click',goBackToFleet_);
+    document.querySelectorAll('#ringCheckSteps [data-step]').forEach(function(btn){
+      btn.addEventListener('click',function(){
+        if(state.uiLock){
+          if(typeof showToast==='function')showToast('info',uiLockHint_());
+          return;
+        }
+        if(state.step==='inspect')syncFormFromDom_();
+        setStep_(btn.getAttribute('data-step'));
+        if(normalizeStep_(btn.getAttribute('data-step'))==='exterior')renderPdfPane_();
+      });
+    });
+    document.querySelectorAll('[data-diagram-kind]').forEach(function(b){
+      b.addEventListener('click',function(){
+        if(state.uiLock){
+          if(typeof showToast==='function')showToast('info',uiLockHint_());
+          return;
+        }
+        setDiagramKind_(b.dataset.diagramKind);
+      });
+    });
+    setStep_('inspect');
+  }
+  function showEditorLockPlaceholder_(){
+    var dh=document.getElementById('ringCheckDiagramHost');
+    if(dh)dh.innerHTML='<p class="ring-check-guard-placeholder">編集を開始する前に、画面の案内に従ってください。</p>';
+    ['ringCheckPaneBasic','ringCheckPaneInspection','ringCheckPaneTires','ringCheckPaneExtras','ringCheckPanePhotos','ringCheckPanePdf'].forEach(function(id){
+      var el=document.getElementById(id);if(el)el.innerHTML='';
+    });
+  }
+  function showLegacyDraftGate_(currentUser){
+    applyUiLock_('legacy');
+    showEditorLockPlaceholder_();
+    var host=document.getElementById('ringCheckGuardHost');
+    if(!host)return;
+    host.hidden=false;
+    host.innerHTML='<p role="alert">この店舗・車両の旧下書きには作成者情報がありません。内容を引き継ぐ権限がある場合だけ開いてください。旧記録は保持されています。</p>'+
+      '<button type="button" class="ring-check-secondary-btn" id="ringCheckAdoptLegacy">旧下書きを引き継いで開く</button>'+
+      '<p class="ring-check-guard-hint">'+esc_(uiLockHint_())+'</p>';
+    var adopt=host.querySelector('#ringCheckAdoptLegacy');
+    if(!adopt)return;
+    adopt.onclick=async function(){
+      if(!checkContextOrWarn_('旧下書きの引き継ぎ'))return;
+      if(typeof confirm!=='function'||!confirm('この店舗・車両の旧下書きを引き継いで編集しますか？過去の保存記録は変更しません。'))return;
+      adopt.disabled=true;
+      try{
+        var latest=await C.loadActiveDraft_(profile.shopId,vin);
+        if(!checkContextOrWarn_('旧下書きの引き継ぎ')){adopt.disabled=false;return;}
+        if(latest&&latest.draftOwnerUserId&&latest.draftOwnerUserId!==currentUser){
+          if(typeof showToast==='function')showToast('warning','別の利用者が先に引き継いだ下書きがあります。画面を開き直してください。');
+          adopt.disabled=false;return;
+        }
+        if(latest){latest.draftOwnerUserId=currentUser;await C.saveActiveDraft_(latest);}
+        if(checkContext_())location.reload();
+      }catch(e){
+        adopt.disabled=false;
+        if(typeof showToast==='function')showToast('error','端末へ保存できません。旧記録は変更せず保持しました。');
+      }
+    };
+  }
+  function showOtherUserDraftGate_(){
+    applyUiLock_('other_user');
+    showEditorLockPlaceholder_();
+    var host=document.getElementById('ringCheckGuardHost');
+    if(!host)return;
+    host.hidden=false;
+    host.innerHTML='<p role="alert">この車両には別の利用者が保存した下書きがあります。保存した利用者で開き直してください。記録は保持されています。</p>'+
+      '<p class="ring-check-guard-hint">'+esc_(uiLockHint_())+'</p>';
+  }
+  function bootEditorUi_(snaps){
+    if(state.editorBound)return;
+    state.editorBound=true;
+    applyUiLock_(null);
+    setStep_('inspect');
+    hideGuardHost_();
+    renderLocalBanner_(snaps);
+    renderPhotoWarn_();
+    renderBasicPane_();
+    renderInspectionPane_();
+    renderTiresPane_();renderRentalExtras_();
+    renderPhotosPane_();
+    renderPdfPane_();
+    renderAttention_();
+    bindPhotoInput_();
+    closePhotoModal_();
+    bindDiagram_();
+    renderMarks_();
+    renderMarkList_();
+    setMode_('scratch');
+    document.querySelectorAll('[data-check-mode]').forEach(function(btn){
+      btn.addEventListener('click',function(){setMode_(btn.getAttribute('data-check-mode'));});
+    });
+    document.getElementById('ringCheckUndo').onclick=function(){
+      if(!checkContextOrWarn_('マークの取り消し'))return;
+      var entry=activeUndo_().pop();
+      if(!entry)return;
+      var selId=state.selectedMarkId;
+      setActiveMarks_(C.applyUndo_(activeMarks_(),entry));
+      if(selId&&!markById_(selId)){state.selectedMarkId='';state.detailMarkId='';}
+      renderMarks_();
+      renderMarkList_();
+      persistDraft_();
+    };
+    var saveSnapBtn=document.getElementById('ringCheckSaveSnap');
+    if(saveSnapBtn)saveSnapBtn.onclick=function(){return saveSnapshotFlow_();};
+    if(!state.beforeUnloadBound){
+      state.beforeUnloadBound=true;
+      window.addEventListener('beforeunload',function(ev){
+        if(!state.photos.length)return;
+        ev.preventDefault();
+        ev.returnValue='写真はセッション内のみです。離脱すると失われます。';
+      });
+    }
+  }
+  window.addEventListener('ring-auth-context-changed',checkContext_);
+  window.addEventListener('storage',checkContext_);
+  window.addEventListener('pageshow',checkContext_);
+
   function diagramSvgHtml_() {
-    return C.diagramSvgMarkup_()
+    return (state.diagramKind==='interior'?C.interiorSvgMarkup_():C.diagramSvgMarkup_())
       .replace('id="ringCheckMarksLayerPdf"', 'id="ringCheckMarksLayer"')
       .replace(/<g data-region="/g, '<g class="ring-check-region" data-region="')
       .replace('<svg class="ring-check-diagram"', '<svg class="ring-check-diagram" role="img" aria-label="車両展開図"');
@@ -616,11 +983,11 @@
     var svg = layer.ownerSVGElement;
     if (!svg) return;
     var html = '';
-    state.marks.forEach(function (m) {
+    activeMarks_().forEach(function (m) {
       var point = C.markPointOnSvg_(svg, m);
       if (!point) return;
       var cx = point.x, cy = point.y;
-      var sym = C.markSymbol_(m.type);
+      var sym = currentSymbol_(m.type);
       var sel = m.id === state.selectedMarkId ? ' is-selected' : '';
       html += '<g class="ring-check-mark' + sel + '" data-mark-id="' + esc_(m.id) + '" data-type="' + esc_(m.type) + '" data-region="' + esc_(m.region) + '" transform="translate(' + cx + ',' + cy + ')">' +
         '<circle r="14" class="ring-check-mark-hit"/><text class="ring-check-mark-glyph" text-anchor="middle" dominant-baseline="central">' + sym + '</text></g>';
@@ -629,10 +996,18 @@
   }
 
   function persistDraft_() {
-    if (!state.idbAvailable || !state.record || !profile) return Promise.resolve();
+    if (!checkContext_() || state.snapshotBusy || !state.idbAvailable || !state.record || !profile) return Promise.resolve();
     state.record.marks = C.cloneMarks_(state.marks);
-    C.normalizeRecord_(state.record);
-    return C.saveActiveDraft_(state.record);
+    state.record.interiorMarks = C.cloneMarks_(state.interiorMarks);
+    state.record.draftOwnerUserId = String(profile.userId || profile.id || '');
+    C.normalizeRecord_(state.record);renderAttention_();
+    var write = C.saveActiveDraft_(state.record).catch(function () {
+      if (!checkContext_()) return;
+      state.idbAvailable = false;
+      renderLocalBanner_([]);
+    }).finally(function () { state.draftWrites.delete(write); });
+    state.draftWrites.add(write);
+    return write;
   }
 
   function syncFormFromDom_() {
@@ -674,7 +1049,7 @@
       var wmemo = document.getElementById('ringCheckTireMemo_' + w);
       if (wmemo) tw.wheelMemo = wmemo.value;
       var pv = document.getElementById('ringCheckTirePressVal_' + w);
-      if (pv) tw.pressureValue = String(pv.value || '').replace(/[^\d.]/g, '');
+      if (pv) tw.pressureValue = String(pv.value || '');
       var pu = document.getElementById('ringCheckTirePressUnit_' + w);
       if (pu) tw.pressureUnit = pu.value || 'kPa';
     });
@@ -695,11 +1070,13 @@
   function renderAttention_() {
     var host = document.getElementById('ringCheckAttention');
     if (!host || !state.record) return;
-    var n = C.countAttention_(state.record);
-    if (n > 0) {
-      host.hidden = false;
-      host.textContent = '要確認の項目が ' + n + ' 件あります。PDFにも表示されます。';
-    } else host.hidden = true;
+    state.record.interiorMarks=C.cloneMarks_(state.interiorMarks);
+    var w=C.practicalWarnings_(state.record),parts=[];
+    if(w.check)parts.push('要確認 '+w.check+'項目');
+    if(w.unconfirmed)parts.push('未確認 '+w.unconfirmed+'項目');
+    if(w.interiorMarks)parts.push('室内の汚れ・破れ・傷 '+w.interiorMarks+'か所');
+    host.hidden=!parts.length;
+    host.textContent=parts.length?parts.join(' ／ ')+'。貸出前に実車の安全と状態を確認してください。':'';
   }
 
   function normalizeStep_(step) {
@@ -745,23 +1122,12 @@
       '<label class="ring-check-field">走行距離（km）<input type="number" inputmode="decimal" id="ringCheckKm" placeholder="チェックシート用" value="' + esc_(m.odometerKm) + '"></label>' +
       '<label class="ring-check-field">燃料残量<select id="ringCheckFuel">' + fuelOpts + '</select></label>' +
       '<p class="ring-check-hint">走行距離はチェックシート記録用です。車両マスタや整備履歴は更新しません。</p>' +
-      '<div class="ring-check-form-actions">' +
-      '<button type="button" class="ring-check-save-btn" id="ringCheckDraftSave">下書きを端末に保存</button>' +
-      '<button type="button" class="ring-check-secondary-btn" id="ringCheckNewRecord">新しい点検（新記録ID）</button>' +
-      '</div></div>';
+      '<button type="button" id="ringCheckDraftSave" hidden aria-hidden="true" tabindex="-1">下書きを端末に保存</button></div>';
     ['ringCheckDate', 'ringCheckPurpose', 'ringCheckKm', 'ringCheckFuel'].forEach(function (id) {
       var el = document.getElementById(id);
       if (el) el.addEventListener('change', function () { syncFormFromDom_(); renderAttention_(); persistDraft_(); });
     });
     document.getElementById('ringCheckDraftSave').onclick = function () { return saveSnapshotFlow_(); };
-    document.getElementById('ringCheckNewRecord').onclick = function () {
-      if (!confirm('新しい点検として記録IDを発行します。現在の下書きはスナップショット保存後に切り替えてください。続行しますか？')) return;
-      syncFormFromDom_();
-      state.record.recordId = C.newRecordId_();
-      state.record.parentId = state.record.id;
-      renderBasicPane_();
-      persistDraft_();
-    };
   }
 
   function statusSelectHtml_(name, cur) {
@@ -795,92 +1161,122 @@
     return lines;
   }
 
-  function statusChipHtml_(sec, key, cur, kind) {
-    return C.CHECK_STATUS.map(function (st) {
-      var id = 'chk_' + kind + '_' + sec + '_' + key + '_' + st;
-      var checked = cur === st ? ' checked' : '';
-      return '<input type="radio" class="ring-check-opt-radio" name="chk_' + kind + '_' + sec + '_' + key + '" id="' + id + '" value="' + st + '"' + checked +
-        ' data-insp-sec="' + esc_(sec) + '" data-insp-key="' + esc_(key) + '" data-insp-field="status">' +
-        '<label for="' + id + '" class="ring-check-opt-label">' + esc_(C.STATUS_LABELS[st]) + '</label>';
-    }).join('');
-  }
 
-  function tireChipHtml_(w, key, cur) {
-    return C.CHECK_STATUS.map(function (st) {
-      var id = 'chk_tire_' + w + '_' + key + '_' + st;
-      var checked = cur === st ? ' checked' : '';
-      return '<input type="radio" class="ring-check-opt-radio" name="chk_tire_' + w + '_' + key + '" id="' + id + '" value="' + st + '"' + checked +
-        ' data-tire-wheel="' + w + '" data-tire-key="' + key + '">' +
-        '<label for="' + id + '" class="ring-check-opt-label">' + esc_(C.STATUS_LABELS[st]) + '</label>';
-    }).join('');
+  function leafLabel_(ref) {
+    var a=ref.split('.');
+    if(a[0]==='tire'){var t=C.TIRE_CHECKS.find(function(x){return x.key===a[2];});return t?t.label:a[2];}
+    var sec=C.INSPECTION_SECTIONS.find(function(x){return x.id===a[0];});
+    var it=sec&&sec.items.find(function(x){return x.key===a[1];});
+    if(it)return it.label;
+    var item=C.practicalItems_().find(function(x){return x.refs[0]===ref;});return item?item.label:a[1];
   }
-
-  function renderInspectionPane_() {
-    var host = document.getElementById('ringCheckPaneInspection');
-    if (!host || !state.record) return;
-    var html = '<h2 class="ring-check-section-title">日常点検</h2>';
-    C.INSPECTION_SECTIONS.forEach(function (sec) {
-      var block = state.record.inspection.sections[sec.id];
-      html += '<div class="ring-check-insp-group"><h3 class="ring-check-insp-cat">【' + esc_(sec.title) + '】</h3>';
-      sec.items.forEach(function (it) {
-        var item = block.items[it.key];
-        html += '<div class="ring-check-insp-row">' +
-          '<div class="ring-check-insp-label">' + esc_(it.label) + '</div>' +
-          '<div class="ring-check-options">' + statusChipHtml_(sec.id, it.key, item.status, 'insp') + '</div></div>';
-      });
-      html += '</div>';
-    });
-    var legacy = collectLegacyItemMemos_();
-    if (legacy.length) {
-      html += '<details class="ring-check-legacy-memo"><summary>過去の項目メモ（参照のみ・' + legacy.length + '件）</summary>' +
-        '<ul class="ring-check-legacy-list">' + legacy.map(function (ln) {
-          return '<li>' + esc_(ln) + '</li>';
-        }).join('') + '</ul></details>';
+  function tickRow_(id,label,refs,optional,groupContent) {
+    var status=C.groupedStatus_(state.record,refs),open=!!state.openChecks[id],singular=refs.length===1,it=singular?C.itemAt_(state.record,refs[0]):null;
+    var showToggle=status==='check'||refs.length>1||!!optional;
+    var toggleLabel=status==='check'?'内容・解消':refs.length>1?'各項目':optional?'対象外の指定':'';
+    var html='<div class="ring-check-tick-item"><div class="ring-check-tick-row'+(status==='check'?' has-issue':'')+'">' +
+      '<label class="ring-check-tick-label"><input type="checkbox" data-tick-refs="'+esc_(refs.join('|'))+'"'+(status==='good'?' checked':'')+(status==='check'||status==='na'?' disabled':'')+'><span class="ring-check-insp-label">'+esc_(label)+'</span></label>' +
+      (status==='check'?'<strong class="ring-check-issue-tag">要確認</strong>':status==='na'?'<span>対象外</span>':'') +
+      (showToggle?'<button type="button" class="ring-check-detail-toggle" data-check-open="'+esc_(id)+'" aria-expanded="'+open+'">'+esc_(toggleLabel)+'</button>':'')+'</div>' +
+      '<div class="ring-check-issue"'+(open?'':' hidden')+'>';
+    if(groupContent)html+=groupContent;
+    else if(!singular)refs.forEach(function(ref){html+=tickRow_('ref-'+ref,leafLabel_(ref),[ref],false);});
+    else {
+      if(status==='check'||it.memo)html+='<label class="ring-check-field">確認内容・メモ<textarea data-item-note="'+esc_(refs[0])+'" rows="2">'+esc_(it.memo)+'</textarea></label>';
+      if(status==='check')html+='<button type="button" data-resolve="'+esc_(refs[0])+'">確認して解消</button>';
+      if(optional)html+='<label class="ring-check-tick-label"><input type="checkbox" data-na="'+esc_(refs[0])+'"'+(status==='na'?' checked':'')+(status==='check'?' disabled':'')+'>非装備・対象外</label>';
     }
-    host.innerHTML = html;
-    host.querySelectorAll('input[type="radio"]').forEach(function (el) {
-      el.addEventListener('change', function () {
-        syncFormFromDom_();
-        renderAttention_();
-        persistDraft_();
-      });
+    return html+'</div></div>';
+  }
+  function refreshInspection_() {
+    if(!checkContext_())return;
+    syncFormFromDom_();renderInspectionPane_();renderTiresPane_();renderAttention_();persistDraft_();
+  }
+  function bindTicks_(host) {
+    host.querySelectorAll('[data-tick-refs]').forEach(function(el){el.onchange=function(){
+      if(!checkContext_())return;
+      var refs=el.dataset.tickRefs.split('|');
+      if(!C.toggleGood_(state.record,refs,el.checked))el.checked=false;
+      refreshInspection_();
+    };});
+    host.querySelectorAll('[data-check-open]').forEach(function(btn){btn.onclick=function(){
+      syncFormFromDom_();state.openChecks[btn.dataset.checkOpen]=!state.openChecks[btn.dataset.checkOpen];
+      renderInspectionPane_();renderTiresPane_();
+    };});
+    host.querySelectorAll('[data-resolve]').forEach(function(btn){btn.onclick=function(){
+      if(!checkContext_()||!confirm('実車の不具合が解消したことを確認しましたか？メモは残して、未確認へ戻します。'))return;
+      C.itemAt_(state.record,btn.dataset.resolve).status='unconfirmed';refreshInspection_();
+    };});
+    host.querySelectorAll('[data-na]').forEach(function(el){el.onchange=function(){
+      if(!checkContext_())return;var it=C.itemAt_(state.record,el.dataset.na);if(it.status!=='check')it.status=el.checked?'na':'unconfirmed';refreshInspection_();
+    };});
+    host.querySelectorAll('[data-item-note]').forEach(function(el){el.oninput=function(){if(!checkContext_())return;C.itemAt_(state.record,el.dataset.itemNote).memo=el.value;persistDraft_();};});
+  }
+  function renderInspectionPane_() {
+    var host=document.getElementById('ringCheckPaneInspection');if(!host||!state.record)return;
+    var html='<h2 class="ring-check-section-title">点検確認</h2>';
+    C.PRACTICAL_GROUPS.forEach(function(g){html+='<section class="ring-check-insp-group"><h3 class="ring-check-insp-cat">'+esc_(g.title)+'</h3>';
+      g.items.forEach(function(it){html+=tickRow_(it.id,it.label,it.refs,it.optional);});
+      if(g.title==='室内状態')html+='<button type="button" class="ring-check-secondary-btn" id="ringCheckOpenInterior">汚れ・破れ・傷を記録</button>';
+      html+='</section>';
+      if(g.title==='エンジンルーム')html+='<section id="ringCheckTireChecks"></section>';
+    });
+    var legacy=collectLegacyItemMemos_();
+    var oldBody=state.record.inspection.sections.exterior.items.body_look;
+    html+='<details class="ring-check-legacy-memo"><summary>旧記録の判定・個別メモ</summary>';
+    html+=tickRow_('legacy-body','旧：車体外観の異常',['exterior.body_look'],false);
+    var oldW=state.record.inspection.sections.exterior.items.wiper_washer;
+    html+='<p>旧ワイパー・ウォッシャーの作動：'+esc_(C.STATUS_LABELS[oldW.status])+'（新しい2項目へ引継ぎ）</p>';
+    if(legacy.length)html+='<ul class="ring-check-legacy-list">'+legacy.map(function(l){return '<li>'+esc_(l)+'</li>';}).join('')+'</ul>';
+    html+='</details>';host.innerHTML=html;bindTicks_(host);
+    document.getElementById('ringCheckOpenInterior').onclick=function(){setStep_('exterior');setDiagramKind_('interior');document.getElementById('ringCheckDiagramHost').scrollIntoView({block:'start'});};
+  }
+  function renderTiresPane_() {
+    var host=document.getElementById('ringCheckPaneTires');if(!host||!state.record)return;
+    var detail='<p class="ring-check-hint">4輪×5項目をまとめて確認します。実測値とメモは一括チェックで変更されません。</p>';
+    C.TIRE_WHEELS.forEach(function(w){
+      var t=state.record.inspection.tires[w];detail+='<section><h3>'+({FL:'左前',FR:'右前',RL:'左後',RR:'右後'}[w])+' '+w+'</h3>';
+      C.TIRE_CHECKS.forEach(function(tc){detail+=tickRow_('tire-'+w+'-'+tc.key,tc.label,['tire.'+w+'.'+tc.key],false);});
+      var units=C.PRESSURE_UNITS.slice();if(units.indexOf(t.pressureUnit)<0)units.push(t.pressureUnit);
+      detail+='<div class="ring-check-pressure-row"><label>実測空気圧<input type="number" min="0" step="any" inputmode="decimal" id="ringCheckTirePressVal_'+w+'" value="'+esc_(t.pressureValue)+'"></label><label>単位<select id="ringCheckTirePressUnit_'+w+'">'+units.map(function(u){return '<option'+(u===t.pressureUnit?' selected':'')+'>'+esc_(u)+'</option>';}).join('')+'</select></label></div>';
+      detail+='<label class="ring-check-field">タイヤのメモ<textarea id="ringCheckTireMemo_'+w+'" rows="2">'+esc_(t.wheelMemo)+'</textarea></label></section>';
+    });
+    var tireHost=document.getElementById('ringCheckTireChecks');
+    tireHost.innerHTML='<h2 class="ring-check-section-title">タイヤ</h2>'+tickRow_('tires','タイヤ4輪（空気圧・摩耗・傷・異物）',C.tireRefs_(),false,detail);
+    host.innerHTML='<h2 class="ring-check-section-title">共通メモ</h2><label class="ring-check-field">点検全体のメモ<textarea id="ringCheckOverallMemo" rows="3">'+esc_(state.record.meta.overallMemo)+'</textarea></label>';
+    bindTicks_(tireHost);
+    [tireHost,host].forEach(function(fields){fields.querySelectorAll('.ring-check-pressure-row input, textarea:not([data-item-note])').forEach(function(el){el.onchange=el.oninput=function(){if(!checkContext_())return;syncFormFromDom_();persistDraft_();};});});
+    tireHost.querySelectorAll('.ring-check-pressure-row select').forEach(function(el){
+      el.dataset.previous=el.value;el.onchange=function(){
+        var w=el.id.replace('ringCheckTirePressUnit_',''),t=state.record.inspection.tires[w];
+        if(t.pressureValue&&!confirm('数値は自動換算しません。選択した単位で実測値を確認しましたか？')){el.value=el.dataset.previous;return;}
+        syncFormFromDom_();el.dataset.previous=el.value;persistDraft_();
+      };
     });
   }
-
-  function renderTiresPane_() {
-    var host = document.getElementById('ringCheckPaneTires');
-    if (!host || !state.record) return;
-    var html = '<h2 class="ring-check-section-title">タイヤ4輪</h2>';
-    C.TIRE_WHEELS.forEach(function (w) {
-      var tw = state.record.inspection.tires[w];
-      html += '<div class="ring-check-insp-group"><h3 class="ring-check-insp-cat">【' + esc_(w) + '】</h3>';
-      C.TIRE_CHECKS.forEach(function (tc) {
-        var item = tw.items[tc.key];
-        html += '<div class="ring-check-insp-row"><div class="ring-check-insp-label">' + esc_(tc.label) + '</div>' +
-          '<div class="ring-check-options">' + tireChipHtml_(w, tc.key, item.status) + '</div></div>';
-        if (tc.key === 'pressure') {
-          html += '<div class="ring-check-insp-row ring-check-pressure-extra">' +
-            '<div class="ring-check-insp-label">実測（任意）</div>' +
-            '<input type="number" inputmode="decimal" id="ringCheckTirePressVal_' + w + '" value="' + esc_(tw.pressureValue) + '" placeholder="数値">' +
-            '<select id="ringCheckTirePressUnit_' + w + '"><option value="kPa"' + (tw.pressureUnit === 'kPa' ? ' selected' : '') + '>kPa</option><option value="psi"' + (tw.pressureUnit === 'psi' ? ' selected' : '') + '>psi</option></select></div>';
-        }
-      });
-      html += '</div>';
+  function renderRentalExtras_() {
+    var host=document.getElementById('ringCheckPaneExtras');if(!host)return;
+    var r=state.record,html='<h2 class="ring-check-section-title">貸出備品</h2><p class="ring-check-hint">貸出した備品だけ選択してください。ETCカードと車載器の点検は別です。</p>';
+    C.OPTION_FIELDS.forEach(function(o){var v=r.rentalOptions[o.id];
+      html+='<div class="ring-check-option-row"><label class="ring-check-tick-label"><input type="checkbox" data-option-issued="'+o.id+'"'+(v.issued?' checked':'')+'>'+esc_(o.label)+'・貸出あり</label>';
+      if(v.issued)html+='<label class="ring-check-tick-label"><input type="checkbox" data-option-returned="'+o.id+'"'+(v.returned?' checked':'')+'>返却確認済み</label><label class="ring-check-field">数量・備品メモ<input data-option-note="'+o.id+'" value="'+esc_(v.note)+'"></label>';
+      html+='</div>';
     });
-    var m = state.record.meta;
-    html += '<h2 class="ring-check-section-title">共通メモ</h2>' +
-      '<div class="ring-check-form-card"><label class="ring-check-field">点検全体のメモ<textarea id="ringCheckOverallMemo" rows="4" placeholder="気になった点など">' +
-      esc_(m.overallMemo) + '</textarea></label></div>';
-    host.innerHTML = html;
-    host.querySelectorAll('input, select, textarea').forEach(function (el) {
-      el.addEventListener('change', function () { syncFormFromDom_(); renderAttention_(); persistDraft_(); });
-    });
+    html+='<h2 class="ring-check-section-title">お客様への注意事項</h2><p class="ring-check-hint">店舗の条件を記入してください。未記入の条件はPDFへ記載しません。</p><details class="ring-check-guidance"><summary>説明する内容を記入・確認</summary>';
+    C.GUIDANCE_FIELDS.forEach(function(g){html+='<label class="ring-check-field">'+esc_(g.label)+'<textarea rows="2" data-guidance="'+g.id+'">'+esc_(r.customerGuidance[g.id])+'</textarea></label>';});
+    html+='</details><label class="ring-check-tick-label"><input type="checkbox" id="ringCheckExplained"'+(r.customerExplained?' checked':'')+'>お客様への説明・確認済み</label>';
+    host.innerHTML=html;
+    host.querySelectorAll('[data-option-issued]').forEach(function(el){el.onchange=function(){if(!checkContext_())return;var v=r.rentalOptions[el.dataset.optionIssued];v.issued=el.checked;if(!v.issued)v.returned=false;persistDraft_();renderRentalExtras_();};});
+    host.querySelectorAll('[data-option-returned]').forEach(function(el){el.onchange=function(){if(!checkContext_())return;r.rentalOptions[el.dataset.optionReturned].returned=el.checked;persistDraft_();};});
+    host.querySelectorAll('[data-option-note]').forEach(function(el){el.oninput=function(){if(!checkContext_())return;r.rentalOptions[el.dataset.optionNote].note=el.value;persistDraft_();};});
+    host.querySelectorAll('[data-guidance]').forEach(function(el){el.oninput=function(){if(!checkContext_())return;r.customerGuidance[el.dataset.guidance]=el.value;persistDraft_();};});
+    document.getElementById('ringCheckExplained').onchange=function(ev){if(!checkContext_())return;r.customerExplained=ev.target.checked;persistDraft_();};
   }
 
   function renderPhotoWarn_() {
     var host = document.getElementById('ringCheckPhotoWarn');
     if (!host) return;
-    host.innerHTML = '<p class="ring-check-photo-note">写真はこの作業セッション内のみ保持し、PDFに埋め込みます。再読み込み・画面を閉じると写真は消えます（展開図・点検下書きはIndexedDB）。</p>';
+    host.textContent = '写真はPDFに保存してください。再読み込み・画面を閉じると写真は消えます。';
   }
 
   function revokePhotoUrls_(photos) {
@@ -900,6 +1296,7 @@
   }
 
   function openPhotoModal_(objectUrl) {
+    if(!checkContext_())return;
     if (!objectUrl) return;
     closePhotoModal_();
     var modal = document.createElement('div');
@@ -1014,12 +1411,14 @@
     var inp = document.getElementById('ringCheckPhotoInput');
     if (!inp) return;
     inp.addEventListener('change', async function () {
+      if(!checkContext_())return;
       var files = Array.from(inp.files || []);
       if (!files.length) return;
       try {
         for (var fi = 0; fi < files.length; fi++) {
           if (photoReplaceIndex_ != null) {
             var rep = await compressImageFile_(files[0]);
+            if(!checkContext_())return;
             revokePhotoUrls_([state.photos[photoReplaceIndex_]]);
             state.photos[photoReplaceIndex_] = {
               dataUrl: rep.dataUrl,
@@ -1035,6 +1434,7 @@
             break;
           }
           var pack = await compressImageFile_(files[fi]);
+          if(!checkContext_())return;
           state.photos.push({
             dataUrl: pack.dataUrl,
             objectUrl: pack.dataUrl,
@@ -1053,20 +1453,30 @@
   function renderPdfPane_() {
     var host = document.getElementById('ringCheckPanePdf');
     if (!host) return;
-    host.innerHTML = '<h2 class="ring-check-section-title">PDF確認・作成</h2>' +
-      '<div class="ring-check-form-card">' +
-      '<p class="ring-check-hint">端末内でPDFを生成しダウンロードします。Googleドライブへの自動保存は行いません。</p>' +
+    var photoN = state.photos.length;
+    var photoLine = photoN
+      ? '<li>写真：' + photoN + ' 枚（この画面を閉じると消えます）</li>'
+      : '<li>写真：なし</li>';
+    var photoWarn = photoN
+      ? '<p class="ring-check-photo-pdf-warn" role="status">写真は端末内の一時データです。戻る前に「PDFを作成」で手元に残してください（写真単体は保存されません）。</p>'
+      : '';
+    host.innerHTML = '<h2 class="ring-check-section-title">PDF確認</h2>' +
+      '<div class="ring-check-form-card ring-check-pdf-summary-card">' +
       '<ul class="ring-check-pdf-summary"><li>用途：' + esc_(C.purposeLabel_(state.record.meta.purpose)) + '</li>' +
-      '<li>要確認：' + C.countAttention_(state.record) + ' 件</li>' +
-      '<li>マーク：' + state.marks.length + ' 件</li>' +
-      '<li>写真：' + state.photos.length + ' 枚（セッション内）</li></ul>' +
-      '<button type="button" class="ring-check-save-btn" id="ringCheckMakePdf">PDFを作成</button>' +
-      '<p id="ringCheckPdfStatus" class="ring-check-muted"></p></div>';
+      '<li>要確認：' + C.practicalWarnings_(state.record).check + ' 件</li>' +
+      '<li>外装：' + state.marks.length + ' 件 ／ 室内：' + state.interiorMarks.length + ' 件</li>' +
+      photoLine + '</ul></div>' +
+      photoWarn +
+      '<div class="ring-check-pdf-actions">' +
+      '<button type="button" class="ring-check-btn-save-back" id="ringCheckSaveAndBack">保存して戻る</button>' +
+      '<button type="button" class="ring-check-btn-make-pdf" id="ringCheckMakePdf">PDFを作成</button></div>' +
+      '<p id="ringCheckPdfStatus" class="ring-check-muted ring-check-pdf-status"></p>';
     document.getElementById('ringCheckMakePdf').onclick = function () { runPdfCreate_(); };
+    document.getElementById('ringCheckSaveAndBack').onclick = function () { runSaveAndBack_(); };
   }
 
   async function runPdfCreate_() {
-    if (state.pdfBusy) return;
+    if (!checkContext_() || state.pdfBusy) return;
     var status = document.getElementById('ringCheckPdfStatus');
     var PdfApi = typeof ringFleetCheckSheetPdf_ !== 'undefined' ? ringFleetCheckSheetPdf_ : null;
     if (!PdfApi || typeof PDFLib === 'undefined') {
@@ -1075,9 +1485,12 @@
       return;
     }
     syncFormFromDom_();
+    var badPressure=Array.prototype.some.call(document.querySelectorAll('.ring-check-pressure-row input'),function(el){return !el.checkValidity();});
+    if(badPressure){if(status)status.textContent='空気圧には0以上の実測値を入力し、単位を確認してください。';return;}
     state.pdfBusy = true;
     if (status) status.textContent = '作成中…';
     try {
+      state.record.interiorMarks=C.cloneMarks_(state.interiorMarks);
       var v = state.vehicle;
       var result = await PdfApi.generateCheckSheetPdf_({
         core: C,
@@ -1092,6 +1505,11 @@
           vin: v.vin
         }
       });
+      if(!checkContext_())return;
+      await persistDraft_();
+      renderPdfPane_();
+      renderAttention_();
+      status = document.getElementById('ringCheckPdfStatus');
       var blob = new Blob([result.bytes], { type: 'application/pdf' });
       var a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
@@ -1108,39 +1526,85 @@
     }
   }
 
-  async function saveSnapshotFlow_() {
-    syncFormFromDom_();
-    if (!state.record) return;
-    if (!state.idbAvailable) {
-      renderLocalBanner_([]);
-      if (typeof showToast === 'function') showToast('error', 'この端末に保存できません。ブラウザの設定をご確認ください。');
-      return;
-    }
-    state.record.marks = C.cloneMarks_(state.marks);
+  async function saveSnapshotFlow_(silent) {
+    if (!checkContext_() || !state.record || state.snapshotBusy) return false;
+    var layout = document.querySelector('.ring-check-layout');
+    var wasInert = layout.inert;
+    state.snapshotBusy = true;
+    layout.inert = true;
     try {
-      await C.snapshotDraft_(state.record);
-      await persistDraft_();
-      var snaps2 = await C.idbListSnapshots_(C.shopVinKey_(profile.shopId, vin));
-      renderLocalBanner_(snaps2);
-      if (typeof showToast === 'function') showToast('success', '下書きを保存しました');
-    } catch (e) {
-      state.idbAvailable = false;
-      if (typeof showToast === 'function') showToast('error', '保存に失敗しました。この端末に記録は残りません。');
-      renderLocalBanner_([]);
+      syncFormFromDom_();
+      var record = state.record;
+      record.marks = C.cloneMarks_(state.marks);
+      record.interiorMarks = C.cloneMarks_(state.interiorMarks);
+      record.draftOwnerUserId = String(profile.userId || profile.id || '');
+      var next = C.freshActiveRecord_(profile.shopId, vin, record.draftOwnerUserId, record);
+      var snap;
+      try {
+        // Finish earlier autosaves so none can replace the next draft after it commits.
+        await Promise.all(state.draftWrites);
+        if (!checkContext_()) return false;
+        snap = await C.saveSnapshotAndNextDraft_(record, next);
+      } catch (e) {
+        if (checkContext_()) {
+          state.idbAvailable = false;
+          renderLocalBanner_([]);
+          if (!silent && typeof showToast === 'function') showToast('error', '保存できませんでした。再試行してください。');
+        }
+        return false;
+      }
+      if (!checkContext_()) return false;
+      state.idbAvailable = true;
+      state.record = next;
+      revokePhotoUrls_(state.photos);
+      state.photos = [];
+      state.openChecks = {};
+      if (!silent) refreshAfterInspectionReset_();
+      renderLocalBanner_([snap]);
+      return true;
+    } finally {
+      state.snapshotBusy = false;
+      layout.inert = wasInert;
+    }
+  }
+
+  async function runSaveAndBack_() {
+    if (!checkContext_() || state.saveBackBusy || state.pdfBusy) return;
+    var status = document.getElementById('ringCheckPdfStatus');
+    var backBtn = document.getElementById('ringCheckSaveAndBack');
+    var pdfBtn = document.getElementById('ringCheckMakePdf');
+    state.saveBackBusy = true;
+    backBtn.disabled = true;
+    pdfBtn.disabled = true;
+    status.textContent = '保存しています…';
+    try {
+      var saved = await saveSnapshotFlow_(true);
+      if (!checkContext_()) return;
+      if (!saved) {
+        status.textContent = '保存できませんでした。空き容量やブラウザの設定を確認して再試行してください。';
+        return;
+      }
+      status.textContent = '保存しました。レンタカー管理へ戻ります。';
+      if (typeof showToast === 'function') showToast('success', 'チェックシートを端末に保存しました');
+      goBackToFleet_();
+    } finally {
+      state.saveBackBusy = false;
+      backBtn.disabled = false;
+      pdfBtn.disabled = false;
     }
   }
 
   function pushUndo_(entry) {
-    state.undo.push(entry);
-    if (state.undo.length > 50) state.undo.shift();
+    activeUndo_().push(entry);
+    if (activeUndo_().length > 50) activeUndo_().shift();
   }
 
   function placeMarkAtClient_(region, regionG, clientX, clientY) {
-    if (state.mode !== 'scratch' && state.mode !== 'dent' && state.mode !== 'other') return;
+    if (!checkContext_() || !modeIsPlace_()) return;
     var rect = regionG.getBoundingClientRect();
     var pt = C.relPointFromClient_(clientX, clientY, rect);
-    var mark = C.newMark_(region, pt.nx, pt.ny, state.mode, '');
-    state.marks.push(mark);
+    var mark = (state.diagramKind==='interior'?C.newInteriorMark_:C.newMark_)(region, pt.nx, pt.ny, state.mode, '');
+    activeMarks_().push(mark);
     pushUndo_({ action: 'add', mark: Object.assign({}, mark) });
     renderMarks_();
     renderMarkList_();
@@ -1148,14 +1612,15 @@
   }
 
   function modeIsPlace_() {
-    return state.mode === 'scratch' || state.mode === 'dent' || state.mode === 'other';
+    return state.diagramKind==='interior'?!!C.INTERIOR_TYPES[state.mode]:(state.mode === 'scratch' || state.mode === 'dent' || state.mode === 'other');
   }
 
   function onMarkActivate_(id) {
+    if(!checkContext_())return;
     if (state.mode === 'delete') {
-      var idx = state.marks.findIndex(function (m) { return m.id === id; });
+      var idx = activeMarks_().findIndex(function (m) { return m.id === id; });
       if (idx >= 0) {
-        var removed = state.marks.splice(idx, 1)[0];
+        var removed = activeMarks_().splice(idx, 1)[0];
         pushUndo_({ action: 'remove', mark: Object.assign({}, removed) });
         renderMarks_();
         renderMarkList_();
@@ -1164,8 +1629,8 @@
       return;
     }
     state.selectedMarkId = id;
+    state.detailMarkId = id;
     renderMarks_();
-    openMarkDetail_(id);
   }
 
   function ensureWindowPointerHandlers_() {
@@ -1237,7 +1702,7 @@
         };
       });
     });
-    host.addEventListener('pointerdown', function (ev) {
+    if(!host.__ringMarkBound) { host.__ringMarkBound=true; host.addEventListener('pointerdown', function (ev) {
       var mk = ev.target.closest && ev.target.closest('.ring-check-mark');
       if (!mk) return;
       var id = mk.getAttribute('data-mark-id');
@@ -1251,33 +1716,17 @@
         scrolled: false
       };
       ev.stopPropagation();
-    }, true);
+    }, true); }
     renderMarks_();
   }
 
   function renderMarkList_() {
     var host = document.getElementById('ringCheckMarkList');
-    if (!host) return;
-    if (!state.marks.length) {
-      host.innerHTML = '<p class="ring-check-muted">マークはまだありません</p>';
-      return;
-    }
-    var labels = { scratch: '傷', dent: 'へこみ', other: 'その他' };
-    host.innerHTML = state.marks.map(function (m) {
-      return '<button type="button" class="ring-check-mark-row" data-mark-row="' + esc_(m.id) + '">' +
-        '<span class="ring-check-mark-sym">' + esc_(C.markSymbol_(m.type)) + '</span>' +
-        '<span>' + esc_(labels[m.type] || m.type) + ' · ' + esc_(m.region) +
-        (m.memo ? ' — ' + esc_(m.memo) : '') + '</span></button>';
-    }).join('');
-    host.querySelectorAll('[data-mark-row]').forEach(function (btn) {
-      btn.onclick = function () {
-        openMarkDetail_(btn.getAttribute('data-mark-row'));
-      };
-    });
+    if (!host || host.hidden) return;
   }
 
   function markById_(markId) {
-    return C.findMarkInList_(state.marks, markId);
+    return C.findMarkInList_(activeMarks_(), markId);
   }
 
   function syncTypePickActive_(wrap, mark) {
@@ -1289,10 +1738,9 @@
 
   function closeMarkDetail_() {
     state.detailMarkId = '';
-    var wrap = document.getElementById('ringCheckDetail');
-    if (wrap) wrap.hidden = true;
   }
 
+  /** 画面上のマーク詳細パネルは廃止。選択状態の更新と既存メモの保持のみ。 */
   function openMarkDetail_(id, opts) {
     opts = opts || {};
     id = String(id || '').trim();
@@ -1303,73 +1751,13 @@
       return;
     }
     state.detailMarkId = id;
-    var wrap = document.getElementById('ringCheckDetail');
-    if (!wrap) return;
-    wrap.hidden = false;
-    var labels = { scratch: '傷', dent: 'へこみ', other: 'その他' };
-    var memoVal = m.memo;
-    if (opts.preserveMemo !== undefined) memoVal = opts.preserveMemo;
-    else if (opts.initialMemo !== undefined) memoVal = opts.initialMemo;
-    wrap.innerHTML = '<h3>マーク詳細</h3>' +
-      '<p><strong>部位：</strong>' + esc_(m.region) + '</p>' +
-      '<p class="ring-check-field-label">種別</p>' +
-      '<div class="ring-check-type-pick" id="ringCheckTypePick">' +
-      ['scratch', 'dent', 'other'].map(function (t) {
-        var active = m.type === t ? ' is-active' : '';
-        return '<button type="button" class="ring-check-type-btn' + active + '" data-type-pick="' + t + '">' +
-          esc_(C.markSymbol_(t)) + ' ' + esc_(labels[t]) + '</button>';
-      }).join('') +
-      '</div>' +
-      '<label class="ring-check-field">メモ<textarea id="ringCheckMemo" rows="3">' + esc_(memoVal) + '</textarea></label>' +
-      '<div class="ring-check-detail-actions">' +
-      '<button type="button" class="primary" id="ringCheckMemoSave">反映して閉じる</button>' +
-      '<button type="button" id="ringCheckMarkDel">このマークを削除</button>' +
-      '<button type="button" id="ringCheckDetailClose">閉じる</button></div>';
-    wrap.setAttribute('data-detail-mark-id', id);
-    wrap.querySelectorAll('[data-type-pick]').forEach(function (btn) {
-      btn.onclick = function () {
-        var newType = btn.getAttribute('data-type-pick');
-        var cur = markById_(id);
-        if (!cur || !newType || cur.type === newType) return;
-        pushUndo_({
-          action: 'change_type',
-          markId: id,
-          prevType: cur.type,
-          nextType: newType
-        });
-        C.setMarkType_(cur, newType);
-        syncTypePickActive_(wrap, cur);
-        renderMarks_();
-        renderMarkList_();
-        persistDraft_();
-      };
-    });
-    document.getElementById('ringCheckMemoSave').onclick = function () {
-      var cur = markById_(id);
-      if (!cur) {
-        closeMarkDetail_();
-        return;
-      }
-      var memo = String(document.getElementById('ringCheckMemo').value || '');
-      C.applyMarkEditsById_(state.marks, id, { memo: memo });
-      renderMarkList_();
-      persistDraft_();
-      closeMarkDetail_();
-    };
-    document.getElementById('ringCheckMarkDel').onclick = function () {
-      var cur = markById_(id);
-      if (!cur) {
-        closeMarkDetail_();
-        return;
-      }
-      state.marks = state.marks.filter(function (x) { return x.id !== id; });
-      pushUndo_({ action: 'remove', mark: Object.assign({}, cur) });
-      renderMarks_();
-      renderMarkList_();
-      persistDraft_();
-      closeMarkDetail_();
-    };
-    document.getElementById('ringCheckDetailClose').onclick = function () { closeMarkDetail_(); };
+    state.selectedMarkId = id;
+    if (opts.preserveMemo !== undefined) {
+      C.applyMarkEditsById_(activeMarks_(), id, { memo: opts.preserveMemo });
+    } else if (opts.initialMemo !== undefined) {
+      C.applyMarkEditsById_(activeMarks_(), id, { memo: opts.initialMemo });
+    }
+    renderMarks_();
   }
 
   function setMode_(mode) {
@@ -1377,6 +1765,21 @@
     document.querySelectorAll('[data-check-mode]').forEach(function (btn) {
       btn.classList.toggle('is-active', btn.getAttribute('data-check-mode') === mode);
     });
+    if (modeIsPlace_() && state.selectedMarkId) {
+      var cur = markById_(state.selectedMarkId);
+      if (cur && cur.type !== mode) {
+        pushUndo_({
+          action: 'change_type',
+          markId: cur.id,
+          prevType: cur.type,
+          nextType: mode
+        });
+        if(state.diagramKind==='interior')cur.type=mode;else C.setMarkType_(cur, mode);
+        renderMarks_();
+        renderMarkList_();
+        persistDraft_();
+      }
+    }
   }
 
   function renderHeader_() {
@@ -1399,40 +1802,25 @@
   function renderLocalBanner_(snapshots) {
     var host = document.getElementById('ringCheckLocalBanner');
     if (!host) return;
-    var latest = snapshots && snapshots.length ? snapshots[0] : null;
+    var uid=String(profile.userId||profile.id||'');
+    snapshots=(snapshots||[]).filter(function(r){return !r.draftOwnerUserId||r.draftOwnerUserId===uid;});
+    var latest = snapshots.length ? snapshots[0] : null;
     var txt = 'この端末にのみ保存されます。他端末とは共有されません。';
     if (state.idbAvailable && latest) {
       txt += ' 保存記録：' + String(latest.savedAt || '').slice(0, 19).replace('T', ' ') + '（' + (latest.marks || []).length + '件）';
     }
     host.innerHTML = idbWarnHtml_() +
-      '<div class="ring-check-banner-normal"><p>' + esc_(txt) + '</p>' +
-      (state.idbAvailable && latest
-        ? '<button type="button" class="ring-check-link-btn" id="ringCheckResumeBtn">前回記録を引き継いで編集（コピー）</button>'
-        : '') +
-      '</div>';
-    var btn = document.getElementById('ringCheckResumeBtn');
-    if (btn) {
-      btn.onclick = function () {
-        if (!latest || !state.idbAvailable) return;
-        var ok = confirm('前回の保存記録をコピーして編集します。元の保存記録は変更されません。よろしいですか？');
-        if (!ok) return;
-        state.record = C.copyRecordForEdit_(latest, profile.shopId, vin);
-        state.marks = C.cloneMarks_(latest.marks);
-        state.undo = [];
-        renderBasicPane_();
-        renderInspectionPane_();
-        renderTiresPane_();
-        renderPdfPane_();
-        renderAttention_();
-        renderMarks_();
-        renderMarkList_();
-        persistDraft_().then(function () {
-          return C.idbListSnapshots_(C.shopVinKey_(profile.shopId, vin));
-        }).then(function (fresh) {
-          renderLocalBanner_(fresh || snapshots);
-        });
-      };
-    }
+      '<div class="ring-check-banner-normal"><p>' + esc_(txt) + '</p></div>';
+  }
+
+  function refreshAfterInspectionReset_() {
+    renderBasicPane_();
+    renderInspectionPane_();
+    renderTiresPane_();
+    renderRentalExtras_();
+    renderPdfPane_();
+    renderAttention_();
+    renderPhotosPane_();
   }
 
   async function initPage_() {
@@ -1445,12 +1833,15 @@
       var boot = ringBootAuthForMode(userRole === 'dealer' ? 'business' : 'shop');
       if (!boot.ok) { location.replace(boot.redirect || 'login.html'); return; }
     }
-    var context = ringCaptureRequestContext_();
+    bindShellNavigationOnce_();
+    var context = ringCaptureRequestContext_();pageContext=context;
     state.vehicle = findVehicle_();
     var sync = null;
     if (!state.vehicle && state.vehicleError !== 'AMBIGUOUS_VIN') {
       var note = document.createElement('p'); note.className = 'empty-msg'; note.textContent = '車両情報を取得中です…';
-      document.getElementById('ringCheckMain').prepend(note);
+      var guard = document.getElementById('ringCheckGuardHost');
+      if (guard) { guard.hidden = false; guard.insertBefore(note, guard.firstChild); }
+      else document.getElementById('ringCheckMain').prepend(note);
       try { sync = await syncVehiclesFromServer({returnStatus:true}); } catch (_) { sync = {ok:false}; }
       note.remove();
       if (!ringRequestContextIsCurrent_(context)) return;
@@ -1459,10 +1850,14 @@
     if (!state.vehicle) {
       var message = state.vehicleError === 'AMBIGUOUS_VIN' ? '同じ車台番号の候補が複数あります。車両情報を確認してください。'
         : (sync && !sync.ok ? '車両情報を取得できません。接続・認証を確認して再読み込みしてください。' : 'この店舗の車両が見つかりません。');
-      document.getElementById('ringCheckMain').innerHTML = '<p class="empty-msg">' + message + '</p><button type="button" onclick="location.reload()">再読み込み</button>';
+      showEditorLockPlaceholder_();
+      var errHost = document.getElementById('ringCheckGuardHost');
+      if (errHost) {
+        errHost.hidden = false;
+        errHost.innerHTML = '<p class="empty-msg">' + message + '</p><button type="button" class="ring-check-secondary-btn" onclick="location.reload()">再読み込み</button>';
+      }
       return;
     }
-    // Lookup canonicalization must never rename a pre-existing IndexedDB key.
     vin = String(state.vehicle.vin || vin).trim().toUpperCase();
     renderHeader_();
     var active = null;
@@ -1474,81 +1869,29 @@
     } catch (e) {
       state.idbAvailable = false;
     }
+    if (!checkContext_()) return;
+    var currentUser = String(profile.userId || profile.id || '');
+    if (active && !active.draftOwnerUserId) {
+      showLegacyDraftGate_(currentUser);
+      return;
+    }
+    if (active && active.draftOwnerUserId && active.draftOwnerUserId !== currentUser) {
+      showOtherUserDraftGate_();
+      return;
+    }
+    snaps = snaps.filter(function (r) { return !r.draftOwnerUserId || r.draftOwnerUserId === currentUser; });
     if (active) {
       state.record = C.normalizeRecord_(active);
       state.marks = C.cloneMarks_(active.marks || []);
+      state.interiorMarks = C.cloneMarks_(active.interiorMarks || []);
     } else {
-      state.record = C.copyRecordForEdit_(null, profile.shopId, vin);
-      state.marks = [];
+      var markSrc = C.latestMarkSource_(snaps, profile.shopId, vin, currentUser);
+      var bundle = markSrc ? { marks: markSrc.marks, interiorMarks: markSrc.interiorMarks } : null;
+      state.record = C.freshActiveRecord_(profile.shopId, vin, currentUser, bundle);
+      state.marks = C.cloneMarks_(bundle && bundle.marks || []);
+      state.interiorMarks = C.cloneMarks_(bundle && bundle.interiorMarks || []);
     }
-    renderLocalBanner_(snaps);
-    renderPhotoWarn_();
-    renderBasicPane_();
-    renderInspectionPane_();
-    renderTiresPane_();
-    renderPhotosPane_();
-    renderPdfPane_();
-    renderAttention_();
-    bindPhotoInput_();
-    closePhotoModal_();
-    setStep_('exterior');
-    bindDiagram_();
-    renderMarks_();
-    renderMarkList_();
-    setMode_('scratch');
-
-    document.querySelectorAll('#ringCheckSteps [data-step]').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        if (state.step === 'inspect') syncFormFromDom_();
-        setStep_(btn.getAttribute('data-step'));
-        if (normalizeStep_(btn.getAttribute('data-step')) === 'exterior') renderPdfPane_();
-      });
-    });
-
-    window.addEventListener('beforeunload', function (ev) {
-      if (!state.photos.length) return;
-      ev.preventDefault();
-      ev.returnValue = '写真はセッション内のみです。離脱すると失われます。';
-    });
-
-    document.getElementById('ringCheckBack').onclick = function () {
-      if (document.referrer && document.referrer.indexOf('rental_fleet') >= 0) {
-        history.back();
-      } else {
-        location.href = 'rental_fleet.html';
-      }
-    };
-
-    document.querySelectorAll('[data-check-mode]').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        setMode_(btn.getAttribute('data-check-mode'));
-      });
-    });
-
-    document.getElementById('ringCheckUndo').onclick = function () {
-      var entry = state.undo.pop();
-      if (!entry) return;
-      var detailId = state.detailMarkId;
-      var wrap = document.getElementById('ringCheckDetail');
-      var detailOpen = !!(detailId && wrap && !wrap.hidden);
-      var preserveMemo;
-      if (detailOpen) {
-        var ta = document.getElementById('ringCheckMemo');
-        if (ta) preserveMemo = ta.value;
-      }
-      state.marks = C.applyUndo_(state.marks, entry);
-      renderMarks_();
-      renderMarkList_();
-      persistDraft_();
-      if (detailOpen && detailId && markById_(detailId)) {
-        openMarkDetail_(detailId, { preserveMemo: preserveMemo });
-      } else if (detailOpen) {
-        closeMarkDetail_();
-      }
-    };
-
-    var saveSnapBtn = document.getElementById('ringCheckSaveSnap');
-    if (saveSnapBtn) saveSnapBtn.onclick = function () { return saveSnapshotFlow_(); };
+    bootEditorUi_(snaps);
   }
 
   window.addEventListener('DOMContentLoaded', initPage_);

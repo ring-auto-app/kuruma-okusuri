@@ -33,8 +33,8 @@
     })();
   </script>
   <link rel="stylesheet" href="common.css">
-  <link rel="stylesheet" href="fleet-check-sheet.css?v=20261114-v42" integrity="sha256-ycrkrvafkoyeJIuSNoPtNsJAzQBeG90MH7I+dJjsqkI= sha256-eeiCtwpSFNpjTjQsNAefmAssmHkwB7BFjT+syDvam/Q=" crossorigin="anonymous" onload="ringCheckAssetLoaded()" onerror="ringCheckAssetFailed()">
-  <script src="app.js?v=20261114-v42" integrity="sha256-aT+0fIlNYULT6ndA9A87tM0+/wa2bPJr9vgv3CWo34g= sha256-xOVotDaeCes3eJdwrlE3aDEuZqvnaJ9fWbjnvp0o2Is=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
+  <link rel="stylesheet" href="fleet-check-sheet.css?v=20261117-v49" integrity="sha256-KUlSnVE5rx6vluIztrN6ygMBNLSFmARexU8Hj7CgP1w= sha256-u3iVb6Bi3XY2k1NMS+zhxGJc1c1KRZY2ZjK/y48hbMA=" crossorigin="anonymous" onload="ringCheckAssetLoaded()" onerror="ringCheckAssetFailed()">
+  <script src="app.js?v=20261118-v50" integrity="sha256-ZevdKzRSCi4Z3RoWBO5isnEHEfBYWWROfSjloAKrSFc= sha256-00mt5W4gxaY949Uzz47wWzw/2bttpeuWaMvdgoIFA5o=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
   <script src="theme.js"></script>
 </head>
 <body class="ring-check-page">
@@ -51,30 +51,30 @@
     </header>
 
     <nav class="ring-check-main-tabs" id="ringCheckSteps" aria-label="チェックシート区分">
-      <button type="button" class="is-active" data-step="exterior">外装（展開図）</button>
-      <button type="button" data-step="inspect">点検項目</button>
+      <button type="button" class="is-active" data-step="inspect">点検項目</button>
+      <button type="button" data-step="exterior">外装（展開図）</button>
     </nav>
 
     <main id="ringCheckMain" class="ring-check-main">
-      <section class="ring-check-pane is-active" data-pane="exterior" id="ringCheckPaneExterior">
+      <div id="ringCheckGuardHost" class="ring-check-guard-host" hidden></div>
+      <section class="ring-check-pane" data-pane="exterior" id="ringCheckPaneExterior">
+        <nav class="ring-check-diagram-tabs" aria-label="図の切替"><button type="button" data-diagram-kind="exterior" class="is-active" aria-pressed="true">外装</button><button type="button" data-diagram-kind="interior" aria-pressed="false">室内</button></nav>
         <div class="ring-check-diagram-wrap">
           <p class="ring-check-hint ring-check-hint-compact">傷・へこみを付けたい場所をタップ。マークは端末に下書き保存されます。</p>
           <div id="ringCheckDiagramHost" class="ring-check-diagram-host"></div>
         </div>
-        <aside class="ring-check-side ring-check-side-inline">
-          <h2 class="ring-check-section-title">マーク一覧</h2>
-          <div id="ringCheckMarkList" class="ring-check-mark-list"></div>
-          <button type="button" id="ringCheckSaveSnap" class="ring-check-save-btn">この端末に保存</button>
-        </aside>
-        <div id="ringCheckDetail" class="ring-check-detail" hidden></div>
+        <button type="button" id="ringCheckSaveSnap" hidden aria-hidden="true" tabindex="-1">この端末に保存</button>
+        <div id="ringCheckMarkList" class="ring-check-mark-list" hidden aria-hidden="true"></div>
+        <div id="ringCheckDetail" class="ring-check-detail" hidden aria-hidden="true"></div>
         <section class="ring-check-subblock" id="ringCheckPanePhotos"></section>
         <section class="ring-check-subblock" id="ringCheckPanePdf"></section>
       </section>
 
-      <section class="ring-check-pane" data-pane="inspect" id="ringCheckPaneInspect">
+      <section class="ring-check-pane is-active" data-pane="inspect" id="ringCheckPaneInspect">
         <section id="ringCheckPaneBasic"></section>
         <section id="ringCheckPaneInspection"></section>
         <section id="ringCheckPaneTires"></section>
+        <section id="ringCheckPaneExtras"></section>
       </section>
     </main>
 
@@ -88,7 +88,7 @@
   </div>
   <input type="file" id="ringCheckPhotoInput" accept="image/*" multiple hidden />
   <script src="vendor/pdf-lib.min.js"></script>
-  <script src="fleet-check-sheet.js?v=20261114-v42" integrity="sha256-yXMYbQ2eEoIGSfMbVwDEDCVCeccs3SXJDGC0/nkUNMo= sha256-cBXKxzQEFsD0fqpr5prMEsyqeqgNr85n63VGoOkMLsw=" crossorigin="anonymous" onload="ringCheckAssetLoaded()" onerror="ringCheckAssetFailed()"></script>
-  <script src="fleet-check-sheet-pdf.js?v=20261114-v42" integrity="sha256-1MDGUrXhjYrg1v9DVWxzfQz95crOoTZ3kF+e0b6Cz9s= sha256-pN8saJslYgNTvY66UVR9Jm9U/qw1kZwlFV1oJ9MKm8I=" crossorigin="anonymous" onload="ringCheckAssetLoaded()" onerror="ringCheckAssetFailed()"></script>
+  <script src="fleet-check-sheet.js?v=20261118-v50" integrity="sha256-xWIz6wZDly2n/OYopmYdDSXY43iJIG5K4klADridoU4= sha256-gGWuMw+++7QGAXVlD6aUXq0Fl8PI2NX5KMBN5foXNJM=" crossorigin="anonymous" onload="ringCheckAssetLoaded()" onerror="ringCheckAssetFailed()"></script>
+  <script src="fleet-check-sheet-pdf.js?v=20261115-v44" integrity="sha256-5phhwlaCcSxH/fdD0Cf6Go7pj5/dv1uGvV4IfE3/qI4= sha256-OhSxpY7Ow9DNeL8n1fTc52xFsnFuTMRZUJDiPEbtwjY=" crossorigin="anonymous" onload="ringCheckAssetLoaded()" onerror="ringCheckAssetFailed()"></script>
 </body>
 </html>

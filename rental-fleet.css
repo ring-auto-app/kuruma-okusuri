@@ -183,6 +183,31 @@
   background: var(--paper);
 }
 
+/* 予約詳細・モーダル内のチェックシートリンク（マーク用ツールバーとは別） */
+.ring-fleet-checksheet-link {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow-wrap: anywhere;
+}
+
+.ring-fleet-checksheet-link,
+#fleetMobDetailHost .car-info-btn,
+#fleetDetailPanel .car-info-btn,
+.ring-fleet-mob-sheet-body .car-info-btn {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  margin: 0 0 12px;
+  min-height: var(--tap-min, 44px);
+  padding: 10px 12px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.35;
+}
+
 .car-meta {
   font-size: 12px;
   font-weight: 700;
@@ -759,6 +784,11 @@
     font-weight: 800;
     color: #b45309;
     margin: 0 0 10px;
+    line-height: 1.35;
+  }
+
+  .ring-fleet-summary-hint.is-error {
+    color: #b91c1c;
   }
 
   .ring-fleet-mob-history {
@@ -993,6 +1023,13 @@
     overflow: auto;
     padding: 12px 16px 20px;
     -webkit-overflow-scrolling: touch;
+    min-width: 0;
+  }
+
+  .ring-fleet-mob-sheet-body .ring-fleet-detail-actions,
+  .ring-fleet-mob-sheet-body .ring-fleet-field {
+    min-width: 0;
+    max-width: 100%;
   }
 }
 
@@ -1061,6 +1098,11 @@
     font-weight: 800;
     color: #b45309;
     margin: -6px 0 12px;
+    line-height: 1.35;
+  }
+
+  .ring-fleet-summary-hint.is-error {
+    color: #b91c1c;
   }
 
   .ring-fleet-desk-main {
@@ -1356,6 +1398,23 @@
     margin: 0 auto;
   }
 
+  .ring-fleet-empty-onboard--sync {
+    padding: 10px 14px;
+    margin-bottom: 12px;
+    text-align: left;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+  }
+
+  .ring-fleet-sync-fail-compact {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1.45;
+    color: #991b1b;
+  }
+
   .ring-fleet-today-panel {
     font-size: 12px;
     font-weight: 700;
@@ -1542,3 +1601,9 @@
   font-weight: 700;
   color: #64748b;
 }
+
+/* v45: the same accessible confirmation sheet owns every creation path. */
+button.ring-fleet-avail-card { display:block; width:100%; min-width:0; box-sizing:border-box; text-align:left; font:inherit; color:inherit; }
+.ring-fleet-card-action { display:block; margin-top:8px; color:#1d4ed8; font-size:13px; font-weight:800; }
+.ring-fleet-wizard-restart { max-width:100%; min-height:44px; margin:0 0 12px; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; background:#f8fafc; color:#334155; font-weight:700; white-space:normal; }
+.ring-fleet-wizard-inner { box-sizing:border-box; }

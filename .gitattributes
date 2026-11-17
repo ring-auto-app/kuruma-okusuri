@@ -1,0 +1,7 @@
+# Keep the published check sheet and its cache manifest in canonical LF form.
+/fleet_check_sheet.html text eol=lf
+/fleet-check-sheet.js text eol=lf
+/fleet-check-sheet.css text eol=lf
+/fleet-check-sheet-pdf.js text eol=lf
+/service-worker.js text eol=lf
+/app.js text eol=lf

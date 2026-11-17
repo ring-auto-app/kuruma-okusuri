@@ -177,13 +177,13 @@
     return { png: dataUrlToUint8_(canvas.toDataURL('image/png')), width: canvas.width, height: canvas.height, lineHeight: lh };
   }
 
-  function diagramToPng_(C, marks, positions) {
+  function diagramToPng_(C, marks, positions, interior) {
     if (typeof document === 'undefined' || !C) return new Uint8Array(0);
     var wrap = document.createElement('div');
     wrap.style.position = 'fixed';
     wrap.style.left = '-9999px';
     wrap.style.top = '0';
-    wrap.innerHTML = C.diagramSvgMarkup_();
+    wrap.innerHTML = interior?C.interiorSvgMarkup_():C.diagramSvgMarkup_();
     document.body.appendChild(wrap);
     var svg = wrap.querySelector('svg');
     var layer = wrap.querySelector('#ringCheckMarksLayerPdf');
@@ -202,7 +202,9 @@
       if (!point) return;
       var cx = point.x, cy = point.y;
       if (positions) positions.push({id:m.id, region:m.region, x:cx, y:cy});
-      if (m.type === 'scratch') {
+      if(interior){
+        html+='<g transform="translate('+cx+','+cy+')"><text text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="24" font-weight="700" fill="#000">'+(C.INTERIOR_TYPES[m.type]||'')+'</text></g>';
+      } else if (m.type === 'scratch') {
         html += '<g transform="translate(' + cx + ',' + cy + ')"><circle r="10" fill="#000"/></g>';
       } else if (m.type === 'dent') {
         html += '<g transform="translate(' + cx + ',' + cy + ')"><text x="0" y="1" text-anchor="middle" dominant-baseline="central" font-size="20" font-weight="900" fill="#000">×</text></g>';
@@ -217,6 +219,7 @@
     var ctx = canvas.getContext('2d');
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+    var largeLabels=document.createElementNS('http://www.w3.org/2000/svg','style');largeLabels.textContent='.rl{font-size:18px}.il{font-size:18px}';svg.appendChild(largeLabels);
     var xml = new XMLSerializer().serializeToString(svg);
     var blob = new Blob([xml], { type: 'image/svg+xml;charset=utf-8' });
     var url = URL.createObjectURL(blob);
@@ -325,7 +328,7 @@
       fill_(margin,24,4,29,navy);text_('貸出・返却 チェックシート',margin+13,26,width-20,18,true,navy);
       if(subtitle)text_(subtitle,margin,63,width,10,false,grey);
     }
-    var positions = [], diagramBytes = await diagramToPng_(C,marks,positions);
+    var positions = [], insidePositions=[], diagramBytes = await diagramToPng_(C,marks,positions), insideBytes=await diagramToPng_(C,record.interiorMarks,insidePositions,true);
     async function image_(data) {
       return new Promise(function(resolve,reject){var img=new Image();img.onload=function(){resolve(img);};img.onerror=function(){reject(new Error('PHOTO_DECODE_FAILED'));};img.src=data;});
     }
@@ -341,24 +344,61 @@
     C.TIRE_WHEELS.forEach(function(w){var t=record.inspection.tires[w];note_('タイヤ '+w,t.wheelMemo);C.TIRE_CHECKS.forEach(function(it){note_(w+' / '+it.label,t.items[it.key].memo);});});
     var regionLabels={body_top:'車体上面',bumper_front:'前バンパー',bumper_rear:'後バンパー',side_left:'左側面',side_right:'右側面',tire_FL:'タイヤ FL',tire_FR:'タイヤ FR',tire_RL:'タイヤ RL',tire_RR:'タイヤ RR'};
     marks.forEach(function(m,i){note_('マーク '+(i+1)+' '+C.markSymbol_(m.type)+' '+(regionLabels[m.region]||m.region),m.memo);});
+    C.PRACTICAL_GROUPS.forEach(function(g){g.items.forEach(function(it){it.refs.forEach(function(ref){if(ref.indexOf('rental.')===0)note_(it.label,C.itemAt_(record,ref).memo);});});});
+    ['body_look','wiper_washer'].forEach(function(key){var it=record.inspection.sections.exterior.items[key];if(it.status!=='unconfirmed')note_('旧記録 '+(key==='body_look'?'車体外観':'ワイパー・ウォッシャー'),C.STATUS_LABELS[it.status]);});
+    (record.interiorMarks||[]).forEach(function(m,i){note_('室内マーク '+(i+1)+' '+C.INTERIOR_TYPES[m.type],m.memo);});
     newCanvas_(); title_();
     var plate=typeof ringFormatFleetPlateDisplay_==='function' ? ringFormatFleetPlateDisplay_(vehicle) : vehicle.plateSuffix;
     var fields=[['車両名',vehicle.displayName||vehicle.nickname||vehicle.vehicleName||'未入力'],['ナンバー',plate||'未登録'],['VIN',vehicle.vin||record.vin||''],['点検日',record.meta.inspectionDate||'未入力'],['点検用途',C.purposeLabel_(record.meta.purpose)],['走行距離',record.meta.odometerKm?record.meta.odometerKm+' km':'未入力'],['燃料残量',C.fuelLabel_(record.meta.fuelLevel)]];
     var y=64,colW=(width-gap)/2;
     for(var fi=0;fi<fields.length;fi+=2){var rowH=0;for(var fj=0;fj<2&&fi+fj<fields.length;fj++){var f=fields[fi+fj],x=margin+fj*(colW+gap);var label=f[0]+'：'+f[1];var ls=lines_(label,colW,10);if(ls.length>2){note_(f[0]+'（全文）',f[1]);label=ls.slice(0,2).join('\n')+'…（追記）';}rowH=Math.max(rowH,text_(label,x,y,colW,10,false));}y+=rowH+4;}
     y+=6;var sectionTop=y;
-    C.INSPECTION_SECTIONS.forEach(function(sec){y=heading_(sec.title,margin,y,leftW);var block=record.inspection.sections[sec.id];sec.items.forEach(function(it,index){var item=block.items[it.key],labelW=leftW-65;var rowH=Math.max(17,lines_(it.label,labelW-12,9.5).length*13.3+4);if(index%2===0)fill_(margin,y,leftW,rowH,'#f5f7fa');text_(it.label,margin+6,y+2,labelW-12,9.5,false);text_(C.STATUS_LABELS[item.status]||'未確認',margin+labelW,y+2,61,9.5,item.status==='check',item.status==='check'?'#9a460b':ink);y+=rowH;});y+=7;});
-    var rx=margin+leftW+gap,ry=heading_('外装・傷記録',rx,sectionTop,rightW),diagramH=rightW*560/420;
-    if(diagramBytes.length){var bin='';for(var di=0;di<diagramBytes.length;di++)bin+=String.fromCharCode(diagramBytes[di]);var diagram=await image_('data:image/png;base64,'+btoa(bin));fitImage_(diagram,rx,ry,rightW,diagramH,'diagram');}
-    ry+=diagramH+5;ry+=text_('● 傷   × へこみ   □ その他',rx,ry,rightW,9.5,true);ry+=text_(marks.length+'か所 ／ FL:左前 FR:右前\nRL:左後 RR:右後',rx,ry+4,rightW,9,false,grey)+4;
-    y=Math.max(y,ry)+4;
-    y=heading_('タイヤ 4輪',margin,y,width);
-    var labelW=135,cellW=(width-labelW)/4;
-    fill_(margin,y,width,19,'#f1f4f8');text_('点検項目',margin+6,y+3,labelW-12,9.5,true);
-    C.TIRE_WHEELS.forEach(function(w,i){text_(w,margin+labelW+i*cellW+6,y+3,cellW-12,9.5,true);});y+=21;
-    C.TIRE_CHECKS.forEach(function(it,index){if(index%2===0)fill_(margin,y,width,18,'#f5f7fa');text_(it.label,margin+6,y+3,labelW-12,9.5,false);C.TIRE_WHEELS.forEach(function(w,i){var status=record.inspection.tires[w].items[it.key].status;text_(C.STATUS_LABELS[status]||'未確認',margin+labelW+i*cellW+6,y+3,cellW-12,9.5,status==='check',status==='check'?'#9a460b':ink);});y+=18;});
-    text_('実測空気圧',margin+6,y+3,labelW-12,9.5,false);var pressureH=18;
-    C.TIRE_WHEELS.forEach(function(w,i){var t=record.inspection.tires[w],value=t.pressureValue?t.pressureValue+' '+(t.pressureUnit||'kPa'):'—';pressureH=Math.max(pressureH,text_(value,margin+labelW+i*cellW+6,y+3,cellW-12,9.5,false)+4);});y+=pressureH+8;
+
+    // Two diagrams above the compact two-column checklist. Labels may grow, coordinates do not.
+    var diagramHeight=Math.max(160,218-Math.max(0,sectionTop-142)),diagCol=(width-gap)/2;
+    async function drawDiagram_(bytes,x,title,legend) {
+      var top=heading_(title,x,sectionTop,diagCol);
+      if(bytes.length){var bin='';for(var di=0;di<bytes.length;di++)bin+=String.fromCharCode(bytes[di]);var img=await image_('data:image/png;base64,'+btoa(bin));fitImage_(img,x,top,diagCol,diagramHeight,'diagram');}
+      return top+diagramHeight+text_(legend,x,top+diagramHeight+3,diagCol,9.5,true)+7;
+    }
+    var diagramsEnd=Math.max(await drawDiagram_(diagramBytes,margin,'外装','● 傷  × へこみ  □ その他'),await drawDiagram_(insideBytes,margin+diagCol+gap,'室内（一般的な配置）','△ 汚れ  # 破れ  ○ 傷'));
+    var ys=[diagramsEnd+4,diagramsEnd+4];
+    function compactGroup_(group,column) {
+      var gx=margin+column*(diagCol+gap),gy=ys[column];
+      fill_(gx,gy,diagCol,18,blue);text_(group.title,gx+6,gy+2,diagCol-12,10,true,navy);gy+=19;
+      group.items.forEach(function(it,i){
+        var st=C.groupedStatus_(record,it.refs),labelW=diagCol-55;
+        var rh=Math.max(15,lines_(it.label,labelW-9,9.5).length*13.3+1.7);
+        if(i%2===0)fill_(gx,gy,diagCol,rh,'#f5f7fa');
+        text_(it.label,gx+5,gy+1,labelW-9,9.5,false);
+        text_((st==='good'?'✓ ':st==='unconfirmed'?'□ ':'')+(C.STATUS_LABELS[st]||'未確認'),gx+labelW,gy+1,55,9.5,st==='check',st==='check'?'#9a460b':ink);
+        gy+=rh;
+        if(it.refs.length>1 && it.refs[0].indexOf('tire.')!==0){var vals=it.refs.map(function(ref){return C.itemAt_(record,ref).status;});if(new Set(vals).size>1)it.refs.forEach(function(ref){var a=ref.split('.'),old=C.INSPECTION_SECTIONS.find(function(g){return g.id===a[0];}),f=old&&old.items.find(function(v){return v.key===a[1];});note_(it.label+' / '+(f?f.label:ref),C.STATUS_LABELS[C.itemAt_(record,ref).status]);});}
+      });ys[column]=gy+3;
+    }
+    C.PRACTICAL_GROUPS.forEach(function(g,i){compactGroup_(g,i<3||i===5?0:1);});
+    compactGroup_({title:'タイヤ',items:[{label:'タイヤ4輪',refs:C.tireRefs_()}]},1);
+    ys[1]+=text_('空気圧・摩耗・傷・異物・その他異常',margin+diagCol+gap,ys[1],diagCol,8.5,false,grey)+4;
+    // Keep per-wheel differing results and measured values, never replace them with the group status.
+    C.TIRE_WHEELS.forEach(function(w){var t=record.inspection.tires[w],vals=C.TIRE_CHECKS.map(function(it){return t.items[it.key].status;});
+      if(new Set(C.tireRefs_().map(function(ref){return C.itemAt_(record,ref).status;})).size>1)
+        note_('タイヤ '+w,C.TIRE_CHECKS.map(function(it){return it.label+' '+C.STATUS_LABELS[t.items[it.key].status];}).join(' / '));
+      if(t.pressureValue)note_('空気圧 '+w,t.pressureValue+' '+t.pressureUnit);
+    });
+    var issued=C.OPTION_FIELDS.filter(function(o){return record.rentalOptions[o.id].issued;});
+    var extra=['貸出備品：'+(issued.length?issued.map(function(o){var v=record.rentalOptions[o.id];return o.label+'（'+(v.returned?'返却済':'返却未確認')+'）';}).join('、'):'なし'),
+      'お客様への説明：'+(record.customerExplained?'確認済み':'未確認')];
+    C.OPTION_FIELDS.forEach(function(o){var v=record.rentalOptions[o.id];if(v.issued)note_(o.label+' 備品メモ',v.note);});
+    C.GUIDANCE_FIELDS.forEach(function(g){if(record.customerGuidance[g.id])extra.push(g.label+'：'+record.customerGuidance[g.id]);});
+    var extraX=margin+diagCol+gap;
+    var ey=heading_('備品・お客様への確認',extraX,ys[1],diagCol);
+    extra.forEach(function(line){
+      var h=lines_(line,diagCol-12,9.5).length*13.3;
+      if(ey+h<=Math.max(ys[1],740)){text_(line,extraX+6,ey,diagCol-12,9.5,false);ey+=h+3;}
+      else notes.push(line);
+    });
+    y=Math.max(ey,ys[0])+5;
+
     // Notes overflow after the optional photo page. Nothing is silently cropped.
     var noteLines=[];notes.forEach(function(n){lines_(n,width-12,9.5).forEach(function(l){noteLines.push(l);});});
     var notePos=0;y=heading_('共通メモ・記録',margin,y,width);
@@ -375,7 +415,7 @@
     while(notePos<noteLines.length){newCanvas_();title_('共通メモ・過去の個別メモ（続き）');y=90;while(notePos<noteLines.length&&y+13.3<A4H-40){text_(noteLines[notePos++],margin+6,y,width-12,9.5,false,undefined,'note');y+=13.3;}}
     for(var p=0;p<pageCanvases.length;p++){canvas=pageCanvases[p];ctx=canvas.getContext('2d');font_(9,false);ctx.fillStyle=grey;ctx.fillText((p+1)+' / '+pageCanvases.length,A4W-60,A4H-21);var imgPng=await pdfDoc.embedPng(dataUrlToUint8_(canvas.toDataURL('image/png')));var page=pdfDoc.addPage([A4W,A4H]);page.drawImage(imgPng,{x:0,y:0,width:A4W,height:A4H});}
     var pages=pdfDoc.getPages();
-    return {bytes:await pdfDoc.save(),fileName:'貸出返却_チェックシート_'+String(record.meta.inspectionDate||'').replace(/[^0-9]/g,'')+'.pdf',pageCount:pages.length,layout:layouts,markPositions:positions};
+    return {bytes:await pdfDoc.save(),fileName:'貸出返却_チェックシート_'+String(record.meta.inspectionDate||'').replace(/[^0-9]/g,'')+'.pdf',pageCount:pages.length,layout:layouts,markPositions:positions,interiorMarkPositions:insidePositions};
   }
 
   return {

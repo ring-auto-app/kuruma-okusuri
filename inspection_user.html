@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.json">
     <title>車のお薬手帳</title>
   <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20261114-v42" integrity="sha256-aT+0fIlNYULT6ndA9A87tM0+/wa2bPJr9vgv3CWo34g= sha256-xOVotDaeCes3eJdwrlE3aDEuZqvnaJ9fWbjnvp0o2Is=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
+  <script src="app.js?v=20261118-v50" integrity="sha256-ZevdKzRSCi4Z3RoWBO5isnEHEfBYWWROfSjloAKrSFc= sha256-00mt5W4gxaY949Uzz47wWzw/2bttpeuWaMvdgoIFA5o=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
   <script src="theme.js"></script>
   <style>
     /* 掟1適用：緑の直書きを撤廃し、ログイン状態（theme.js）で色が切り替わるように修正 */
@@ -105,6 +105,9 @@
       <p class="sub-title" id="inspectionProgress" style="margin-top:4px;font-weight:900;color:var(--muted);">確認済み 0 / 全 9</p>
     </div>
 
+    <div id="inspectionVehicleStatus" role="status" hidden></div>
+    <button type="button" id="inspectionVehicleRetry" hidden>再試行</button>
+    <div id="inspectionFields" inert>
     <div class="basic-info-card">
       <div class="field"><span class="label">対象車両 (VIN)</span><input id="inVin" type="text" inputmode="text" autocapitalize="characters" autocomplete="off" style="text-transform: uppercase;" placeholder="読み込み中..."></div>
       <div class="field"><span class="label">チェック日</span><input id="inDate" type="date"></div>
@@ -124,12 +127,78 @@
       <textarea id="inMemo" rows="3" placeholder="「いつ、どんな時に異変感じたか…」など、自由に書いてください！"></textarea>
     </div>
 
-    <div class="save-area ring-sticky-save-wrap"><button class="save-btn" id="saveBtn">手帳に記録する</button></div>
+    <div class="save-area ring-sticky-save-wrap"><button class="save-btn" id="saveBtn" disabled>手帳に記録する</button></div>
+    </div>
 
   </div> 
   <script>
     const urlParams = new URLSearchParams(window.location.search);
-    const targetVin = urlParams.get('vin');
+    const targetVin = (urlParams.get('vin') || '').trim();
+    const fields = document.getElementById('inspectionFields');
+    const vehicleStatus = document.getElementById('inspectionVehicleStatus');
+    const retryVehicle = document.getElementById('inspectionVehicleRetry');
+    const saveButton = document.getElementById('saveBtn');
+    let approvedContext = null;
+
+    function showVehicleCheck(message, canRetry = false, destination = '') {
+      approvedContext = null;
+      fields.inert = true;
+      fields.hidden = true;
+      saveButton.disabled = true;
+      vehicleStatus.hidden = false;
+      vehicleStatus.textContent = message;
+      retryVehicle.hidden = !canRetry;
+      if (destination) {
+        const link = document.createElement('a');
+        link.href = destination;
+        link.textContent = destination === 'login.html' ? 'ログインへ' : 'マイカーへ戻る';
+        vehicleStatus.append(' ', link);
+      }
+    }
+
+    function ownsInspectionVehicle(profile) {
+      return !!profile && loadVehicles().some(vehicle =>
+        _normalize(vehicle.vin || '') === _normalize(targetVin) && ringIsMyVehicleRecord_(vehicle, profile));
+    }
+
+    async function checkInspectionVehicle() {
+      const context = ringCaptureRequestContext_();
+      const profile = getCurrentProfile();
+      if (!context.token || ringIsBizProfile_(profile) || !ringIsUserAccountProfile(profile)) {
+        showVehicleCheck('マイカーの日常点検には一般ユーザーでのログインが必要です。', false, 'login.html');
+        return;
+      }
+      if (!_normalize(targetVin)) {
+        showVehicleCheck('対象の車両を確認できません。', false, 'user_home.html');
+        return;
+      }
+      if (!ownsInspectionVehicle(profile)) {
+        showVehicleCheck('車両情報を読み込み中…');
+        const result = await syncVehiclesFromServer({ returnStatus: true, silentToast: true });
+        if (!ringRequestContextIsCurrent_(context)) return;
+        if (!result.ok) {
+          if (/AUTH_|FORBIDDEN|PERMISSION/i.test(result.error)) {
+            showVehicleCheck('車両情報を取得する権限を確認できません。', false, 'login.html');
+          } else {
+            showVehicleCheck('車両情報を取得できませんでした。接続を確認して再試行してください。', true);
+          }
+          return;
+        }
+        if (!ownsInspectionVehicle(profile)) {
+          showVehicleCheck('この車両はマイカーに登録されていません。', false, 'user_home.html');
+          return;
+        }
+      }
+      approvedContext = context;
+      document.getElementById('inVin').value = targetVin;
+      document.getElementById('inVin').readOnly = true;
+      vehicleStatus.hidden = true;
+      retryVehicle.hidden = true;
+      fields.hidden = false;
+      fields.inert = false;
+      saveButton.disabled = false;
+    }
+
 
     // 前回走行距離を取得
     function getPrevMileage(vin) {
@@ -170,27 +239,18 @@
         dateEl.max = todayStr;
       })();
 
-      if (targetVin) {
-        const vinInput = document.getElementById('inVin');
-        vinInput.value = targetVin;
-        vinInput.readOnly = true; 
-        const up = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
-        if (up && typeof isVinRegisteredForInspection === 'function') {
-          if (!isVinRegisteredForInspection(targetVin, up)) {
-            if (typeof showToast === 'function') showToast('error', 'この車両はマイカーに登録されていません。');
-            location.replace('user_home.html');
-            return;
-          }
-        }
-      } else {
-        if (typeof showToast === 'function') showToast('error', '車両データが見つかりません。');
-        location.replace("user_home.html");
-      }
-
-      // 戻るボタンの制御
-      document.getElementById('backBtn').onclick = () => {
-        goBackSmart(targetVin ? `user_inspection_history.html?vin=${encodeURIComponent(targetVin)}` : 'user_home.html');
+      document.getElementById('backBtn').href =
+        targetVin ? 'user_inspection_history.html?vin=' + encodeURIComponent(targetVin) : 'user_home.html';
+      document.getElementById('backBtn').onclick = (event) => {
+        event.preventDefault();
+        goBackSmart(event.currentTarget.getAttribute('href'));
       };
+      retryVehicle.onclick = checkInspectionVehicle;
+      window.addEventListener('ring-auth-context-changed', () => {
+        const destination = getCurrentProfile() && ringResolveActiveAuthToken() ? 'user_home.html' : 'login.html';
+        showVehicleCheck('ログイン状態が変更されました。', false, destination);
+      });
+      checkInspectionVehicle();
     });
 
     const userItems = [
@@ -246,8 +306,12 @@
     // 保存処理
     document.getElementById('saveBtn').addEventListener('click', function () {
       const saveBtn = document.getElementById('saveBtn');
+      if (!ringRequestContextIsCurrent_(approvedContext) || !ownsInspectionVehicle(getCurrentProfile())) {
+        showVehicleCheck('対象の車両を確認できません。', true);
+        return;
+      }
       runOnce(saveBtn, async () => {
-        const vin = document.getElementById('inVin').value.trim();
+        const vin = targetVin;
         const date = document.getElementById('inDate').value;
         let memo = document.getElementById('inMemo').value.trim();
 

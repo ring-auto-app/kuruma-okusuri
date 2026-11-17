@@ -40,6 +40,7 @@
 
 .ring-check-veh-name { font-size: 16px; font-weight: 900; margin: 0 0 6px; }
 .ring-check-meta { font-size: 12px; font-weight: 700; color: #64748b; margin: 2px 0; }
+.ring-check-banner-normal p { margin: 0; }
 .ring-check-local-banner {
   font-size: 11px;
   font-weight: 700;
@@ -105,6 +106,9 @@
 }
 
 .ring-check-diagram-host {
+  box-sizing: border-box;
+  max-width: 500px;
+  margin-inline: auto;
   background: var(--paper, #fff);
   border: 2px solid var(--line, #cbd5e1);
   border-radius: 12px;
@@ -115,7 +119,7 @@
 
 .ring-check-diagram {
   width: 100%;
-  max-width: 420px;
+  max-width: 360px;
   height: auto;
   display: block;
   margin: 0 auto;
@@ -158,6 +162,90 @@
   background: var(--accent);
   color: #fff;
   font-weight: 900;
+}
+
+.ring-check-pdf-summary-card {
+  margin-bottom: 0;
+}
+
+.ring-check-pdf-summary {
+  margin: 0;
+  padding-left: 1.1em;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.55;
+}
+
+.ring-check-photo-pdf-warn {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.45;
+  color: #9a3412;
+}
+
+.ring-check-pdf-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 12px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.ring-check-btn-save-back,
+.ring-check-btn-make-pdf {
+  width: 100%;
+  min-height: var(--tap-min);
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 900;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+
+.ring-check-btn-save-back {
+  border: 2px solid var(--accent, #2563eb);
+  background: #fff;
+  color: var(--accent, #2563eb);
+}
+
+.ring-check-btn-make-pdf {
+  border: none;
+  background: var(--accent, #2563eb);
+  color: #fff;
+}
+
+.ring-check-btn-save-back:disabled,
+.ring-check-btn-make-pdf:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ring-check-pdf-status {
+  margin-top: 8px;
+  min-height: 1.25em;
+}
+
+@media (max-width: 599px) {
+  .ring-check-pdf-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ring-check-save-inline {
+  margin: 8px 0 4px;
+}
+
+#ringCheckSaveSnap[hidden],
+#ringCheckDraftSave[hidden],
+.ring-check-mark-list[hidden],
+.ring-check-detail[hidden] {
+  display: none !important;
 }
 
 .ring-check-detail {
@@ -241,7 +329,7 @@
   }
   .ring-check-diagram-wrap { flex: 1.2; min-width: 0; }
   .ring-check-side { flex: 0.8; min-width: 280px; max-width: 360px; }
-  .ring-check-diagram { max-width: 100%; }
+  .ring-check-diagram { max-width: 360px; }
 }
 
 .ring-check-attention {
@@ -295,6 +383,38 @@
   background: var(--accent);
   color: #fff;
 }
+.ring-check-main-tabs button.is-locked,
+.ring-check-main-tabs button:disabled,
+.ring-check-diagram-tabs button.is-locked,
+.ring-check-diagram-tabs button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.ring-check-guard-host {
+  background: #fffbeb;
+  border: 2px solid #fbbf24;
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+.ring-check-guard-host p { margin: 0 0 10px; font-size: 13px; font-weight: 700; color: #92400e; }
+.ring-check-guard-hint {
+  margin: 10px 0 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b;
+}
+.ring-check-guard-placeholder {
+  text-align: center;
+  padding: 24px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #64748b;
+  background: #f8fafc;
+  border-radius: 12px;
+  border: 1px dashed #cbd5e1;
+}
+body.ring-check-ui-locked .ring-check-diagram-host svg { pointer-events: none; opacity: 0.35; }
 
 .ring-check-pane { display: none; }
 .ring-check-pane.is-active { display: block; }
@@ -429,6 +549,7 @@
   color: #475569;
 }
 
+.ring-check-photo-warn { margin: 8px 0; line-height: 1.5; }
 .ring-check-photo-warn,
 .ring-check-photo-note {
   font-size: 11px;
@@ -515,3 +636,30 @@ body.ring-check-photo-modal-open {
   overflow: hidden;
 }
 
+
+
+/* Compact operational checklist; the exterior toolbar retains its existing targets. */
+.ring-check-diagram-tabs {display:flex;gap:8px;max-width:500px;margin:0 auto 10px;}
+.ring-check-diagram-tabs button {flex:1;min-height:44px;border:1px solid #9baec1;border-radius:8px;background:#fff;color:#18344e;font-size:14px;font-weight:800;}
+.ring-check-diagram-tabs .is-active {background:#18344e;color:#fff;}
+#ringCheckPaneInspect {max-width:860px;margin-inline:auto;}
+.ring-check-tick-item {border-bottom:1px solid #e2e8f0;}
+.ring-check-tick-row {display:flex;align-items:center;gap:8px;min-height:48px;padding:3px 0;}
+.ring-check-tick-label {display:flex;align-items:center;gap:9px;min-height:44px;min-width:0;flex:1;font-size:14px;font-weight:700;line-height:1.45;}
+.ring-check-tick-label input[type=checkbox] {flex:0 0 23px;width:23px;height:23px;accent-color:#176b50;margin:0;cursor:pointer;}
+.ring-check-tick-label .ring-check-insp-label {min-width:0;flex:1;font-size:14px;}
+.ring-check-detail-toggle {flex:0 0 auto;max-width:102px;min-height:44px;padding:6px 8px;border:1px solid #b9c8d7;border-radius:7px;background:white;color:#304c67;font-size:12px;line-height:1.3;}
+.ring-check-issue-tag {font-size:12px;color:#9a3412;white-space:nowrap;}
+.ring-check-tick-row.has-issue {background:#fff5e9;}
+.ring-check-issue[hidden] {display:none!important;}
+.ring-check-issue {border-left:3px solid #becfe0;margin:3px 0 8px;padding:8px 10px;background:#f7fafc;}
+.ring-check-issue>button {min-height:44px;margin:3px 6px 3px 0;border:1px solid #adbdd0;border-radius:7px;background:white;padding:6px 10px;}
+.ring-check-pressure-row {display:grid;grid-template-columns:minmax(0,1fr) minmax(96px,1fr);gap:10px;margin:10px 0;font-size:13px;}
+.ring-check-pressure-row input,.ring-check-pressure-row select {box-sizing:border-box;width:100%;min-width:0;min-height:44px;font-size:16px;border:1px solid #b9c8d7;border-radius:6px;padding:6px;}
+.ring-check-option-row {padding:6px 0;border-bottom:1px solid #e2e8f0;}
+.ring-check-guidance summary {min-height:44px;line-height:44px;font-weight:700;cursor:pointer;}
+#ringCheckPaneExtras {margin-top:18px;}
+@media(min-width:960px) {
+  #ringCheckPaneBasic .ring-check-form-card {display:grid;grid-template-columns:1fr 1fr;gap:0 16px;}
+  #ringCheckPaneBasic .ring-check-hint,#ringCheckPaneBasic .ring-check-form-actions {grid-column:1/-1;}
+}

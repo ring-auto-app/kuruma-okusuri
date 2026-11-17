@@ -167,8 +167,7 @@
 
   function fleetMine_() {
     if (!fleetContextCurrent_()) return [];
-    var scope = ringFleetBookingsCacheKey_(profile);
-    if (!fleetVehiclesSyncOk && (!scope || !localStorage.getItem('ring_fleet_vehicle_snapshot:' + scope))) return [];
+    if (!fleetVehiclesDisplayable_()) return [];
     return typeof ringLoadMyVehicles_ === 'function' ? ringLoadMyVehicles_(profile) : [];
   }
 
@@ -365,6 +364,47 @@
     return fleetBookingsSyncOk || fleetBookingsHaveCache;
   }
 
+  function fleetVehicleSnapshotKey_(scope) {
+    scope = scope || ringFleetBookingsCacheKey_(profile);
+    return scope ? 'ring_fleet_vehicle_snapshot:' + scope : '';
+  }
+
+  /** 車両一覧を画面に出せるか（今回の同期成功 or 過去に端末へ保存済み） */
+  function fleetVehiclesDisplayable_() {
+    if (fleetVehiclesSyncOk) return true;
+    var sk = fleetVehicleSnapshotKey_();
+    return !!(sk && typeof localStorage !== 'undefined' && localStorage.getItem(sk));
+  }
+
+  function fleetInitVehicleLoadingFlag_() {
+    fleetVehiclesLoading = !fleetVehiclesDisplayable_();
+  }
+
+  /**
+   * 同期案内（コンパクト1行）。取得中・キャッシュ表示中は案内を出さず、大きなパネルも使わない。
+   */
+  function fleetSummaryHintMessage_() {
+    var vehiclesOk = fleetVehiclesDisplayable_();
+    var bookingsOk = fleetBookingsDisplayable_();
+    if (vehiclesOk && bookingsOk && fleetVehiclesSyncOk && fleetBookingsSyncOk) return '';
+    if (fleetVehiclesLoading && vehiclesOk) return '';
+    if (fleetBookingsRefreshing && bookingsOk) return '';
+    if (!vehiclesOk) {
+      if (fleetVehiclesLoading) return '';
+      return '車両情報を取得できません。接続を確認して「更新」を押してください。';
+    }
+    if (!fleetVehiclesSyncOk) {
+      return '車両情報の最新確認ができません。前回取得分を表示しています。';
+    }
+    if (!fleetBookingsSyncOk && fleetBookingsHaveCache) {
+      return '予約情報の最新確認ができません。前回取得分を表示しています。';
+    }
+    if (!bookingsOk && !fleetBookingsRefreshing) {
+      return '予約情報を取得できません。接続を確認して「更新」を押してください。';
+    }
+    return '';
+  }
+
   function fleetMonthKey_(year, month) {
     return year + '-' + month;
   }
@@ -494,34 +534,20 @@
 
   function renderFleetSummary_() {
     var all = fleetFleetOnly_(fleetMine_());
-    var syncWarn = !fleetBookingsSyncOk || !fleetVehiclesSyncOk || fleetVehiclesLoading;
-    var warnText = '';
+    var warnText = fleetSummaryHintMessage_();
     var bookingsUnknown = !fleetBookingsDisplayable_();
-    if (syncWarn) {
-      var parts = [];
-      if (!fleetVehiclesSyncOk) parts.push('車両');
-      if (!fleetBookingsSyncOk) parts.push('予約');
-      if (fleetVehiclesLoading) {
-        warnText = all.length ? '前回取得した車両情報を表示しています。最新情報を確認中…' : '車両情報を取得中です…';
-      } else if (fleetBookingsRefreshing && fleetVehiclesSyncOk) {
-        warnText = fleetBookingsHaveCache
-          ? '前回取得した情報を表示しています。最新情報を確認中…'
-          : '予約情報を読み込んでいます…';
-      } else if (fleetBookingsHaveCache && !fleetBookingsSyncOk) {
-        warnText = parts.join('・') + 'の最新情報を確認できません。前回取得した情報を表示しています。';
-      } else {
-        warnText = parts.join('・') + 'の最新情報を取得できません。表示は参考または未確定です。';
-      }
-    }
     ['fleetSummaryHint', 'fleetMobSummaryHint'].forEach(function (hid) {
       var hintEl = document.getElementById(hid);
       if (!hintEl) return;
-      if (syncWarn) {
+      if (warnText) {
         hintEl.hidden = false;
         hintEl.textContent = warnText;
+        hintEl.classList.toggle('is-stale', warnText.indexOf('前回取得') >= 0 || warnText.indexOf('最新確認') >= 0);
+        hintEl.classList.toggle('is-error', warnText.indexOf('取得できません') >= 0);
       } else {
         hintEl.hidden = true;
         hintEl.textContent = '';
+        hintEl.classList.remove('is-stale', 'is-error');
       }
     });
     function setStat(id, val, unknown) {
@@ -583,12 +609,13 @@
     var el = document.getElementById('fleetMobEmptyOnboard');
     if (!el) return;
     var count = fleetFleetOnly_(fleetMine_()).length;
-    if (!fleetVehiclesSyncOk) {
+    if (!fleetVehiclesDisplayable_() && !fleetVehiclesLoading) {
       el.hidden = false;
-      el.innerHTML = '<h2>車両情報を確認できません</h2><p>通信または同期の問題で車両一覧を取得できませんでした。「更新」を押すか、接続を確認してください。</p>';
+      el.className = 'ring-fleet-empty-onboard ring-fleet-empty-onboard--sync';
+      el.innerHTML = '<p class="ring-fleet-sync-fail-compact">車両情報を確認できません。通信または同期の問題で一覧を取得できませんでした。「更新」または接続をご確認ください。</p>';
       return;
     }
-    if (!count) {
+    if (!count && fleetVehiclesSyncOk) {
       el.hidden = false;
       var add = document.getElementById('fleetAddActions');
       el.innerHTML = '<h2>レンタカー・代車がまだ登録されていません</h2>' +
@@ -655,8 +682,10 @@
         : '<p style="margin:0;color:#b45309;font-weight:800;">この日の予定を取得できません</p>');
       return;
     }
-    var staleNote = fleetBookingsSyncOk ? ''
-      : '<p class="ring-fleet-mob-agenda-stale">前回取得した情報です' + (fleetBookingsRefreshing ? '（最新を確認中）' : '（最新情報を確認できません）') + '</p>';
+    var staleNote = '';
+    if (!fleetBookingsSyncOk && fleetBookingsHaveCache && !fleetBookingsRefreshing) {
+      staleNote = '<p class="ring-fleet-mob-agenda-stale">予約は前回取得分です（最新の確認ができません）</p>';
+    }
     var bookings = fleetBookingsForRange_(mobSelectedYmd, mobSelectedYmd);
     if (!bookings.length) {
       host.hidden = false;
@@ -678,9 +707,10 @@
   function renderDeskEmptyState_() {
     var el = document.getElementById('fleetDeskEmptyState');
     if (!el) return;
-    if (!fleetVehiclesSyncOk) {
+    if (!fleetVehiclesDisplayable_() && !fleetVehiclesLoading) {
       el.hidden = false;
-      el.innerHTML = '<h2>車両情報を確認できません</h2><p>通信または同期の問題で車両一覧を取得できませんでした。「更新」を押すか、接続を確認してください。未登録と判断しないでください。</p>';
+      el.className = 'ring-fleet-empty-onboard ring-fleet-empty-onboard--sync';
+      el.innerHTML = '<p class="ring-fleet-sync-fail-compact">車両情報を確認できません。通信または同期の問題で一覧を取得できませんでした。「更新」を押してください（未登録とは限りません）。</p>';
       return;
     }
     el.hidden = true;
@@ -1065,7 +1095,7 @@
       '<p style="margin:0 0 8px;font-size:12px;font-weight:700;color:#475569">下4桁：' + fleetEscape_(plate) + '<br>状態：' + fleetEscape_(stLabel) + '<br>' +
       fleetEscape_(b.startDate) + ' 〜 ' + fleetEscape_(b.endDate) + '</p>' +
       (sheetDue
-        ? '<a class="car-info-btn" style="width:100%;margin-bottom:12px;display:inline-flex;justify-content:center;" href="' + fleetEscape_(fleetCheckSheetUrl_(b.vin)) + '">📋 チェックシート（貸出・返却時）</a>'
+        ? '<a class="car-info-btn ring-fleet-checksheet-link" href="' + fleetEscape_(fleetCheckSheetUrl_(b.vin)) + '">📋 チェックシート（貸出・返却時）</a>'
         : '') +
       '<div class="ring-fleet-field"><label>返却予定日</label><input type="date" class="fleet-detail-end" value="' + fleetEscape_(b.endDate) + '"></div>' +
       '<div class="ring-fleet-detail-actions"></div>';
@@ -1216,9 +1246,9 @@
       '<button type="button" id="fleetResolveRecheck">保存結果を再確認</button>' +
       '</div></div>';
     host.insertAdjacentHTML('beforeend', html);
-    var btnUpd = document.getElementById('fleetResolveUpdate');
-    var btnAdd = document.getElementById('fleetResolveAddNew');
-    var btnRe = document.getElementById('fleetResolveRecheck');
+    var btnUpd = host.querySelector('#fleetResolveUpdate');
+    var btnAdd = host.querySelector('#fleetResolveAddNew');
+    var btnRe = host.querySelector('#fleetResolveRecheck');
     if (btnUpd && ex) {
       btnUpd.onclick = function () {
         fleetApplyCreateSubmitResult_(vin, startDate, endDate, {
@@ -1250,28 +1280,58 @@
     return document.getElementById('fleetDetailPanel');
   }
 
-  async function fleetApplyCreateSubmitResult_(vin, startDate, endDate, extra) {
+  async function fleetApplyCreateSubmitResult_(vin, startDate, endDate, extra, checkAvailability) {
     if (!fleetRequireOnline_()) return;
+    var state = wizardState;
     var host = fleetCreateSubmitHost_();
-    var saveBtn = document.getElementById('fleetNewSaveBtn');
-    if (saveBtn && saveBtn.disabled) return;
-    if (saveBtn) saveBtn.disabled = true;
-    if (typeof showLoading === 'function') {
-      showLoading(extra && extra.recheckOnly ? '確認中' : '登録中', extra && extra.recheckOnly ? '確認中…' : '登録中…');
-    }
+    if (!state || state.kind !== 'booking' || state.busy || !host) return;
+    var saveBtn = host.querySelector('#fleetNewSaveBtn');
+    state.busy = true;
+    host.setAttribute('aria-busy', 'true');
+    var controls = Array.prototype.map.call(host.querySelectorAll('button'), function (el) {
+      var wasDisabled = el.disabled;
+      el.disabled = true;
+      return { el: el, disabled: wasDisabled };
+    });
+    var oldLabel = saveBtn && saveBtn.textContent;
+    if (saveBtn) saveBtn.textContent = checkAvailability ? '空き状況を確認中…' : '保存結果を確認中…';
+    function current() { return fleetContextCurrent_() && wizardState === state && host.isConnected; }
+    if (typeof showLoading === 'function') showLoading('確認中', '最新の予約状況を確認しています…');
     var result = null;
     try {
+      if (checkAvailability) {
+        if (typeof ringFleetEnsureBookingsSyncedForRange_ !== 'function') throw new Error('API missing');
+        var syncRes = await ringFleetEnsureBookingsSyncedForRange_(profile, startDate, endDate);
+        if (!current()) return;
+        fleetBookingsSyncOk = !!syncRes.ok;
+        fleetApplyBookingsCache_(syncRes.bookings || bookingsCache);
+        if (!syncRes.ok || !fleetRequireOnline_()) {
+          if (typeof showToast === 'function') showToast('error', '最新の空き状況を確認できません。接続を確認してから保存してください。');
+          return;
+        }
+        if (!(typeof ringListFleetUnresolved_ === 'function' && ringListFleetUnresolved_(profile).length) &&
+            !ringFleetVinAvailableForRange_(vin, startDate, endDate, fleetBookingsForShop_(bookingsCache))) {
+          if (typeof showToast === 'function') showToast('warning', 'この期間には既に予約が入っているか、未返却の車両です。日付を変更して再検索してください。');
+          return;
+        }
+      }
+      if (!current() || !fleetRequireOnline_()) return;
       if (typeof ringFleetHandleCreateBookingSubmit_ !== 'function') throw new Error('API missing');
+      if (saveBtn) saveBtn.textContent = '登録中…';
       var payload = Object.assign({ vin: vin, startDate: startDate, endDate: endDate, status: 'reserved' }, extra || {});
       result = await ringFleetHandleCreateBookingSubmit_(profile, payload);
     } catch (err) {
-      if (!fleetContextCurrent_()) return;
-      if (typeof showToast === 'function') showToast('error', '通信に失敗しました。');
+      if (current() && typeof showToast === 'function') showToast('error', '通信に失敗しました。入力内容を保持しています。接続を確認して再試行してください。');
     } finally {
-      if (fleetContextCurrent_() && typeof hideLoading === 'function') hideLoading();
-      if (saveBtn) saveBtn.disabled = false;
+      state.busy = false;
+      if (current()) {
+        if (typeof hideLoading === 'function') hideLoading();
+        host.removeAttribute('aria-busy');
+        controls.forEach(function (x) { x.el.disabled = x.disabled; });
+        if (saveBtn) saveBtn.textContent = oldLabel;
+      }
     }
-    if (!fleetContextCurrent_()) return;
+    if (!current()) return;
     fleetHandleCreateOutcome_(result, vin, startDate, endDate, host);
   }
 
@@ -1330,7 +1390,7 @@
       wrap.innerHTML = '<p style="font-size:12px;font-weight:700;color:#475569;margin:0 0 8px;">' + fleetEscape_(result.message) + '</p>' +
         '<button type="button" class="primary" id="fleetProceedCreate">元の送信を無効化して新規登録</button>';
       host.appendChild(wrap);
-      document.getElementById('fleetProceedCreate').onclick = function () {
+      host.querySelector('#fleetProceedCreate').onclick = function () {
         var okVoid = typeof confirm === 'function'
           ? confirm('元の送信要求をサーバーで無効化し、現在の内容で新規登録します。よろしいですか？')
           : true;
@@ -1357,7 +1417,7 @@
 
   function fleetBindConfirmSave_(host, vin, startDate, endDate) {
     if (!host) return;
-    var recheck = document.getElementById('fleetUnresolvedRecheck');
+    var recheck = host.querySelector('#fleetUnresolvedRecheck');
     if (recheck) {
       recheck.onclick = function () {
         var s = document.getElementById('fleetNewStart') ? document.getElementById('fleetNewStart').value : startDate;
@@ -1365,49 +1425,21 @@
         fleetApplyCreateSubmitResult_(vin, s, e, { recheckOnly: true });
       };
     }
-    var saveBtn = document.getElementById('fleetNewSaveBtn');
+    var saveBtn = host.querySelector('#fleetNewSaveBtn');
     if (!saveBtn) return;
     saveBtn.onclick = function () { fleetTrySaveNewBooking_(vin, startDate, endDate, host); };
   }
 
   async function fleetTrySaveNewBooking_(vin, startDate, endDate, host) {
-    if (!fleetRequireOnline_()) return;
-    if (!fleetBookingsSyncOk && typeof navigator !== 'undefined' && navigator.onLine === false) {
-      if (typeof showToast === 'function') showToast('error', '最新の空き状況を確認できません。通信を確認してから再試行してください。');
-      return;
-    }
-    if (typeof ringFleetEnsureBookingsSyncedForRange_ === 'function') {
-      if (typeof showLoading === 'function') showLoading('確認中', '読み込み中…');
-      var syncRes = await ringFleetEnsureBookingsSyncedForRange_(profile, startDate, endDate);
-      if (!fleetContextCurrent_()) return;
-      if (typeof hideLoading === 'function') hideLoading();
-      if (!fleetRequireOnline_()) return;
-      fleetBookingsSyncOk = !!syncRes.ok;
-      fleetApplyBookingsCache_(syncRes.bookings || bookingsCache);
-      if (!syncRes.ok) {
-        if (typeof showToast === 'function') {
-          showToast('error', '最新の空き状況を確認できません。接続を確認してから保存してください。');
-        }
-        return;
-      }
-    }
-  if (!ringFleetVinAvailableForRange_(vin, startDate, endDate, fleetBookingsForShop_(bookingsCache))) {
-      if (typeof showToast === 'function') showToast('warning', 'この期間は予約できない可能性があります。空車を再検索してください。');
-      return;
-    }
-    fleetApplyCreateSubmitResult_(vin, startDate, endDate, {});
+    if (!host || host !== fleetCreateSubmitHost_()) return;
+    await fleetApplyCreateSubmitResult_(vin, startDate, endDate, {}, true);
   }
 
+  // One modal owns both entry points; background detail/calendar refresh cannot replace it.
   function openNewBookingForm_(vin, startDate, endDate) {
-    selectedVin = vin;
-    selectedBookingId = '';
-    var host = document.getElementById('fleetDetailPanel');
-    if (!host) return;
     var today = ringFormatDateToYmdJst_(new Date());
-    var s = startDate || today;
-    var e = endDate || today;
-    host.innerHTML = fleetConfirmPanelHtml_(vin, s, e, '');
-    fleetBindConfirmSave_(host, vin, s, e);
+    openNewBookingWizard_({ mode: 'by_date', step: 'confirm', vin: vin,
+      startDate: startDate || today, endDate: endDate || today });
   }
 
   function fleetAvailStaleBanner_() {
@@ -1435,6 +1467,7 @@
   }
 
   function closeNewBookingWizard_() {
+    if (wizardState && (wizardState.busy || wizardState.readPending) && typeof hideLoading === 'function') hideLoading();
     wizardState = null;
     var el = document.getElementById('fleetNewBookingWizard');
     if (el) { el.hidden = true; el.setAttribute('aria-hidden', 'true'); el.innerHTML = ''; }
@@ -1524,9 +1557,7 @@
       } else {
         inner += fleetOutBookingCardHtml_(bk, '');
         inner += '<div class="ring-fleet-return-sheet-note">' +
-          '<p style="margin:0 0 6px;font-weight:900;">貸出前チェックシートを確認してください</p>' +
-          '<p style="margin:0;">Googleドライブ等に保存したチェックシートPDFをスタッフが手動で開き、車両状態を目視確認してから返却を完了してください。' +
-          'RinG-AutoからPDFは自動取得しません。</p></div>';
+          '<p style="margin:0;">貸出前チェックシートを確認し、車両状態を確認したうえで返却を完了してください。</p></div>';
         inner += '<label class="ring-fleet-return-check"><input type="checkbox" id="fleetReturnSheetOk"' +
           (wizardState.sheetChecked ? ' checked' : '') + '>' +
           '<span>チェックシートPDFを開き、車両状態の確認が完了した</span></label>';
@@ -1627,6 +1658,11 @@
   }
 
   function openNewBookingWizard_(preset) {
+    if (!fleetContextCurrent_() || (wizardState && wizardState.busy)) return;
+    closeNewBookingWizard_();
+    closeMobDetailSheet_({ clearSelection: true });
+    selectedBookingId = '';
+    renderDetailPanel_();
     var today = ringFormatDateToYmdJst_(new Date());
     wizardState = Object.assign({
       kind: 'booking',
@@ -1643,7 +1679,7 @@
   }
 
   function wizardGoBack_() {
-    if (!wizardState) return;
+    if (!wizardState || wizardState.busy) return;
     var flowDate = ['dates', 'list', 'confirm'];
     var flowVeh = ['vehicles', 'vin_cal', 'vin_dates', 'confirm'];
     var flow = wizardState.mode === 'by_date' ? flowDate : flowVeh;
@@ -1686,15 +1722,21 @@
   }
 
   async function wizardSearchByDate_() {
-    var start = wizardState.startDate;
-    var end = wizardState.endDate;
+    var state = wizardState;
+    if (!state || state.readPending) return;
+    var start = state.startDate;
+    var end = state.endDate;
     if (ringYmdCompare_(start, end) > 0) {
       if (typeof showToast === 'function') showToast('error', '返却予定日は貸出開始日以降にしてください');
       return;
     }
     if (typeof showLoading === 'function') showLoading('検索中', '読み込み中…');
-    var syncRes = await ringFleetEnsureBookingsSyncedForRange_(profile, start, end);
-    if (!fleetContextCurrent_()) return;
+    state.readPending = true;
+    var syncRes;
+    try { syncRes = await ringFleetEnsureBookingsSyncedForRange_(profile, start, end); }
+    catch (e) { syncRes = { ok: false, bookings: bookingsCache }; }
+    finally { state.readPending = false; }
+    if (!fleetContextCurrent_() || wizardState !== state) return;
     if (typeof hideLoading === 'function') hideLoading();
     fleetBookingsSyncOk = !!syncRes.ok;
     fleetSyncFromCache = !syncRes.ok;
@@ -1708,12 +1750,16 @@
     if (!shell || !wizardState || wizardState.kind === 'return') return;
     shell.hidden = false;
     shell.setAttribute('aria-hidden', 'false');
+    shell.setAttribute('role', 'dialog');
+    shell.setAttribute('aria-modal', 'true');
+    shell.setAttribute('aria-label', '新しい予約');
     var title = { choose: '新しい予約', dates: '日付から探す', list: '空いている車両', vehicles: '車両から探す',
       vin_cal: '予約済みの確認', vin_dates: '貸出日を選択', confirm: '内容の確認' }[wizardState.step] || '新しい予約';
     var inner = '<div class="ring-fleet-wizard-inner"><div class="ring-fleet-wizard-head">' +
       '<button type="button" class="ring-fleet-wizard-back"' + (wizardState.step === 'choose' ? ' style="visibility:hidden"' : '') +
       '>戻る</button><h2>' + fleetEscape_(title) + '</h2>' +
       '<button type="button" class="ring-fleet-wizard-close">閉じる</button></div>';
+    if (wizardState.step === 'confirm') inner += '<button type="button" id="fleetWizardRestart" class="ring-fleet-wizard-restart">＋ 新しい予約から選び直す</button>';
     inner += fleetAvailStaleBanner_();
     if (wizardState.step === 'choose') {
       inner += '<p style="font-size:13px;font-weight:700;color:#475569;margin:0 0 8px;">予約の探し方を選んでください</p>' +
@@ -1738,15 +1784,15 @@
       if (!avail.length) inner += '<p class="empty-msg">この期間に空いている車両はありません</p>';
       avail.forEach(function (car) {
         var name = ringVehicleListDisplayName_(car);
-        inner += '<div class="ring-fleet-avail-card" data-wiz-pick-vin="' + fleetEscape_(car.vin) + '"><strong>' +
-          fleetEscape_(name) + '</strong>' + fleetVehicleAvailMetaHtml_(car) + '</div>';
+        inner += '<button type="button" class="ring-fleet-avail-card" data-wiz-pick-vin="' + fleetEscape_(car.vin) + '"><strong>' +
+          fleetEscape_(name) + '</strong>' + fleetVehicleAvailMetaHtml_(car) + '<span class="ring-fleet-card-action">この車両で予約 →</span></button>';
       });
     } else if (wizardState.step === 'vehicles') {
       var pack = fleetFilteredVehicles_();
       if (!pack.vehicles.length) inner += '<p class="empty-msg">車両がありません</p>';
       pack.vehicles.forEach(function (car) {
-        inner += '<div class="ring-fleet-avail-card" data-wiz-pick-vin="' + fleetEscape_(car.vin) + '"><strong>' +
-          fleetEscape_(ringVehicleListDisplayName_(car)) + '</strong>' + fleetVehicleAvailMetaHtml_(car) + '</div>';
+        inner += '<button type="button" class="ring-fleet-avail-card" data-wiz-pick-vin="' + fleetEscape_(car.vin) + '"><strong>' +
+          fleetEscape_(ringVehicleListDisplayName_(car)) + '</strong>' + fleetVehicleAvailMetaHtml_(car) + '<span class="ring-fleet-card-action">この車両で予約 →</span></button>';
       });
     } else if (wizardState.step === 'vin_cal') {
       inner += '<p style="font-size:13px;font-weight:800;margin:0 0 8px;">' + fleetEscape_(fleetVehicleName_(wizardState.vin)) + '</p>' +
@@ -1765,7 +1811,12 @@
     }
     inner += '</div>';
     shell.innerHTML = inner;
+    var heading = shell.querySelector('h2');
+    if (heading) { heading.tabIndex = -1; heading.focus({ preventScroll: true }); }
+    shell.querySelector('.ring-fleet-wizard-inner').scrollTop = 0;
     shell.querySelector('.ring-fleet-wizard-close').onclick = closeNewBookingWizard_;
+    var restart = shell.querySelector('#fleetWizardRestart');
+    if (restart) restart.onclick = function () { openNewBookingWizard_(); };
     var back = shell.querySelector('.ring-fleet-wizard-back');
     if (back) back.onclick = wizardGoBack_;
     shell.querySelectorAll('[data-wiz-mode]').forEach(function (btn) {
@@ -1829,6 +1880,8 @@
     var wizVinCheck = document.getElementById('wizVinCheck');
     if (wizVinCheck) {
       wizVinCheck.onclick = async function () {
+        var state = wizardState;
+        if (!state || state.readPending) return;
         wizardState.startDate = document.getElementById('wizStart').value;
         wizardState.endDate = document.getElementById('wizEnd').value;
         if (ringYmdCompare_(wizardState.startDate, wizardState.endDate) > 0) {
@@ -1836,8 +1889,12 @@
           return;
         }
         if (typeof showLoading === 'function') showLoading('確認中', '読み込み中…');
-        var syncRes = await ringFleetEnsureBookingsSyncedForRange_(profile, wizardState.startDate, wizardState.endDate);
-        if (!fleetContextCurrent_()) return;
+        state.readPending = true;
+        var syncRes;
+        try { syncRes = await ringFleetEnsureBookingsSyncedForRange_(profile, state.startDate, state.endDate); }
+        catch (e) { syncRes = { ok: false, bookings: bookingsCache }; }
+        finally { state.readPending = false; }
+        if (!fleetContextCurrent_() || wizardState !== state) return;
         if (typeof hideLoading === 'function') hideLoading();
         fleetBookingsSyncOk = !!syncRes.ok;
         fleetApplyBookingsCache_(syncRes.bookings || []);
@@ -1896,8 +1953,8 @@
     }
     var html = '';
     avail.forEach(function (car) {
-      html += '<div class="ring-fleet-avail-card" data-desk-pick="' + fleetEscape_(car.vin) + '"><strong>' +
-        fleetEscape_(ringVehicleListDisplayName_(car)) + '</strong>' + fleetVehicleAvailMetaHtml_(car) + '</div>';
+      html += '<button type="button" class="ring-fleet-avail-card" data-desk-pick="' + fleetEscape_(car.vin) + '"><strong>' +
+        fleetEscape_(ringVehicleListDisplayName_(car)) + '</strong>' + fleetVehicleAvailMetaHtml_(car) + '<span class="ring-fleet-card-action">この車両で予約 →</span></button>';
     });
     host.innerHTML = html;
     host.querySelectorAll('[data-desk-pick]').forEach(function (card) {
@@ -1919,7 +1976,6 @@
     var y1 = calYear, m1 = calMonth;
     var nm = fleetCalNextMonth_(y1, m1);
     fleetBookingsRefreshing = true;
-    renderFleetSummary_();
     var results;
     try {
       results = await Promise.all([
@@ -2066,7 +2122,10 @@
     var loadShop = fleetCurrentShopId_();
     var loadGen = ++fleetLoadGen;
     if (manual && typeof showLoading === 'function') showLoading('更新中', '読み込み中…');
-    fleetVehiclesLoading = true;
+    if (!fleetVehiclesDisplayable_() || manual) {
+      fleetVehiclesLoading = true;
+      if (!manual) renderFleetSummary_();
+    }
     // 車両と予約は互いに独立した読み取りなので並行して取得する（表示は手元の情報で先に出ている）
     var vehiclesP = typeof syncVehiclesFromServer === 'function'
       ? syncVehiclesFromServer({returnStatus:true}).catch(function () { return {ok:false}; })
@@ -2076,7 +2135,10 @@
     if (fleetContextCurrent_() && loadGen === fleetLoadGen && fleetCurrentShopId_() === loadShop) {
       fleetVehiclesLoading = false;
       fleetVehiclesSyncOk = !!(vehiclesResult && vehiclesResult.ok);
-      if (fleetVehiclesSyncOk) { var scope = ringFleetBookingsCacheKey_(profile); if (scope) localStorage.setItem('ring_fleet_vehicle_snapshot:' + scope, '1'); }
+      if (fleetVehiclesSyncOk) {
+        var snapKey = fleetVehicleSnapshotKey_();
+        if (snapKey) localStorage.setItem(snapKey, '1');
+      }
       renderFleetList_(true);
     }
     var ok = await bookingsP;
@@ -2272,6 +2334,7 @@
       if (viewState.tab && viewState.tab !== fleetTab) setFleetTab_(viewState.tab);
       if (viewState.year && viewState.month) { calYear = viewState.year; calMonth = viewState.month; }
     }
+    fleetInitVehicleLoadingFlag_();
     fleetRenderFromLocalCache_();
     if (viewState) {
       if (viewState.listOpen && listOpen) listOpen.click();

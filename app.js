@@ -1767,7 +1767,8 @@ var RING_PAGE_TTL_MS = {
     user_home: 5 * 60 * 1000
 };
 var RING_SYNC_META_KEY = "ring_page_sync_meta_v1";
-var ringPageSyncInFlight_ = {};
+var ringPageSyncInFlight_ = new Map();
+var ringPageSyncFailures_ = new Map();
 
 function ringPageTtlMs_(pageId) {
     var id = String(pageId || "");
@@ -1869,18 +1870,8 @@ function ringRestoreScrollY_(scrollY) {
 function ringShowSyncStatus_(elementId, message, isError) {
     var el = document.getElementById(elementId);
     if (!el) return;
-    if (!message) {
-        el.style.display = "none";
-        el.textContent = "";
-        return;
-    }
-    el.style.display = "block";
-    el.textContent = message;
+    el.textContent = message || "";
     el.style.color = isError ? "#b45309" : "var(--muted)";
-    el.style.fontSize = "11px";
-    el.style.fontWeight = "700";
-    el.style.marginTop = "4px";
-    el.style.lineHeight = "1.4";
 }
 
 function ringUpdateLastSyncLabel_(labelId, cacheKey) {
@@ -1924,44 +1915,50 @@ async function ringRunPageSync_(opts) {
     opts = opts || {};
     var cacheKey = String(opts.cacheKey || "");
     if (!cacheKey || typeof opts.syncFn !== "function") return { ok: false, rendered: false };
-    if (ringPageSyncInFlight_[cacheKey]) return ringPageSyncInFlight_[cacheKey];
+    var context = ringCaptureRequestContext_();
+    var syncKey = JSON.stringify([cacheKey, context.epoch]);
+    var pending = ringPageSyncInFlight_.get(syncKey);
+    if (pending) return pending;
 
     var task = (async function () {
         var prevSig = typeof opts.getSignatureFn === "function" ? opts.getSignatureFn() : "";
-        var scrollY = opts.preserveScroll ? window.scrollY : null;
-        ringSetRefreshButtonBusy_(opts.refreshBtn, true, opts.refreshLabel || "🔄 更新");
-        if (opts.statusElId) {
+        var showProgress = opts.showProgress === true;
+        if (showProgress) {
+            ringSetRefreshButtonBusy_(opts.refreshBtn, true, opts.refreshLabel || "🔄 更新");
             ringShowSyncStatus_(opts.statusElId, opts.statusMessage || "読み込み中…", false);
         }
-        var ok = false;
         var rendered = false;
         try {
             var r = await opts.syncFn();
-            ok = !!(r && r.ok !== false);
-            if (ok) {
-                ringSetPageSyncMeta_(cacheKey);
-                if (opts.lastSyncElId) ringUpdateLastSyncLabel_(opts.lastSyncElId, cacheKey);
-                if (opts.statusElId) ringShowSyncStatus_(opts.statusElId, "", false);
-                var newSig = typeof opts.getSignatureFn === "function" ? opts.getSignatureFn() : "";
-                if (typeof opts.renderFn === "function" && newSig !== prevSig) {
-                    opts.renderFn(false, scrollY);
-                    rendered = true;
-                }
-            } else if (opts.statusElId) {
-                ringShowSyncStatus_(opts.statusElId, "読み込みできませんでした", true);
+            if (!ringRequestContextIsCurrent_(context)) return { ok: false, rendered: false };
+            if (!r || r.ok === false) throw new Error(r && r.error || "SYNC_FAILED");
+            ringPageSyncFailures_.delete(cacheKey);
+            ringSetPageSyncMeta_(cacheKey);
+            if (opts.lastSyncElId) ringUpdateLastSyncLabel_(opts.lastSyncElId, cacheKey);
+            ringShowSyncStatus_(opts.statusElId, "", false);
+            var newSig = typeof opts.getSignatureFn === "function" ? opts.getSignatureFn() : "";
+            if (typeof opts.renderFn === "function" && newSig !== prevSig) {
+                opts.renderFn(false, scrollY);
+                rendered = true;
             }
-        } catch (eSync) {
-            if (opts.statusElId) {
-                ringShowSyncStatus_(opts.statusElId, "読み込みできませんでした", true);
+            return { ok: true, rendered: rendered };
+        } catch (error) {
+            if (!ringRequestContextIsCurrent_(context)) return { ok: false, rendered: false };
+            var previous = ringPageSyncFailures_.get(cacheKey);
+            var failures = previous && previous.epoch === context.epoch ? previous.count + 1 : 1;
+            ringPageSyncFailures_.set(cacheKey, { count: failures, epoch: context.epoch });
+            if (showProgress || failures >= 2 || /AUTH_|FORBIDDEN|PERMISSION/i.test(String(error))) {
+                var message = ringGasPermanentErrorMessage_(String(error && error.message || error))
+                    || "読み込みできませんでした。接続を確認して更新してください。";
+                ringShowSyncStatus_(opts.statusElId, message, true);
             }
+            return { ok: false, rendered: rendered };
         } finally {
-            ringSetRefreshButtonBusy_(opts.refreshBtn, false, opts.refreshLabel || "🔄 更新");
-            delete ringPageSyncInFlight_[cacheKey];
+            if (showProgress) ringSetRefreshButtonBusy_(opts.refreshBtn, false, opts.refreshLabel || "🔄 更新");
         }
-        return { ok: ok, rendered: rendered };
-    })();
+    })().finally(function () { ringPageSyncInFlight_.delete(syncKey); });
 
-    ringPageSyncInFlight_[cacheKey] = task;
+    ringPageSyncInFlight_.set(syncKey, task);
     return task;
 }
 
@@ -2251,13 +2248,13 @@ async function fetchMaintenanceHistoryFromGas(vin) {
  * GAS から自店7日以内の整備履歴を取得（工場編集一覧用）
  * @returns {Promise<{ logs: object[], ok: boolean }>}
  */
-async function fetchShopMaintenanceHistoryFromGas() {
+async function fetchShopMaintenanceHistoryFromGas(options) {
     if (ringIsDemoGasOffline_()) return { logs: [], ok: false };
     try {
-        const json = await sendToGAS_Safe("get_shop_maintenance_history", {});
+        const json = await sendToGAS_Safe("get_shop_maintenance_history", {}, options);
         return { logs: Array.isArray(json.logs) ? json.logs : [], ok: true };
     } catch (e) {
-        return { logs: [], ok: false };
+        return { logs: [], ok: false, error: String(e && e.message || e) };
     }
 }
 
@@ -2564,13 +2561,15 @@ async function syncShopMaintenanceLogsForEdit(shopId) {
     var sid = String(shopId || "").trim();
     if (!sid) return { ok: false, signature: "0::0" };
 
-    var fetched = await fetchShopMaintenanceHistoryFromGas();
+    var context = ringCaptureRequestContext_();
+    var fetched = await fetchShopMaintenanceHistoryFromGas({ silentToast: true });
+    if (!ringRequestContextIsCurrent_(context)) return { ok: false, error: "STALE_SESSION" };
     var allLogs = readLogsArray();
     if (!fetched.ok) {
         var cached = allLogs.filter(function (l) {
             return String(l.shopId || "").trim() === sid && ringIsLogEditableWithin7Days_(l);
         });
-        return { ok: false, signature: ringMaintenanceLogsSignature_(cached) };
+        return { ok: false, error: fetched.error, signature: ringMaintenanceLogsSignature_(cached) };
     }
 
     var serverLogs = mapGasMaintenanceLogsToLocal_(fetched.logs);
@@ -4869,7 +4868,8 @@ async function invalidateFleetBookingRequest_(clientRequestId, snapshot) {
 
 function ringFleetGasFailureFromCatch_(err) {
     var gas = err && err.gasResponse;
-    if (!gas || typeof gas !== 'object' || gas.success === true) return null;
+    // A missing error field (e.g. truncated/empty JSON) is not a confirmed server rejection.
+    if (!gas || typeof gas !== 'object' || gas.success === true || !String(gas.error || '').trim()) return null;
     var out = Object.assign({}, gas);
     out.networkFailure = false;
     if (!out.error && err && err.message) out.error = String(err.message).trim();
@@ -5777,7 +5777,7 @@ async function syncVehiclesFromServer(options) {
     var readSerial = ++ringVehicleReadSerial_;
     const profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
     try {
-        const json = await sendToGAS_Safe("get_vehicles", {});
+        const json = await sendToGAS_Safe("get_vehicles", {}, { silentToast: !!(options && options.silentToast) });
         if (!ringRequestContextIsCurrent_(requestContext) || readSerial !== ringVehicleReadSerial_) return result(false, 'STALE_SESSION');
         if (!json || json.success === false || !Array.isArray(json.vehicles)) {
             return result(false, (json && json.error) || 'GET_VEHICLES_FAILED');
