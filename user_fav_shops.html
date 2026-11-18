@@ -15,6 +15,7 @@
   <link rel="stylesheet" href="common.css">
   <script src="app.js?v=20261118-v50" integrity="sha256-ZevdKzRSCi4Z3RoWBO5isnEHEfBYWWROfSjloAKrSFc= sha256-00mt5W4gxaY949Uzz47wWzw/2bttpeuWaMvdgoIFA5o=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
   <script src="theme.js"></script>
+  <script src="owner-platform.js"></script>
   
   <style>
     /* 34pxグリッド設計：ノートの世界観に統一 */
@@ -153,7 +154,56 @@
         
         container.innerHTML = html;
         hideLoading();
+        if (window.ringOwnerPlatform && ringOwnerPlatform.active()) {
+          ringEnhanceFavShopPrivateToggles_(favShops);
+        }
       }, 300);
+    }
+
+    async function ringEnhanceFavShopPrivateToggles_(localShops) {
+      try {
+        var json = await ringOwnerPlatform.listFavoriteShops();
+        var rows = (json && json.favorites) || [];
+        var byShop = {};
+        rows.forEach(function (r) {
+          if (!byShop[r.shopId]) byShop[r.shopId] = [];
+          byShop[r.shopId].push(r);
+        });
+        var vehicles = typeof loadVehicles === 'function' ? loadVehicles() : [];
+        localShops.forEach(function (shop) {
+          var card = document.getElementById('card-' + shop.shopId);
+          if (!card) return;
+          var grants = byShop[shop.shopId] || [];
+          var grantMap = {};
+          grants.forEach(function (g) { if (g.vin) grantMap[g.vin] = g.allowPrivateView !== false; });
+          var block = document.createElement('details');
+          block.style.marginTop = '12px';
+          block.innerHTML = '<summary style="font-weight:800;cursor:pointer">非公開履歴の閲覧許可（車両別）</summary>';
+          var inner = document.createElement('div');
+          inner.style.paddingTop = '8px';
+          vehicles.forEach(function (car) {
+            var vin = String(car.vin || '').trim();
+            if (!vin) return;
+            var checked = grantMap[vin] !== false;
+            var row = document.createElement('label');
+            row.style.display = 'flex'; row.style.alignItems = 'center'; row.style.gap = '8px'; row.style.marginBottom = '6px';
+            row.innerHTML = '<input type="checkbox" data-vin="' + escapeHtml(vin) + '" ' + (checked ? 'checked' : '') + '> ' +
+              escapeHtml(typeof ringVehicleDisplayName_ === 'function' ? ringVehicleDisplayName_(car) : vin);
+            inner.appendChild(row);
+          });
+          block.appendChild(inner);
+          card.insertBefore(block, card.querySelector('.remove-area'));
+          block.querySelectorAll('input[type=checkbox]').forEach(function (cb) {
+            cb.addEventListener('change', function () {
+              ringOwnerPlatform.setFavoriteVehiclePermission({
+                shopId: shop.shopId,
+                vin: cb.getAttribute('data-vin'),
+                allowPrivateView: cb.checked
+              });
+            });
+          });
+        });
+      } catch (e) { /* ignore */ }
     }
 
     async function removeShop(shopId) {

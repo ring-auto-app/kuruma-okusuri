@@ -4051,6 +4051,10 @@ function mapGasVehicleRowToLocal(row) {
     }
     var rev = ringParseServerRev_(row.serverRev);
     if (rev != null) out.serverRev = rev;
+    if (Object.prototype.hasOwnProperty.call(row, 'ownerMark')) out.ownerMark = String(row.ownerMark || '').trim();
+    if (Object.prototype.hasOwnProperty.call(row, 'ownerClaimRequired')) out.ownerClaimRequired = !!row.ownerClaimRequired;
+    if (Object.prototype.hasOwnProperty.call(row, 'ownerPeriodId')) out.ownerPeriodId = String(row.ownerPeriodId || '').trim();
+    if (Object.prototype.hasOwnProperty.call(row, 'vehicleArchive')) out.vehicleArchive = String(row.vehicleArchive || '').trim();
     return out;
 }
 

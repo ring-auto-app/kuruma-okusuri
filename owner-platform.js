@@ -35,21 +35,28 @@
   function purgeSensitiveCaches() {
     try {
       var logs = typeof global.readLogsArray === 'function' ? global.readLogsArray() : [];
-      logs.forEach(function (l) {
-        if (l.visibility === 'private' || l.photoAccess === 'fetch') {
-          l.photoUrl = '';
-          l.partsPhoto = '';
+      logs = logs.map(function (l) {
+        var copy = Object.assign({}, l);
+        if (copy.visibility === 'private' || copy.photoAccess === 'fetch' || copy.photoAccess === 'none') {
+          copy.photoUrl = '';
+          copy.partsPhoto = '';
         }
+        return copy;
       });
-      if (typeof global.DB_LOGS === 'string') {
-        global.localStorage.setItem(global.DB_LOGS, JSON.stringify(logs));
-      } else {
-        global.localStorage.setItem('nappy_logs_v1', JSON.stringify(logs));
-      }
+      global.localStorage.setItem('nappy_logs_v1', JSON.stringify(logs));
+      global.localStorage.removeItem('logs_v1');
     } catch (e) { /* ignore */ }
     try {
-      global.localStorage.removeItem('ring_owner_notices_v1');
+      global.sessionStorage.removeItem('ring_factory_vin_search_flash_v1');
     } catch (e2) { /* ignore */ }
+  }
+
+  async function resyncAllCachedVins() {
+    if (typeof global.loadVehicles !== 'function' || typeof global.syncMaintenanceHistoryForVin !== 'function') return;
+    var vs = global.loadVehicles().map(function (c) { return c.vin; }).filter(Boolean);
+    for (var i = 0; i < vs.length; i++) {
+      try { await global.syncMaintenanceHistoryForVin(vs[i]); } catch (e) { /* ignore */ }
+    }
   }
 
   async function fetchMaintenancePhoto(vin, logId) {
@@ -60,6 +67,8 @@
     active: ownerPlatformActive,
     purgeSensitiveCaches: purgeSensitiveCaches,
     claimTransfer: function (p) { return gasPost('owner_claim_transfer', p); },
+    claimWithShakenOcr: function (p) { return gasPost('owner_claim_shaken_ocr', p); },
+    archivePreflight: function (vin) { return gasPost('owner_archive_preflight', { vin: vin }); },
     setHistoryVisibility: function (logId, visibility) {
       return gasPost('owner_set_history_visibility', { log_id: logId, visibility: visibility });
     },
@@ -75,14 +84,20 @@
       return gasPost('owner_archive_vehicle', { vin: vin, privateDisclosureChoice: choice || 'keep_private' });
     },
     getTransferNotices: function () { return gasPost('owner_get_transfer_notices', {}); },
-    respondTransferNotice: function (noticeId, noticeAction) {
-      return gasPost('owner_respond_transfer_notice', { noticeId: noticeId, noticeAction: noticeAction });
+    respondTransferNotice: function (noticeId, noticeAction, extra) {
+      extra = extra || {};
+      return gasPost('owner_respond_transfer_notice', Object.assign({ noticeId: noticeId, noticeAction: noticeAction }, extra));
     },
     listPastVehicles: function () { return gasPost('owner_list_past_vehicles', {}); },
     getShopReferral: function () { return gasPost('owner_get_shop_referral', {}); },
     lookupReferral: function (code) { return gasPost('owner_lookup_referral', { referralCode: code }); },
     subUserInvite: function (opts) { return gasPost('owner_sub_user_invite', opts || {}); },
     fetchMaintenancePhoto: fetchMaintenancePhoto,
-    parseShakenOcrForOwner: parseShakenOcrForOwner
+    parseShakenOcrForOwner: parseShakenOcrForOwner,
+    resyncAllCachedVins: resyncAllCachedVins,
+    listFavoriteShops: function () { return gasPost('owner_list_favorite_shops', {}); },
+    setFavoriteVehiclePermission: function (o) { return gasPost('owner_set_favorite_vehicle_permission', o || {}); },
+    acceptSubInvite: function (grantId) { return gasPost('owner_accept_sub_invite', { grantId: grantId }); },
+    createSubInvite: function (vin) { return gasPost('owner_sub_user_invite', { vin: vin }); }
   };
 })(typeof window !== 'undefined' ? window : globalThis);

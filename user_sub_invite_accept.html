@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>副ユーザー招待｜車のお薬手帳</title>
+  <link rel="stylesheet" href="common.css">
+  <script src="app.js?v=20261118-v50"></script>
+  <script src="owner-platform.js"></script>
+</head>
+<body>
+  <div class="container">
+    <a href="user_home.html" class="back-link">◁ 戻る</a>
+    <h1 class="title">副ユーザー招待の受諾</h1>
+    <p id="msg" style="font-weight:700">処理中…</p>
+    <button type="button" class="btn btn-primary" id="acceptBtn" style="display:none">招待を受け入れる</button>
+  </div>
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      var params = new URLSearchParams(location.search);
+      var grant = params.get('grant') || params.get('grantId') || '';
+      var msg = document.getElementById('msg');
+      var btn = document.getElementById('acceptBtn');
+      if (!window.ringOwnerPlatform || !ringOwnerPlatform.active()) {
+        msg.textContent = 'この機能は現在の環境では利用できません。';
+        return;
+      }
+      if (!grant) {
+        msg.textContent = '招待コードが見つかりません。オーナーにQRを再表示してもらってください。';
+        return;
+      }
+      msg.textContent = 'オーナーからの副ユーザー招待です。受け入れると、許可された範囲のみ閲覧できます（公開設定・オーナー変更はできません）。';
+      btn.style.display = '';
+      btn.onclick = async function () {
+        btn.disabled = true;
+        var res = await ringOwnerPlatform.acceptSubInvite(grant);
+        if (res && res.success) {
+          msg.textContent = '招待を受け入れました。車両: ' + (res.vin || '指定なし');
+          if (typeof showToast === 'function') showToast('success', '副ユーザーとして登録しました');
+        } else {
+          msg.textContent = '受諾できませんでした: ' + ((res && res.error) || 'エラー');
+          btn.disabled = false;
+        }
+      };
+    });
+  </script>
+</body>
+</html>

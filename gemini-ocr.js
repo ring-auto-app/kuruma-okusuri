@@ -90,6 +90,7 @@
 ・用途 → purpose
 ・自家用・事業用の別 → useCategory
 ・車体の形状 → bodyShape
+・電子車検証の専用4桁セキュリティコード（ナンバー下4桁・型式指定番号ではない）→ eshakenSecurityCode（判読不能は""、4桁数字のみ）
 
 【厳守：混同禁止】
 「車台番号」「型式」「原動機の型式」は完全に独立した別項目です。
@@ -122,7 +123,8 @@
   "vehicleType":"",
   "purpose":"",
   "useCategory":"",
-  "bodyShape":""
+  "bodyShape":"",
+  "eshakenSecurityCode":""
 }
 `;
 
