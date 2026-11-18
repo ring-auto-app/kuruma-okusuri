@@ -936,6 +936,9 @@ function ringSwitchAccount(mode) {
     try { ringClearPendingSyncUi_(); } catch (eClearPend) { /* ignore */ }
     ringSetCurrentMode(mode);
     ringApplyActiveSession(slot, mode);
+    if (typeof window !== 'undefined' && window.ringOwnerPlatform && typeof window.ringOwnerPlatform.purgeSensitiveCaches === 'function') {
+        window.ringOwnerPlatform.purgeSensitiveCaches();
+    }
     if (typeof window !== 'undefined') window.__ringSessionVerified = false;
     try { ringRefreshPendingSyncBanner(); } catch (ePendBanner) { /* ignore */ }
     return { ok: true, profile: slot.profile, mode: mode };
@@ -1047,6 +1050,9 @@ function getCurrentProfile() {
 }
 
 function logout() {
+    if (typeof window !== 'undefined' && window.ringOwnerPlatform && typeof window.ringOwnerPlatform.purgeSensitiveCaches === 'function') {
+        window.ringOwnerPlatform.purgeSensitiveCaches();
+    }
     purgeRingDemoLocalData();
     localStorage.removeItem(RING_TOKEN_USER);
     localStorage.removeItem(RING_TOKEN_SHOP);
@@ -1994,7 +2000,11 @@ function mapGasMaintenanceLogToLocal(row) {
     if (!logId) return null;
     const vin = String(row.vin || "").trim().toUpperCase();
     if (!vin) return null;
-    const photoUrl = String(row.photoUrl || row.partsPhoto || "").trim();
+    var photoUrl = String(row.photoUrl || row.partsPhoto || "").trim();
+    var photoAccess = String(row.photoAccess || "").trim();
+    if (photoAccess === "fetch" || (row.visibility === "private" && typeof ringGasOwnerPlatformOperational_ === "function" && ringGasOwnerPlatformOperational_())) {
+        photoUrl = "";
+    }
     return {
         log_id: logId,
         vin: vin,
@@ -2009,6 +2019,11 @@ function mapGasMaintenanceLogToLocal(row) {
         factoryNumber: String(row.factoryNumber || ""),
         parts: String(row.parts || ""),
         memo: String(row.memo || ""),
+        visibility: String(row.visibility || "public"),
+        ownerPeriodId: String(row.ownerPeriodId || ""),
+        historyVisibilityEditable: !!row.historyVisibilityEditable,
+        hasPhoto: !!row.hasPhoto,
+        photoAccess: photoAccess || (row.hasPhoto ? "fetch" : "none"),
         photoUrl: photoUrl,
         partsPhoto: photoUrl,
         createdAt: String(row.createdAt || row.created_at || ""),
@@ -6574,6 +6589,21 @@ async function addVehicle(v, opts) {
     var payloadHadNickname = ringVehicleGasPayloadIncludesNickname_(gasPayload);
     try {
         const json = await sendToGAS_Safe('vehicle', gasPayload);
+        if (json && json.error === 'OWNER_CLAIM_REQUIRED' && json.ownerClaimRequired) {
+            if (typeof window.ringOwnerPlatformUi !== 'undefined' && window.ringOwnerPlatformUi.showOwnerClaimModal) {
+                var claimRes = await window.ringOwnerPlatformUi.showOwnerClaimModal(merged.vin);
+                if (claimRes && claimRes.claimToken) gasPayload.claimToken = claimRes.claimToken;
+                if (claimRes && claimRes.claimToken) {
+                    const json2 = await sendToGAS_Safe('vehicle', gasPayload);
+                    if (json2 && json2.success !== false) {
+                        ringMarkVehicleSyncedAfterGas_(merged.vin, profile, json2, payloadHadNickname,
+                            ringVehicleGasResponseSyncOpts_(gasPayload));
+                        return { success: true, vin: merged.vin, localSaved: true, serverSaved: true, queued: false };
+                    }
+                }
+            }
+            return { success: false, error: 'OWNER_CLAIM_REQUIRED', ownerClaimRequired: true, localSaved: true, serverSaved: false, queued: false };
+        }
         var ok = !!(json && json.success !== false);
         if (ok) {
             ringMarkVehicleSyncedAfterGas_(merged.vin, profile, json, payloadHadNickname,
@@ -10262,6 +10292,12 @@ function createGlobalUI() {
           ${qrPanelBlock}
           <div id="nappy-settings-panel"><div class="settings-header"><h2>設定</h2><button class="settings-close" id="nappy-settings-close">✖</button></div><div class="settings-body">${menuBodyHtml}</div></div>
         `;
+        setTimeout(function () {
+            var body = document.querySelector('#nappy-settings-panel .settings-body');
+            if (body && typeof window.ringOwnerPlatformUi !== 'undefined' && window.ringOwnerPlatformUi.appendOwnerSettings) {
+                window.ringOwnerPlatformUi.appendOwnerSettings(body);
+            }
+        }, 0);
     } else {
         const canManageStaff = profile && profile.role === 'master';
         const isBizUser = profile && (profile.shopType === 'factory' || profile.shopType === 'dealer');

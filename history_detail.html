@@ -14,6 +14,8 @@
   
   <link rel="stylesheet" href="common.css">
   <script src="app.js?v=20261118-v50" integrity="sha256-ZevdKzRSCi4Z3RoWBO5isnEHEfBYWWROfSjloAKrSFc= sha256-00mt5W4gxaY949Uzz47wWzw/2bttpeuWaMvdgoIFA5o=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
+  <script src="owner-platform.js"></script>
+  <script src="owner-platform-ui.js"></script>
   <script src="theme.js"></script>
 
   <style>
@@ -69,7 +71,8 @@
         return;
       }
 
-      document.getElementById("content").innerHTML = `
+      var visToggle = (window.ringOwnerPlatformUi && log) ? window.ringOwnerPlatformUi.buildDetailVisibilityToggle(log) : '';
+      document.getElementById("content").innerHTML = visToggle + `
         <div class="card">
           <div class="field">
             <span class="label">日付</span>
@@ -96,11 +99,17 @@
             <div class="value">${log.memo || "-"}</div>
           </div>
 
+          ${(log.photoUrl || log.hasPhoto || log.photoAccess === 'fetch') ? '<h2 class="field" style="font-weight:900;margin-top:16px">📷 整備写真</h2><img alt="整備写真" id="ring-hist-photo" style="max-width:100%;border-radius:12px;display:block;margin:auto"/>' : ''}
           <a href="factory_edit_detail.html?vin=${vin}&log_id=${logId}" class="edit-btn">
             この内容を編集する
           </a>
         </div>
       `;
+      if (window.ringOwnerPlatformUi) {
+        window.ringOwnerPlatformUi.wireDetailVisibilityToggle(log, vin);
+        var img = document.getElementById('ring-hist-photo');
+        if (img) window.ringOwnerPlatformUi.loadHistoryPhotoIfNeeded(log, vin, img);
+      }
       hideLoading();
     }, showOverlay === false ? 0 : 300);
   }

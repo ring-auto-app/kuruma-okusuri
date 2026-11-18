@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>過去の車両｜車のお薬手帳</title>
+  <link rel="stylesheet" href="common.css">
+  <script src="app.js?v=20261118-v50"></script>
+  <script src="owner-platform.js"></script>
+  <script src="owner-platform-ui.js"></script>
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <a href="user_home.html" class="back-link">◁ 戻る</a>
+      <h1 class="title">過去の車両</h1>
+    </header>
+    <p style="font-size:13px;font-weight:700;color:var(--muted)">登録一覧から外した車両です。あなたの管理期間の整備履歴は引き続き確認できます。</p>
+    <div id="list"></div>
+  </div>
+  <script>
+    document.addEventListener('DOMContentLoaded', async function () {
+      if (!window.ringOwnerPlatform || !ringOwnerPlatform.active()) {
+        document.getElementById('list').innerHTML = '<div class="card">この機能は準備中です。</div>';
+        return;
+      }
+      var json = await ringOwnerPlatform.listPastVehicles();
+      var rows = (json && json.vehicles) || [];
+      if (!rows.length) {
+        document.getElementById('list').innerHTML = '<div class="card">過去の車両はありません。</div>';
+        return;
+      }
+      document.getElementById('list').innerHTML = rows.map(function (r) {
+        return '<div class="card"><strong>' + escapeHtml(r.vin) + '</strong><br><span style="font-size:12px">外した日: ' +
+          escapeHtml(r.archivedAt || '') + '</span><br><a class="btn btn-secondary" style="margin-top:8px" href="history.html?vin=' +
+          encodeURIComponent(r.vin) + '">整備履歴を見る</a></div>';
+      }).join('');
+    });
+  </script>
+</body>
+</html>

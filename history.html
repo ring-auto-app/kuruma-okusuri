@@ -14,6 +14,8 @@
   
   <link rel="stylesheet" href="common.css">
   <script src="app.js?v=20261118-v50" integrity="sha256-ZevdKzRSCi4Z3RoWBO5isnEHEfBYWWROfSjloAKrSFc= sha256-00mt5W4gxaY949Uzz47wWzw/2bttpeuWaMvdgoIFA5o=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
+  <script src="owner-platform.js"></script>
+  <script src="owner-platform-ui.js"></script>
   <script src="theme.js"></script>
   
   <style>
@@ -159,6 +161,7 @@
       </div>
     </div>
     
+    <div id="ring-history-vis-host"></div>
     <div class="filter-row">
       <select id="filterSelect" class="filter-select" onchange="renderHistory()">
         <option value="all">新しい順（整備のみ）</option>
@@ -342,6 +345,13 @@
       }
 
       renderHistory();
+      if (window.ringOwnerPlatformUi && window.ringOwnerPlatformUi.active()) {
+        var vhost = document.getElementById('ring-history-vis-host');
+        if (vhost) vhost.innerHTML = window.ringOwnerPlatformUi.buildHistoryVisibilityBar(vin);
+        window.ringOwnerPlatformUi.wireHistoryVisibilityBar(vin, function () {
+          return baseLogsCache.filter(function (l) { return l.historyVisibilityEditable; }).map(function (l) { return l.log_id; });
+        });
+      }
     }
 
     // 日常点検の項目ID→名前マップ
