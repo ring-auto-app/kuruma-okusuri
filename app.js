@@ -3825,6 +3825,10 @@ function ringGasSupportsPlateSuffixCombined_() {
     return ringGasFeatureEnabled_('plateSuffixCombined');
 }
 
+function ringGasOwnerPlatformOperational_() {
+    return ringGasFeatureEnabled_('ownerPlatform') && ringGasFeatureEnabled_('ownerPlatformOperational');
+}
+
 function ringGasResponseConfirmsPlateSuffix_(gasJson) {
     if (!gasJson || gasJson.success === false) return false;
     if (Object.prototype.hasOwnProperty.call(gasJson, 'plateSuffix')) return true;
