@@ -1031,6 +1031,100 @@
     min-width: 0;
     max-width: 100%;
   }
+
+  .ring-fleet-veh-card .car-header .ring-fleet-cat-header {
+    display: none;
+  }
+
+  .ring-fleet-veh-card .ring-fleet-meta-chip--cat {
+    display: block;
+  }
+
+  .ring-fleet-veh-card {
+    padding: 10px 12px;
+    margin-bottom: 10px;
+  }
+
+  .ring-fleet-veh-card .car-model {
+    font-size: 15px;
+    line-height: 1.25;
+  }
+
+  .ring-fleet-veh-card .car-header {
+    margin-bottom: 2px;
+  }
+
+  .ring-fleet-veh-card .ring-fleet-veh-meta {
+    margin: 4px 0 8px;
+    line-height: 1.3;
+  }
+
+  .ring-fleet-veh-card .ring-fleet-veh-meta-row--primary {
+    display: grid;
+    grid-template-columns: minmax(48px, auto) minmax(0, 1fr) minmax(0, 1.05fr);
+    gap: 4px 8px;
+    align-items: start;
+  }
+
+  .ring-fleet-veh-card .ring-fleet-veh-meta-row--primary .ring-fleet-meta-chip {
+    margin: 0;
+  }
+
+  .ring-fleet-veh-card .ring-fleet-meta-chip--cat .cat-pill {
+    font-size: 9px;
+    padding: 2px 6px;
+    white-space: nowrap;
+  }
+
+  .ring-fleet-veh-card .ring-fleet-meta-chip--plate,
+  .ring-fleet-veh-card .ring-fleet-meta-chip--vin {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: 4px;
+    row-gap: 1px;
+  }
+
+  .ring-fleet-veh-card .ring-fleet-meta-label {
+    min-width: 0;
+    font-size: 10px;
+    flex: 0 0 auto;
+  }
+
+  .ring-fleet-veh-card .ring-fleet-meta-value {
+    font-size: 11px;
+    font-weight: 800;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    flex: 1 1 3.5em;
+    min-width: 0;
+  }
+
+  .ring-fleet-veh-card .ring-fleet-meta-value--vin {
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1.25;
+  }
+
+  .ring-fleet-veh-card .ring-fleet-veh-meta-row--dates {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 10px;
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(148, 163, 184, 0.32);
+  }
+
+  .ring-fleet-veh-card .ring-fleet-veh-meta-row--dates .ring-fleet-meta-chip {
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+  }
+
+  .ring-fleet-veh-card .ring-fleet-veh-actions {
+    gap: 6px;
+  }
 }
 
 @media (min-width: 960px) {
@@ -1474,8 +1568,22 @@
   line-height: 1.5;
 }
 
-.ring-fleet-veh-meta p {
+.ring-fleet-meta-chip--cat {
+  display: none;
+}
+
+.ring-fleet-veh-meta-row--primary .ring-fleet-meta-chip,
+.ring-fleet-veh-meta-row--dates .ring-fleet-meta-chip {
   margin: 4px 0;
+}
+
+.ring-fleet-meta-chip {
+  min-width: 0;
+}
+
+.ring-fleet-meta-value {
+  font-weight: 800;
+  color: #334155;
 }
 
 .ring-fleet-meta-label {
@@ -1487,8 +1595,8 @@
 
 .ring-fleet-veh-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
 }
 
 .ring-fleet-action-btn {

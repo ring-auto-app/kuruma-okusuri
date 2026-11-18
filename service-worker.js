@@ -1,4 +1,4 @@
-const CACHE_NAME = "car-nappy-v50";
+const CACHE_NAME = "car-nappy-v51";
 const OFFLINE_URL = "./offline.html";
 
 const PRECACHE_URLS = [
@@ -26,9 +26,9 @@ const PRECACHE_URLS = [
   "./user_history.html",
   "./rental_fleet.html",
   "./rental-fleet.js",
-  "./rental-fleet.js?v=20261117-v48",
+  "./rental-fleet.js?v=20261118-v51",
   "./rental-fleet.css",
-  "./rental-fleet.css?v=20261117-v48",
+  "./rental-fleet.css?v=20261118-v51",
   "./fleet_check_sheet.html",
   "./fleet-check-sheet.js",
   "./fleet-check-sheet.js?v=20261118-v50",
@@ -80,9 +80,9 @@ const RELEASE_SHA256 = {
   "./daily_history.html": "2c54c4d37e6460c196321b1f62cf41fbf67667abe231bc2c1a0f737d85382e36",
   "./inspection_biz.html": "e915bd7580b04074c9ac64ed2518dcd1f4bf124dd54040ba0f09b8f8fd4fc852",
   "./vehicles.html": "0ed567ccde92487e7a246ade922a5dbdb67a8d2700b0ce63029187742991f053",
-  "./rental_fleet.html": "638087cef2594000f48d7e9a1c95a1b952070265ce6af6dc29982b8a0c9a1e59",
-  "./rental-fleet.js": "b11f1937f50bc31101e31d7b9a55fe1a03b108d24c026fd6bcb2c07ff3546117",
-  "./rental-fleet.css": "bc24ee6d567496ec53b82e8edacad885fa661226ff862db6454df724d4ce3b12",
+  "./rental_fleet.html": "f6d0ecfe225031c666a585f33d6dd34189719e5f2ea3c7de173fb375fe80da4a",
+  "./rental-fleet.js": "d6de699adf1c6f69835abf64f3292ad609b32d5c5d31d01d3ae4ac6f492f4b97",
+  "./rental-fleet.css": "6268621eb71fe95d829909107753d901b53f8bee3600362dc0b244eb0ec2d847",
   "./fleet_check_sheet.html": "a3fc24b865dcb8849745227b7b3e4b6022ee610cf7277cf60a7ff2811e36a126",
   "./fleet-check-sheet.js": "c56233eb0643972da7fce628a6661d0d25d8e37889206e4ae249400eb89da14e",
   "./fleet-check-sheet.css": "2949529d5139af1eaf96e233b6b37aca030134b48598045ec54f078fb0a03f5c",

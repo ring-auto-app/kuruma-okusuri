@@ -272,18 +272,26 @@
     var vinDisp = car.vin || '—';
     return '<article class="car-card ring-fleet-veh-card" data-vin="' + fleetEscape_(car.vin) + '">' +
       '<div class="car-header"><h2 class="car-model">' + fleetEscape_(name) + '</h2>' +
-      '<span class="cat-pill">' + fleetEscape_(catLabel) + '</span></div>' +
+      '<span class="cat-pill ring-fleet-cat-header">' + fleetEscape_(catLabel) + '</span></div>' +
       '<div class="ring-fleet-veh-meta">' +
-      '<p><span class="ring-fleet-meta-label">ナンバー</span>' + fleetEscape_(plateLine) + '</p>' +
-      '<p><span class="ring-fleet-meta-label">車台番号</span>' + fleetEscape_(vinDisp) + '</p>' +
-      '<p><span class="ring-fleet-meta-label">車検満了</span>' + fleetEscape_(shaken) + '</p>' +
-      '<p><span class="ring-fleet-meta-label">次回点検</span>' + fleetEscape_(inspect) + '</p>' +
+      '<div class="ring-fleet-veh-meta-row ring-fleet-veh-meta-row--primary">' +
+      '<span class="ring-fleet-meta-chip ring-fleet-meta-chip--cat"><span class="cat-pill ring-fleet-cat-meta">' + fleetEscape_(catLabel) + '</span></span>' +
+      '<div class="ring-fleet-meta-chip ring-fleet-meta-chip--plate">' +
+      '<span class="ring-fleet-meta-label">ナンバー</span><span class="ring-fleet-meta-value">' + fleetEscape_(plateLine) + '</span></div>' +
+      '<div class="ring-fleet-meta-chip ring-fleet-meta-chip--vin">' +
+      '<span class="ring-fleet-meta-label">車台番号</span><span class="ring-fleet-meta-value ring-fleet-meta-value--vin">' + fleetEscape_(vinDisp) + '</span></div>' +
       '</div>' +
+      '<div class="ring-fleet-veh-meta-row ring-fleet-veh-meta-row--dates">' +
+      '<div class="ring-fleet-meta-chip ring-fleet-meta-chip--shaken">' +
+      '<span class="ring-fleet-meta-label">車検満了</span><span class="ring-fleet-meta-value">' + fleetEscape_(shaken) + '</span></div>' +
+      '<div class="ring-fleet-meta-chip ring-fleet-meta-chip--inspect">' +
+      '<span class="ring-fleet-meta-label">次回点検</span><span class="ring-fleet-meta-value">' + fleetEscape_(inspect) + '</span></div>' +
+      '</div></div>' +
       '<div class="ring-fleet-veh-actions">' +
-      '<a href="vehicle_info.html?vin=' + encodeURIComponent(car.vin) + '&amp;from=rental_fleet" class="ring-fleet-action-btn" data-fleet-nav>車両情報</a>' +
       '<a href="history.html?vin=' + encodeURIComponent(car.vin) + '&amp;from=rental_fleet" class="ring-fleet-action-btn" data-fleet-nav>整備履歴</a>' +
       '<a href="inspection_biz.html?vin=' + encodeURIComponent(car.vin) + '&amp;from=rental_fleet" class="ring-fleet-action-btn" data-fleet-nav>日常点検</a>' +
       '<button type="button" class="ring-fleet-action-btn" data-fleet-rental-history="' + fleetEscape_(car.vin) + '">貸出履歴</button>' +
+      '<a href="vehicle_info.html?vin=' + encodeURIComponent(car.vin) + '&amp;from=rental_fleet" class="ring-fleet-action-btn" data-fleet-nav>車両情報</a>' +
       '</div></article>';
   }
 
