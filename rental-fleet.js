@@ -238,6 +238,42 @@
     return car.plateSuffix || '—';
   }
 
+  function fleetNormalizeLendeeInput_(raw) {
+    if (typeof ringFleetNormalizeLendeeName_ === 'function') return ringFleetNormalizeLendeeName_(raw);
+    if (raw == null) return '';
+    return String(raw).replace(/[\r\n]+/g, ' ').trim().slice(0, 60);
+  }
+
+  function fleetBookingLendee_(b) {
+    return fleetNormalizeLendeeInput_(b && b.lendeeName);
+  }
+
+  function fleetCalBarLabel_(b) {
+    var car = fleetFindVehicle_(b.vin);
+    var name = fleetVehicleName_(b.vin);
+    var platePart = '';
+    if (car) {
+      var plate = fleetPlateLabelForCar_(car);
+      if (plate && plate !== '—') platePart = plate;
+      else if (car.plateSuffix) platePart = String(car.plateSuffix);
+    }
+    var base = platePart ? (name + platePart) : name;
+    var lendee = fleetBookingLendee_(b);
+    return lendee ? (base + ' ' + lendee) : base;
+  }
+
+  function fleetLendeeFieldHtml_(value) {
+    return '<div class="ring-fleet-field"><label for="fleetWizLendee">貸出先</label>' +
+      '<input type="text" id="fleetWizLendee" class="ring-fleet-lendee-input" maxlength="60" autocomplete="off" ' +
+      'placeholder="任意（例：タナカ様）" value="' + fleetEscape_(value || '') + '"></div>';
+  }
+
+  function fleetReadWizardLendee_() {
+    var el = document.getElementById('fleetWizLendee');
+  if (wizardState) wizardState.lendeeName = fleetNormalizeLendeeInput_(el ? el.value : (wizardState.lendeeName || ''));
+    return wizardState ? wizardState.lendeeName : fleetNormalizeLendeeInput_(el ? el.value : '');
+  }
+
   function syncFleetSearchClear_() {
     var input = fleetSearchInputEl_();
     var clearBtn = document.getElementById('fleetSearchClear');
@@ -315,8 +351,10 @@
       return;
     }
     host.innerHTML = list.map(function (b) {
+      var lendee = fleetBookingLendee_(b);
       return '<article class="ring-fleet-history-row">' +
         '<p class="ring-fleet-history-dates">' + fleetEscape_(b.startDate) + ' 〜 ' + fleetEscape_(b.endDate) + '</p>' +
+        (lendee ? '<p class="ring-fleet-history-lendee">貸出先：' + fleetEscape_(lendee) + '</p>' : '') +
         '<p class="ring-fleet-history-st">' + fleetEscape_(fleetBookingStatusLabel_(b.status)) + '</p></article>';
     }).join('');
   }
@@ -850,9 +888,9 @@
         var bar = ringFleetBookingBarInWeek_(b, week);
         if (!bar) return;
         var st = String(b.status || 'reserved').toLowerCase();
-        var label = fleetVehicleName_(b.vin).slice(0, 8);
-        var barLabel = isMobCompact ? (bar.span >= 2 ? label : '') : label;
-        var tip = fleetVehicleName_(b.vin) + ' ' + fleetBookingStatusLabel_(st) + ' ' + b.startDate + '〜' + b.endDate;
+        var barText = fleetCalBarLabel_(b);
+        var barLabel = isMobCompact ? (bar.span >= 2 ? barText : '') : barText;
+        var tip = barText + ' · ' + fleetBookingStatusLabel_(st) + ' ' + b.startDate + '〜' + b.endDate;
         html += '<button type="button" class="ring-fleet-cal-bar st-' + st + '" style="grid-column:' +
           (bar.startCol + 1) + ' / span ' + bar.span + ';" data-booking-id="' + fleetEscape_(b.bookingId) + '"' +
           ' title="' + fleetEscape_(tip) + '" aria-label="' + fleetEscape_(tip) + '">' +
@@ -1078,6 +1116,14 @@
       fleetUpdateBooking_(b.bookingId, { endDate: el ? el.value : b.endDate });
     };
     actions.appendChild(saveEnd);
+    var saveLendee = document.createElement('button');
+    saveLendee.type = 'button';
+    saveLendee.textContent = '貸出先を保存';
+    saveLendee.onclick = function () {
+      var le = host.querySelector('.fleet-detail-lendee');
+      fleetUpdateBooking_(b.bookingId, { lendeeName: le ? le.value : lendeeVal });
+    };
+    actions.appendChild(saveLendee);
     var endInput = host.querySelector('.fleet-detail-end');
     bindFleetDateField_(endInput);
   }
@@ -1099,9 +1145,13 @@
     var head = isDeskPanel ? '<h3>予約の詳細</h3>' : '';
     var sheetDue = b.status === 'out' ||
       ((b.status === 'reserved' || b.status === 'confirmed') && fleetCheckoutGate_(b).ok);
+    var lendeeVal = fleetBookingLendee_(b);
     host.innerHTML = head + '<h4 style="margin:0 0 8px;font-size:15px;font-weight:900;">' + fleetEscape_(fleetVehicleName_(b.vin)) + '</h4>' +
       '<p style="margin:0 0 8px;font-size:12px;font-weight:700;color:#475569">下4桁：' + fleetEscape_(plate) + '<br>状態：' + fleetEscape_(stLabel) + '<br>' +
       fleetEscape_(b.startDate) + ' 〜 ' + fleetEscape_(b.endDate) + '</p>' +
+      '<div class="ring-fleet-field"><label for="fleetDetailLendee">貸出先</label>' +
+      '<input type="text" id="fleetDetailLendee" class="fleet-detail-lendee" maxlength="60" autocomplete="off" ' +
+      'placeholder="任意（例：タナカ様）" value="' + fleetEscape_(lendeeVal) + '"></div>' +
       (sheetDue
         ? '<a class="car-info-btn ring-fleet-checksheet-link" href="' + fleetEscape_(fleetCheckSheetUrl_(b.vin)) + '">📋 チェックシート（貸出・返却時）</a>'
         : '') +
@@ -1185,7 +1235,8 @@
         baseServerRev: cur.serverRev,
         status: patch.status || cur.status,
         startDate: patch.startDate || cur.startDate,
-        endDate: patch.endDate || cur.endDate
+        endDate: patch.endDate || cur.endDate,
+        lendeeName: patch.lendeeName != null ? fleetNormalizeLendeeInput_(patch.lendeeName) : fleetBookingLendee_(cur)
       };
       json = await updateFleetBookingOnServer_(payload);
     } catch (err) {
@@ -1326,7 +1377,13 @@
       if (!current() || !fleetRequireOnline_()) return;
       if (typeof ringFleetHandleCreateBookingSubmit_ !== 'function') throw new Error('API missing');
       if (saveBtn) saveBtn.textContent = '登録中…';
-      var payload = Object.assign({ vin: vin, startDate: startDate, endDate: endDate, status: 'reserved' }, extra || {});
+      var payload = Object.assign({
+        vin: vin,
+        startDate: startDate,
+        endDate: endDate,
+        status: 'reserved',
+        lendeeName: fleetReadWizardLendee_()
+      }, extra || {});
       result = await ringFleetHandleCreateBookingSubmit_(profile, payload);
     } catch (err) {
       if (current() && typeof showToast === 'function') showToast('error', '通信に失敗しました。入力内容を保持しています。接続を確認して再試行してください。');
@@ -1418,6 +1475,7 @@
       '<h3 style="margin:0 0 8px;font-size:15px;font-weight:900;">予約内容の確認</h3>' +
       '<p style="font-size:12px;font-weight:700;color:#475569">' + fleetEscape_(fleetVehicleName_(vin)) + '</p>' +
       '<p style="font-size:13px;font-weight:800;margin:8px 0;">' + fleetEscape_(startDate) + ' 〜 ' + fleetEscape_(endDate) + '</p>' +
+      fleetLendeeFieldHtml_(wizardState && wizardState.lendeeName) +
       '<p class="ring-fleet-avail-hint" style="margin-bottom:6px;">表示時点の空き状況です。保存時にサーバーで重複を確認します。</p>' +
       '<p class="ring-fleet-avail-hint" style="margin-bottom:10px;font-size:11px;color:#64748b;">ここでは予約の登録のみ行います。お客様への貸出は、開始日に「貸出開始」を押してください。</p>' +
       '<button type="button" class="primary ring-fleet-confirm-save" id="fleetNewSaveBtn">予約を登録</button>';
@@ -1435,7 +1493,10 @@
     }
     var saveBtn = host.querySelector('#fleetNewSaveBtn');
     if (!saveBtn) return;
-    saveBtn.onclick = function () { fleetTrySaveNewBooking_(vin, startDate, endDate, host); };
+    saveBtn.onclick = function () {
+      fleetReadWizardLendee_();
+      fleetTrySaveNewBooking_(vin, startDate, endDate, host);
+    };
   }
 
   async function fleetTrySaveNewBooking_(vin, startDate, endDate, host) {
@@ -1490,9 +1551,11 @@
     var overdue = ringFleetOutReturnIsOverdue_(b)
       ? '<p class="ring-fleet-out-overdue">⚠ 返却予定を過ぎています（返却遅れ）</p>' : '';
     var attr = pickAttr ? ' ' + pickAttr + '="' + fleetEscape_(b.bookingId) + '"' : '';
+    var lendee = fleetBookingLendee_(b);
     return '<div class="ring-fleet-avail-card"' + attr + '><strong>' + fleetEscape_(name) + '</strong>' +
       '<p class="meta-line">' + fleetEscape_(catLabel) + ' · ' + fleetEscape_(plate) + '</p>' +
       '<p class="meta-line">貸出：' + fleetEscape_(b.startDate) + ' 〜 返却予定：' + fleetEscape_(b.endDate) + '</p>' +
+      (lendee ? '<p class="meta-line">貸出先：' + fleetEscape_(lendee) + '</p>' : '') +
       overdue + '</div>';
   }
 
@@ -1681,7 +1744,8 @@
       endDate: today,
       vin: '',
       pickStart: '',
-      pickEnd: ''
+      pickEnd: '',
+      lendeeName: ''
     }, preset || {});
     renderNewBookingWizard_();
   }
@@ -1777,6 +1841,7 @@
     } else if (wizardState.step === 'dates') {
       inner += '<div class="ring-fleet-field"><label>貸出開始日</label><input type="date" id="wizStart" value="' + fleetEscape_(wizardState.startDate) + '"></div>' +
         '<div class="ring-fleet-field"><label>返却予定日</label><input type="date" id="wizEnd" value="' + fleetEscape_(wizardState.endDate) + '"></div>' +
+        fleetLendeeFieldHtml_(wizardState.lendeeName) +
         '<div class="ring-fleet-field"><label>車両区分</label><select id="wizCat"><option value="fleet_all">すべて</option>' +
         '<option value="rental">レンタカー</option><option value="loaner">代車</option></select></div>' +
         '<button type="button" class="ring-fleet-confirm-save" id="wizSearchDate">この期間で空車を検索</button>';
@@ -1813,6 +1878,7 @@
         fleetEscape_(wizardState.pickStart || wizardState.startDate) + '"></div>' +
         '<div class="ring-fleet-field"><label>返却予定日</label><input type="date" id="wizEnd" value="' +
         fleetEscape_(wizardState.pickEnd || wizardState.endDate) + '"></div>' +
+        fleetLendeeFieldHtml_(wizardState.lendeeName) +
         '<button type="button" class="ring-fleet-confirm-save" id="wizVinCheck">この期間で予約可能か確認</button>';
     } else if (wizardState.step === 'confirm') {
       inner += fleetConfirmPanelHtml_(wizardState.vin, wizardState.startDate, wizardState.endDate, '');
@@ -1841,6 +1907,7 @@
       wizSearch.onclick = function () {
         wizardState.startDate = document.getElementById('wizStart').value;
         wizardState.endDate = document.getElementById('wizEnd').value;
+        fleetReadWizardLendee_();
         wizardState.catFilter = wizCat ? wizCat.value : 'fleet_all';
         wizardSearchByDate_();
       };
@@ -1892,6 +1959,7 @@
         if (!state || state.readPending) return;
         wizardState.startDate = document.getElementById('wizStart').value;
         wizardState.endDate = document.getElementById('wizEnd').value;
+        fleetReadWizardLendee_();
         if (ringYmdCompare_(wizardState.startDate, wizardState.endDate) > 0) {
           if (typeof showToast === 'function') showToast('error', '返却予定日は貸出開始日以降にしてください');
           return;

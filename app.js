@@ -4769,20 +4769,40 @@ function ringNormalizeFleetVin_(vin) {
     return s.toUpperCase().replace(/[-ー－\s]/g, '');
 }
 
-function ringFleetCreateSnapshot_(vin, startDate, endDate, status) {
+/** 貸出先（個人名・法人名）— 前後空白除去・改行禁止・最大60文字 */
+function ringFleetNormalizeLendeeName_(raw) {
+    if (raw == null) return '';
+    var s = String(raw).replace(/[\r\n\u0000-\u001f\u007f<>`]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (s.length > 60) s = s.slice(0, 60);
+    return s;
+}
+
+function ringFleetCreateSnapshot_(vin, startDate, endDate, status, lendeeName) {
     return {
         vin: ringNormalizeFleetVin_(vin),
         startDate: String(startDate || '').trim(),
         endDate: String(endDate || '').trim(),
-        status: String(status || 'reserved').trim().toLowerCase()
+        status: String(status || 'reserved').trim().toLowerCase(),
+        lendeeName: ringFleetNormalizeLendeeName_(lendeeName != null ? lendeeName : '')
     };
+}
+
+function ringFleetLendeeForSubmit_(input, snapshot) {
+    if (input && Object.prototype.hasOwnProperty.call(input, 'lendeeName')) {
+        return ringFleetNormalizeLendeeName_(input.lendeeName);
+    }
+    if (snapshot && snapshot.lendeeName != null) {
+        return ringFleetNormalizeLendeeName_(snapshot.lendeeName);
+    }
+    return '';
 }
 
 function ringFleetSnapshotEquals_(a, b) {
     if (!a || !b) return false;
-    var sa = ringFleetCreateSnapshot_(a.vin, a.startDate, a.endDate, a.status);
-    var sb = ringFleetCreateSnapshot_(b.vin, b.startDate, b.endDate, b.status);
-    return sa.vin === sb.vin && sa.startDate === sb.startDate && sa.endDate === sb.endDate && sa.status === sb.status;
+    var sa = ringFleetCreateSnapshot_(a.vin, a.startDate, a.endDate, a.status, a.lendeeName);
+    var sb = ringFleetCreateSnapshot_(b.vin, b.startDate, b.endDate, b.status, b.lendeeName);
+    return sa.vin === sb.vin && sa.startDate === sb.startDate && sa.endDate === sb.endDate && sa.status === sb.status
+        && sa.lendeeName === sb.lendeeName;
 }
 
 function ringLoadFleetCreateUnresolvedRoot_() {
@@ -4808,7 +4828,15 @@ function ringListFleetUnresolved_(profile) {
     return Object.keys(map).map(function (k) {
         var u = map[k];
         if (!u || String(u.shopId || '').trim() !== shopId) return null;
-        return Object.assign({}, u, { snapshot: ringFleetCreateSnapshot_(u.snapshot && u.snapshot.vin, u.snapshot && u.snapshot.startDate, u.snapshot && u.snapshot.endDate, u.snapshot && u.snapshot.status) });
+        return Object.assign({}, u, {
+            snapshot: ringFleetCreateSnapshot_(
+                u.snapshot && u.snapshot.vin,
+                u.snapshot && u.snapshot.startDate,
+                u.snapshot && u.snapshot.endDate,
+                u.snapshot && u.snapshot.status,
+                u.snapshot && u.snapshot.lendeeName
+            )
+        });
     }).filter(Boolean);
 }
 
@@ -4820,7 +4848,7 @@ function ringSaveFleetCreateUnresolved_(profile, clientRequestId, snapshot) {
     root[shopId][clientRequestId] = {
         clientRequestId: clientRequestId,
         shopId: shopId,
-        snapshot: ringFleetCreateSnapshot_(snapshot.vin, snapshot.startDate, snapshot.endDate, snapshot.status),
+        snapshot: ringFleetCreateSnapshot_(snapshot.vin, snapshot.startDate, snapshot.endDate, snapshot.status, snapshot.lendeeName),
         savedAt: new Date().toISOString()
     };
     ringSaveFleetCreateUnresolvedRoot_(root);
@@ -4928,6 +4956,9 @@ function ringFleetBookingUserMessage_(code, fallback) {
     if (e === 'BOOKING_DATES_REQUIRED' || e === 'BOOKING_DATES_INVALID') {
         return '予約の期間を確認してください。';
     }
+    if (e === 'FLEET_BOOKINGS_SCHEMA_INVALID' || e === 'BOOKING_ROW_SCHEMA_MISMATCH') {
+        return '予約データの形式を確認できませんでした。管理者に連絡してください。';
+    }
     if (e === 'CLIENT_REQUEST_VOIDED') return '前回の送信は無効化されています。内容を確認して再度お試しください。';
     if (e === 'OFFLINE' || e === 'OFFLINE_OR_SESSION_CHANGED') {
         return 'オフラインのため操作できません。接続を確認して再試行してください。';
@@ -4999,7 +5030,7 @@ async function ringFleetHandleCreateBookingSubmit_(profile, input) {
                 outcome: 'needs_user_choice',
                 unresolved: actVoid,
                 existingBooking: invVoid.booking,
-                pendingInput: ringFleetCreateSnapshot_(input.vin, input.startDate, input.endDate, input.status),
+                pendingInput: ringFleetCreateSnapshot_(input.vin, input.startDate, input.endDate, input.status, input.lendeeName),
                 message: '元の予約はサーバーに既に登録されています。'
             };
         }
@@ -5028,7 +5059,7 @@ async function ringFleetHandleCreateBookingSubmit_(profile, input) {
             message: 'サーバーに予約は見つかりませんが、遅延到着の可能性があります。新規登録の前に元の送信を無効化してください。'
         };
     }
-    var snapshot = ringFleetCreateSnapshot_(input.vin, input.startDate, input.endDate, input.status || 'reserved');
+    var snapshot = ringFleetCreateSnapshot_(input.vin, input.startDate, input.endDate, input.status || 'reserved', input.lendeeName);
     var unresolvedList = ringListFleetUnresolved_(profile);
     var active = unresolvedList.length ? unresolvedList[0] : null;
 
@@ -5038,7 +5069,8 @@ async function ringFleetHandleCreateBookingSubmit_(profile, input) {
             baseServerRev: input.baseServerRev,
             startDate: snapshot.startDate,
             endDate: snapshot.endDate,
-            status: snapshot.status
+            status: snapshot.status,
+            lendeeName: ringFleetLendeeForSubmit_(input, snapshot)
         };
         var upd = await updateFleetBookingOnServer_(updPayload);
         if (!ringRequestContextIsCurrent_(requestContext)) return { outcome: 'error', json: { success: false, error: 'STALE_SESSION' } };
@@ -5088,7 +5120,8 @@ async function ringFleetHandleCreateBookingSubmit_(profile, input) {
             startDate: snapshot.startDate,
             endDate: snapshot.endDate,
             status: snapshot.status,
-            clientRequestId: newId
+            clientRequestId: newId,
+            lendeeName: ringFleetLendeeForSubmit_(input, snapshot)
         };
         var addJson = await ringFleetPostCreateBooking_(addBody);
         if (!ringRequestContextIsCurrent_(requestContext)) return { outcome: 'error', json: { success: false, error: 'STALE_SESSION' } };
@@ -5136,7 +5169,8 @@ async function ringFleetHandleCreateBookingSubmit_(profile, input) {
                 startDate: snapshot.startDate,
                 endDate: snapshot.endDate,
                 status: snapshot.status,
-                clientRequestId: active.clientRequestId
+                clientRequestId: active.clientRequestId,
+                lendeeName: ringFleetLendeeForSubmit_(input, snapshot)
             };
             var retryJson = await ringFleetPostCreateBooking_(retryBody);
         if (!ringRequestContextIsCurrent_(requestContext)) return { outcome: 'error', json: { success: false, error: 'STALE_SESSION' } };
@@ -5195,7 +5229,8 @@ async function ringFleetHandleCreateBookingSubmit_(profile, input) {
         startDate: snapshot.startDate,
         endDate: snapshot.endDate,
         status: snapshot.status,
-        clientRequestId: clientRequestId
+        clientRequestId: clientRequestId,
+        lendeeName: ringFleetLendeeForSubmit_(input, snapshot)
     };
     var createJson = await ringFleetPostCreateBooking_(createBody);
         if (!ringRequestContextIsCurrent_(requestContext)) return { outcome: 'error', json: { success: false, error: 'STALE_SESSION' } };
