@@ -1355,3 +1355,9 @@ textarea.ring-auto-grow {
   border: none;
   background: transparent;
 }
+.owner-dialog { box-sizing:border-box; width:min(92vw,26rem); max-height:88vh; overflow:auto; border:0; border-radius:16px; padding:20px; }
+.owner-dialog::backdrop { background:rgba(0,0,0,.45); }
+.owner-dialog .btn { width:100%; margin-top:8px; }
+.owner-dialog input { box-sizing:border-box; width:100%; min-height:44px; font-size:16px; }
+.owner-dialog button, [data-owner-claim], #ring-history-vis-bar button { min-height:44px; }
+label:has(#ring-log-vis-toggle), .back-link { display:inline-flex; align-items:center; min-height:44px; min-width:44px; }

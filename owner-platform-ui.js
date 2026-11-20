@@ -9,12 +9,37 @@
 
   function active() { return OP.active && OP.active(); }
 
+  function ownerDialog(title, message, choices, extra) {
+    var dialog = document.createElement('dialog');
+    dialog.className = 'owner-dialog';
+    var heading = document.createElement('h2');
+    heading.textContent = title;
+    var description = document.createElement('p');
+    description.textContent = message;
+    dialog.append(heading, description);
+    if (extra) dialog.append(extra);
+    return new Promise(function (resolve) {
+      function finish(value) { dialog.close(); dialog.remove(); resolve(value); }
+      choices.forEach(function (choice) {
+        var button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'btn btn-secondary';
+        button.textContent = choice[1];
+        button.onclick = function () { finish(choice[0]); };
+        dialog.append(button);
+      });
+      dialog.oncancel = function (event) { event.preventDefault(); finish(null); };
+      document.body.append(dialog);
+      dialog.showModal();
+    });
+  }
+
   function ownerMarkLabel(car) {
     if (!active() || !car) return '';
     var st = String(car.ownerMark || '').trim();
-    if (st === 'current') return '◎';
-    if (st === 'claim_required' || car.ownerClaimRequired) return '◎?';
-    if (st === 'other') return '';
+    if (st === 'current') return '◎ オーナー確認済み';
+    if (st === 'claim_required' || car.ownerClaimRequired) return '◎? オーナーを確認';
+    if (st === 'other' || st === 'unset') return '◎? オーナーを確認';
   }
 
   function injectOwnerBadges(container) {
@@ -33,7 +58,7 @@
         el.appendChild(span);
       }
       span.textContent = badge;
-      span.title = badge === '◎' ? '現オーナー' : 'オーナー確認が必要';
+      span.title = badge;
     });
   }
 
@@ -43,19 +68,23 @@
       input.type = 'file';
       input.accept = 'image/*';
       input.capture = 'environment';
+      input.oncancel = function () { resolve(null); };
       input.onchange = function () { resolve(input.files && input.files[0] ? input.files[0] : null); };
       input.click();
     });
   }
 
   async function showOwnerClaimModal(vin, onSuccess) {
-    if (!active()) return false;
+    if (!await OP.ready()) { global.showToast('error','接続とログイン状態を確認してください'); return false; }
     var ok = confirm(
       'この車両のオーナー（管理責任者）ですか？\n\n' +
       '他の方が既に登録している場合、車検証写真の撮影と電子車検証の専用4桁コード照合が必要です。\n' +
       '（ナンバー下4桁・型式指定番号ではありません）'
     );
     if (!ok) return false;
+    var securityCode = prompt('電子車検証に記載された専用4桁を半角で入力してください。先頭の0も入力してください。', '');
+    if (securityCode === null) return false;
+    if (!/^[0-9]{4}$/.test(securityCode)) { global.showToast('error','専用コードは半角数字4桁です'); return false; }
     var file = await pickShakenImageFile_();
     if (!file) return false;
     var b64 = '';
@@ -69,7 +98,7 @@
     }
     if (typeof global.showLoading === 'function') global.showLoading('照合中', '車検証を読み取っています…');
     try {
-      var res = await OP.claimWithShakenOcr({ vin: vin, image: b64, clientRequestId: 'claim-' + Date.now() });
+      var res = await OP.claimWithShakenOcr({ vin: vin, image: b64, securityCode: securityCode, clientRequestId: 'claim-' + Date.now() });
       if (typeof global.hideLoading === 'function') global.hideLoading();
       if (!res || !res.success) {
         if (typeof global.showToast === 'function') {
@@ -84,7 +113,7 @@
       return res;
     } catch (e) {
       if (typeof global.hideLoading === 'function') global.hideLoading();
-      if (typeof global.showToast === 'function') global.showToast('error', '通信エラー');
+      if (typeof global.showToast === 'function') global.showToast('error', /MISMATCH/.test(String(e)) ? '車台番号または専用4桁が一致しません。写真と入力を確認してください。' : '確認できませんでした。通信と写真を確認して再試行してください。');
       return false;
     }
   }
@@ -92,23 +121,19 @@
   async function archiveVehicleWithPreflight(vin) {
     if (!active() || !vin) return false;
     var pre = await OP.archivePreflight(vin);
-    var choice = 'keep_private';
-    if (pre && pre.needsDisclosurePrompt) {
-      var disclose = confirm(
-        '非公開の整備履歴が ' + pre.privateCount + ' 件あります。\n\n' +
-        '公開すると、次のオーナーやかかりつけ店舗から車両の状態を正しく理解してもらえるメリットがあります。\n' +
-        '公開してから登録一覧から外しますか？\n\n' +
-        '「キャンセル」＝非公開のまま外す（推奨の初期選択）'
-      );
-      choice = disclose ? 'disclose_private' : 'keep_private';
-    }
+    if (!pre || !pre.success) throw new Error('登録状況を取得できませんでした');
+    var choices = [['keep_private', '非公開のまま外す']];
+    if (pre.needsDisclosurePrompt) choices.push(['disclose_private', '自分の期間の履歴を公開して外す']);
+    choices.push([null, '操作を中止']);
+    var choice = await ownerDialog('登録車両から外す', '履歴は過去の車両に残ります。公開すると、車台番号で検索した利用者がその履歴を閲覧できます。', choices);
+    if (!choice) return false;
     var res = await OP.archiveVehicle(vin, choice);
     if (res && res.success && typeof global.syncVehiclesFromServer === 'function') await global.syncVehiclesFromServer();
     return res;
   }
 
   async function renderTransferNotices(host) {
-    if (!active() || !host) return;
+    if (!host || !await OP.ready()) return;
     try {
       var json = await OP.getTransferNotices();
       var list = (json && json.notices) || [];
@@ -129,15 +154,18 @@
           var flow = vin && typeof archiveVehicleWithPreflight === 'function'
             ? archiveVehicleWithPreflight(vin)
             : Promise.resolve({ success: true });
+          btn.disabled = true;
           flow.then(function (archRes) {
+            if (!archRes || !archRes.success) return null;
             return OP.respondTransferNotice(id, 'remove_from_list', {
               privateDisclosureChoice: (archRes && archRes.privateDisclosureChoice) || 'keep_private'
             });
-          }).then(function () {
+          }).then(function (result) {
+            if (!result || !result.success) return;
             if (typeof OP.purgeSensitiveCaches === 'function') OP.purgeSensitiveCaches();
             if (typeof global.syncVehiclesFromServer === 'function') global.syncVehiclesFromServer();
             if (card) card.remove();
-          });
+          }).catch(function () { global.showToast('error','変更できませんでした。再試行してください'); }).finally(function () { btn.disabled = false; });
         });
       });
       host.querySelectorAll('.ring-notice-contact').forEach(function (btn) {
@@ -153,7 +181,6 @@
   }
 
   function buildHistoryVisibilityBar(vin) {
-    if (!active()) return '';
     return '<div id="ring-history-vis-bar" style="margin:12px 0;display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
       '<span style="font-weight:800;font-size:13px">公開設定:</span>' +
       '<button type="button" class="btn btn-secondary" id="ring-bulk-public">一括で公開</button>' +
@@ -162,59 +189,63 @@
   }
 
   function wireHistoryVisibilityBar(vin, getEditableLogIds) {
-    if (!active()) return;
     var pub = document.getElementById('ring-bulk-public');
     var priv = document.getElementById('ring-bulk-private');
     if (!pub || !priv) return;
-    pub.onclick = async function () {
+    async function change(vis) {
       var ids = getEditableLogIds();
-      if (!ids.length) return;
-      await OP.bulkHistoryVisibility(vin, ids, 'public');
-      if (typeof global.syncMaintenanceHistoryForVin === 'function') await global.syncMaintenanceHistoryForVin(vin);
-      global.location.reload();
-    };
-    priv.onclick = async function () {
-      var ids = getEditableLogIds();
-      if (!ids.length) return;
-      await OP.bulkHistoryVisibility(vin, ids, 'private');
-      if (typeof OP.purgeSensitiveCaches === 'function') OP.purgeSensitiveCaches();
-      if (typeof global.syncMaintenanceHistoryForVin === 'function') await global.syncMaintenanceHistoryForVin(vin);
-      global.location.reload();
-    };
+      if (!ids.length) { global.showToast('error','変更できる履歴がありません'); return; }
+      if (!confirm(ids.length + '件の公開設定を変更しますか？')) return;
+      pub.disabled = priv.disabled = true;
+      try {
+        var res = await OP.bulkHistoryVisibility(vin, ids, vis);
+        if (!res.success || res.updated !== ids.length) throw new Error('PARTIAL');
+        global.location.reload();
+      } catch (e) { global.showToast('error','変更結果を確認できません。履歴を再取得してください。'); }
+      finally { pub.disabled = priv.disabled = false; }
+    }
+    pub.onclick = function () { change('public'); };
+    priv.onclick = function () { change('private'); };
   }
 
   function buildDetailVisibilityToggle(log) {
-    if (!active() || !log || !log.historyVisibilityEditable) return '';
+    if (!log || !log.historyVisibilityEditable) return '';
     var priv = log.visibility === 'private';
     return '<div style="text-align:right;margin-bottom:8px">' +
       '<label style="font-size:13px;font-weight:800"><input type="checkbox" id="ring-log-vis-toggle" ' +
-      (priv ? '' : 'checked') + '> 公開</label></div>';
+      (priv ? '' : 'checked') + '> 公開</label><p>公開すると車台番号で検索した人が閲覧できます。非公開でも当時のオーナー・入力店舗・閲覧を許可した店舗は確認できます。</p></div>';
   }
 
   function wireDetailVisibilityToggle(log, vin) {
-    if (!active() || !log || !log.log_id) return;
+    if (!log || !log.log_id) return;
     var el = document.getElementById('ring-log-vis-toggle');
     if (!el) return;
     el.addEventListener('change', async function () {
       var vis = el.checked ? 'public' : 'private';
-      await OP.setHistoryVisibility(log.log_id, vis);
+      el.disabled = true;
+      try {
+        var result = await OP.setHistoryVisibility(log.log_id, vis);
+        if (!result.success) throw new Error('SAVE_FAILED');
+        log.visibility = vis;
+      } catch (e) {
+        el.checked = log.visibility !== 'private';
+        global.showToast('error','公開設定の保存を確認できません。再取得してください。');
+        return;
+      } finally { el.disabled = false; }
       if (vis === 'private' && typeof OP.purgeSensitiveCaches === 'function') OP.purgeSensitiveCaches();
       if (typeof global.syncMaintenanceHistoryForVin === 'function') await global.syncMaintenanceHistoryForVin(vin);
     });
   }
 
-  async function loadHistoryPhotoIfNeeded(log, vin, imgEl) {
-    if (!log || !imgEl) return;
-    if (log.photoUrl) { imgEl.src = log.photoUrl; return; }
-    if (log.photoAccess !== 'fetch' && log.hasPhoto !== true) return;
-    try {
-      var res = await OP.fetchMaintenancePhoto(vin, log.log_id);
-      if (res && res.success && res.photoUrl) imgEl.src = res.photoUrl;
-    } catch (e) { /* ignore */ }
+  async function loadHistoryPhotoIfNeeded(log, vin, img) {
+    if (log && img) await global.ringShowMaintenancePhoto_(log, img);
   }
 
-  function appendOwnerSettings(menuEl) {
-    if (!active() || !menuEl) return;
+  async function appendOwnerSettings(menuEl) {
+    if (!menuEl || menuEl.querySelector('#ring-owner-pref-public')) return;
+    try { if (!await OP.ready() || !menuEl.isConnected) return; }
+    catch (err) { return; }
+    if (menuEl.querySelector('#ring-owner-pref-public')) return;
     var block = document.createElement('div');
     block.className = 'settings-group';
     block.innerHTML = '<div class="settings-group-title">整備履歴の公開</div>' +
@@ -227,40 +258,59 @@
     menuEl.insertBefore(block, menuEl.firstChild);
     var pub = block.querySelector('#ring-owner-pref-public');
     var prv = block.querySelector('#ring-owner-pref-private');
-    if (pub) pub.onclick = function (e) {
-      e.preventDefault();
-      OP.setDefaultVisibility('public').then(function () {
-        if (typeof global.showToast === 'function') global.showToast('success', '新規履歴は公開が既定です');
-      });
-    };
-    if (prv) prv.onclick = function (e) {
-      e.preventDefault();
-      OP.setDefaultVisibility('private').then(function () {
-        if (typeof global.showToast === 'function') global.showToast('success', '新規履歴は非公開が既定です');
-      });
-    };
+    function bindPreference(link, value, label) {
+      link.onclick = async function (e) {
+        e.preventDefault();
+        if (block.dataset.saving) return;
+        block.dataset.saving = '1';
+        try { await OP.setDefaultVisibility(value); global.showToast('success', label); }
+        catch (err) { global.showToast('error', '初期設定を保存できませんでした。再試行してください。'); }
+        finally { delete block.dataset.saving; }
+      };
+    }
+    bindPreference(pub, 'public', '新規履歴は公開が既定です');
+    bindPreference(prv, 'private', '新規履歴は非公開が既定です');
     var subL = block.querySelector('#ring-sub-invite-link');
     if (subL) subL.onclick = async function (e) {
       e.preventDefault();
       var vin = prompt('招待する車両のVIN（空欄＝全車両）', '');
       if (vin === null) return;
-      var res = await OP.createSubInvite(String(vin || '').trim());
+      if (subL.dataset.saving) return;
+      subL.dataset.saving = '1';
+      var res;
+      try { res = await OP.createSubInvite(String(vin || '').trim()); }
+      catch (err) { global.showToast('error','招待を作成できませんでした。対象車両と通信を確認してください。'); return; }
+      finally { delete subL.dataset.saving; }
       if (!res || !res.success) {
         if (typeof global.showToast === 'function') global.showToast('error', (res && res.error) || '招待できませんでした');
         return;
       }
       var link = global.location.origin + global.location.pathname.replace(/[^/]+$/, '') +
         'user_sub_invite_accept.html?grant=' + encodeURIComponent(res.grantId || res.inviteQrPayload);
-      alert('招待リンク（QRに変換してください）:\n' + link);
+      var box = document.createElement('div');
+      global.ringRenderLocalQr_(box, link);
+      var url = document.createElement('input');
+      url.readOnly = true; url.value = link; url.setAttribute('aria-label','招待リンク');
+      url.onclick = function () { url.select(); }; box.append(url);
+      await ownerDialog('副ユーザー招待', 'このQRまたはリンクを招待する相手だけに渡してください。受諾期限は24時間です。', [[null,'閉じる']], box);
     };
   }
 
   async function promptOwnerOnVehicleAdd(vin) {
-    if (!active() || !vin) return true;
+    if (!vin) return false;
     var ok = confirm('この車両のオーナーですか？\n\n別の方が既に登録している場合は、車検証写真の読み取りと電子車検証の4桁コードが必要です。');
     if (!ok) return false;
     return true;
   }
+
+  document.addEventListener('click', async function (event) {
+    var button = event.target.closest && event.target.closest('[data-owner-claim]');
+    if (!button || button.disabled) return;
+    button.disabled = true;
+    try { if (await showOwnerClaimModal(button.dataset.ownerClaim)) { await global.syncVehiclesFromServer(); global.location.reload(); } }
+    catch (err) { global.showToast('error','車両情報を更新できませんでした'); }
+    finally { button.disabled = false; }
+  });
 
   global.ringOwnerPlatformUi = {
     active: active,
@@ -278,6 +328,7 @@
     ownerMarkHtml: function (car) {
       var b = ownerMarkLabel(car);
       if (!b) return '';
+      if (car.ownerMark !== 'current') return '<button type="button" class="btn btn-secondary" data-owner-claim="' + global.escapeHtml(car.vin) + '">' + b + '</button>';
       return '<span class="ring-owner-mark" title="オーナー状態">' + b + '</span>';
     }
   };

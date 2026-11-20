@@ -12,13 +12,15 @@
   <link rel="manifest" href="manifest.json">
     <title>車のお薬手帳</title>
   
-  <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20261118-v50" integrity="sha256-ZevdKzRSCi4Z3RoWBO5isnEHEfBYWWROfSjloAKrSFc= sha256-00mt5W4gxaY949Uzz47wWzw/2bttpeuWaMvdgoIFA5o=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
-  <script src="owner-platform.js"></script>
-  <script src="owner-platform-ui.js"></script>
+  <link rel="stylesheet" href="common.css?v=20261119-v53" integrity="sha256-gLucbh3x/eHe8dwKjoDqhIUOP4FyREhbu0/Nw6Ru/Jg= sha256-osnzRLygeh+f5oe7OwTD0igkrzro60pxtPktN7UnkC8=">
+  <script src="app.js?v=20261119-v53" integrity="sha256-mYkvMkMthkjAxQuNG5iBpOPOVghxdn4q2eWB9kexH+0= sha256-XB/v5iOjR2mMPWO/lkxrNQxLvQUbaYHXnNiTLSc2q2o=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
+  <script src="owner-platform.js?v=20261119-v53" integrity="sha256-9NMxbN/nLqDtbnU61091juoQouSv3egfSKXP+W/svSk= sha256-mcbxkbvK1YuwqASWD5iBdNV39empv7e0QH4E3FLqWXk="></script>
+  <script src="vendor/qr/qrcode.js?v=20261119-v53" integrity="sha256-GK45n4EYK8nekW6cd7GV3yDMWNby1VpisIWimfG/F4A= sha256-S2Ezy7WhPs3CbPqJfQ2ve7mwgjIDLN04HoLyuvNlO18="></script>
+  <script src="owner-platform-ui.js?v=20261119-v53" integrity="sha256-TKudcu3501uHW0tdKworFpoHKbC+HaME+pfzfiM/LVE= sha256-UfHI4Jjo0iVeFBqLpoHdc4aQKHWrJ1pzl3H3rxt/NLI="></script>
   <script src="theme.js"></script>
 
   <style>
+    .edit-btn[hidden] { display:none; }
     /* ページ固有のスタイル：オーナーの設計（999pxの丸ボタン等）を完全維持 */
     .edit-btn {
       display: block; width: 100%; text-align: center; padding: 14px;
@@ -48,9 +50,7 @@
    * ストレージから新旧のログを取得して統合
    */
   function getLogs() {
-    const a = safeJsonParse(localStorage.getItem("logs_v1"), []);
-    const b = safeJsonParse(localStorage.getItem("nappy_logs_v1"), []);
-    return [...a, ...b];
+    return ringReadableHistoryRows_().filter(function (r) { return _normalize(r.vin) === _normalize(vin); });
   }
 
   function render(showOverlay) {
@@ -76,35 +76,44 @@
         <div class="card">
           <div class="field">
             <span class="label">日付</span>
-            <div class="value">${log.date || "-"}</div>
+            <div class="value"><span data-log-field="date"></span></div>
           </div>
 
           <div class="field">
             <span class="label">走行距離</span>
-            <div class="value">${log.mileage || "-"} km</div>
+            <div class="value"><span data-log-field="mileage"></span> km</div>
           </div>
 
           <div class="field">
             <span class="label">整備区分</span>
-            <div class="value">${log.title || "-"}</div>
+            <div class="value"><span data-log-field="title"></span></div>
           </div>
 
           <div class="field">
             <span class="label">交換部品</span>
-            <div class="value">${log.parts || "-"}</div>
+            <div class="value"><span data-log-field="parts"></span></div>
           </div>
 
           <div class="field">
             <span class="label">メモ</span>
-            <div class="value">${log.memo || "-"}</div>
+            <div class="value"><span data-log-field="memo"></span></div>
           </div>
 
           ${(log.photoUrl || log.hasPhoto || log.photoAccess === 'fetch') ? '<h2 class="field" style="font-weight:900;margin-top:16px">📷 整備写真</h2><img alt="整備写真" id="ring-hist-photo" style="max-width:100%;border-radius:12px;display:block;margin:auto"/>' : ''}
-          <a href="factory_edit_detail.html?vin=${vin}&log_id=${logId}" class="edit-btn">
+          <a hidden id="editHistoryLink" class="edit-btn">
             この内容を編集する
           </a>
         </div>
       `;
+      document.querySelectorAll('[data-log-field]').forEach(function (el) {
+        el.textContent = log[el.dataset.logField] || '—';
+        el.style.whiteSpace = 'pre-wrap';
+      });
+      var edit = document.getElementById('editHistoryLink');
+      if (log.historyContentEditable) {
+        edit.hidden = false;
+        edit.href = 'factory_edit_detail.html?' + new URLSearchParams({ vin: vin, log_id: logId });
+      }
       if (window.ringOwnerPlatformUi) {
         window.ringOwnerPlatformUi.wireDetailVisibilityToggle(log, vin);
         var img = document.getElementById('ring-hist-photo');
@@ -134,16 +143,14 @@
     }).catch(function () { /* ignore */ });
   }
 
-  function loadAndRender() {
-    var cachedLog = logId ? getLogs().find(function (l) { return l.log_id == logId; }) : null;
-    if (cachedLog) {
-      render(false);
-      ringHistoryDetailBackgroundSync_();
-      return;
-    }
-    render(true);
+  async function loadAndRender() {
+    var content = document.getElementById('content');
+    content.textContent = '履歴を確認中…';
+    var result = await syncMaintenanceHistoryForVin(vin);
+    if (!result.ok) { content.textContent = '履歴を取得できませんでした。通信を確認して再読み込みしてください。'; return; }
+    render(false);
   }
-
+  window.addEventListener('ring-auth-context-changed', loadAndRender);
   window.addEventListener('DOMContentLoaded', loadAndRender);
 </script>
 

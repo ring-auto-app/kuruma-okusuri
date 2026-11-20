@@ -4,9 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>副ユーザー招待｜車のお薬手帳</title>
-  <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20261118-v50"></script>
-  <script src="owner-platform.js"></script>
+  <link rel="stylesheet" href="common.css?v=20261119-v53" integrity="sha256-gLucbh3x/eHe8dwKjoDqhIUOP4FyREhbu0/Nw6Ru/Jg= sha256-osnzRLygeh+f5oe7OwTD0igkrzro60pxtPktN7UnkC8=">
+  <script src="app.js?v=20261119-v53" integrity="sha256-mYkvMkMthkjAxQuNG5iBpOPOVghxdn4q2eWB9kexH+0= sha256-XB/v5iOjR2mMPWO/lkxrNQxLvQUbaYHXnNiTLSc2q2o="></script>
+  <script src="owner-platform.js?v=20261119-v53" integrity="sha256-9NMxbN/nLqDtbnU61091juoQouSv3egfSKXP+W/svSk= sha256-mcbxkbvK1YuwqASWD5iBdNV39empv7e0QH4E3FLqWXk="></script>
 </head>
 <body>
   <div class="container">
@@ -16,12 +16,12 @@
     <button type="button" class="btn btn-primary" id="acceptBtn" style="display:none">招待を受け入れる</button>
   </div>
   <script>
-    document.addEventListener('DOMContentLoaded', function () {
+    document.addEventListener('DOMContentLoaded', async function () {
       var params = new URLSearchParams(location.search);
       var grant = params.get('grant') || params.get('grantId') || '';
       var msg = document.getElementById('msg');
       var btn = document.getElementById('acceptBtn');
-      if (!window.ringOwnerPlatform || !ringOwnerPlatform.active()) {
+      if (!window.ringOwnerPlatform || !await ringOwnerPlatform.ready()) {
         msg.textContent = 'この機能は現在の環境では利用できません。';
         return;
       }
@@ -33,7 +33,9 @@
       btn.style.display = '';
       btn.onclick = async function () {
         btn.disabled = true;
-        var res = await ringOwnerPlatform.acceptSubInvite(grant);
+        var res;
+        try { res = await ringOwnerPlatform.acceptSubInvite(grant); }
+        catch (err) { res = { error: /EXPIRED/.test(String(err)) ? '招待の期限が切れています。再発行を依頼してください。' : '招待を確認できません。通信・ログイン状態を確認してください。' }; }
         if (res && res.success) {
           msg.textContent = '招待を受け入れました。車両: ' + (res.vin || '指定なし');
           if (typeof showToast === 'function') showToast('success', '副ユーザーとして登録しました');

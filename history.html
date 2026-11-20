@@ -12,10 +12,11 @@
   <link rel="manifest" href="manifest.json">
     <title>車のお薬手帳</title>
   
-  <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20261118-v50" integrity="sha256-ZevdKzRSCi4Z3RoWBO5isnEHEfBYWWROfSjloAKrSFc= sha256-00mt5W4gxaY949Uzz47wWzw/2bttpeuWaMvdgoIFA5o=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
-  <script src="owner-platform.js"></script>
-  <script src="owner-platform-ui.js"></script>
+  <link rel="stylesheet" href="common.css?v=20261119-v53" integrity="sha256-gLucbh3x/eHe8dwKjoDqhIUOP4FyREhbu0/Nw6Ru/Jg= sha256-osnzRLygeh+f5oe7OwTD0igkrzro60pxtPktN7UnkC8=">
+  <script src="app.js?v=20261119-v53" integrity="sha256-mYkvMkMthkjAxQuNG5iBpOPOVghxdn4q2eWB9kexH+0= sha256-XB/v5iOjR2mMPWO/lkxrNQxLvQUbaYHXnNiTLSc2q2o=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
+  <script src="owner-platform.js?v=20261119-v53" integrity="sha256-9NMxbN/nLqDtbnU61091juoQouSv3egfSKXP+W/svSk= sha256-mcbxkbvK1YuwqASWD5iBdNV39empv7e0QH4E3FLqWXk="></script>
+  <script src="vendor/qr/qrcode.js?v=20261119-v53" integrity="sha256-GK45n4EYK8nekW6cd7GV3yDMWNby1VpisIWimfG/F4A= sha256-S2Ezy7WhPs3CbPqJfQ2ve7mwgjIDLN04HoLyuvNlO18="></script>
+  <script src="owner-platform-ui.js?v=20261119-v53" integrity="sha256-TKudcu3501uHW0tdKworFpoHKbC+HaME+pfzfiM/LVE= sha256-UfHI4Jjo0iVeFBqLpoHdc4aQKHWrJ1pzl3H3rxt/NLI="></script>
   <script src="theme.js"></script>
   
   <style>
@@ -267,24 +268,12 @@
         };
       }
 
-      var hasLocal = false;
-      if (vin) {
-        hasLocal = (typeof getMaintenanceLogsByVin === 'function')
-          ? getMaintenanceLogsByVin(vin).length > 0
-          : (typeof getLogsByVin === 'function' && getLogsByVin(vin).length > 0);
-      }
-
-      if (hasLocal) {
+      if (!vin) { init(); return; }
+      showLoading("読込中", "履歴を確認しています…");
+      syncMaintenanceHistoryForVin(vin).then(function (result) {
         init();
-        ringHistoryBizBackgroundSync_();
-        return;
-      }
-
-      showLoading("読込中", "読み込み中…");
-      setTimeout(() => {
-        init();
-        hideLoading();
-      }, 300);
+        if (!result.ok) showToast('error','履歴を取得できませんでした。再読み込みしてください。');
+      }).finally(hideLoading);
     });
 
     function ringHistoryBizBackgroundSync_() {
@@ -464,7 +453,7 @@
         }
 
         return `
-          <div class="history-item ${colorClass}" onclick="location.href='detail.html?vin=${encodeURIComponent(vin)}&log_id=${log.log_id}'">
+          <a class="history-item ${colorClass}" style="display:block;color:inherit;text-decoration:none" href="detail.html?${escapeHtml(new URLSearchParams({vin:vin,log_id:log.log_id}).toString())}">
             <div class="card-header">
               <div class="log-date">${escapeHtml(log.date)}</div>
               <div style="display:flex;align-items:center;gap:6px;">
@@ -474,7 +463,7 @@
             </div>
             <div class="log-title">${escapeHtml(log.title || '整備記録')}</div>
             ${metaHtml}
-          </div>
+          </a>
         `;
       }).join("");
     }

@@ -33,19 +33,7 @@
   }
 
   function purgeSensitiveCaches() {
-    try {
-      var logs = typeof global.readLogsArray === 'function' ? global.readLogsArray() : [];
-      logs = logs.map(function (l) {
-        var copy = Object.assign({}, l);
-        if (copy.visibility === 'private' || copy.photoAccess === 'fetch' || copy.photoAccess === 'none') {
-          copy.photoUrl = '';
-          copy.partsPhoto = '';
-        }
-        return copy;
-      });
-      global.localStorage.setItem('nappy_logs_v1', JSON.stringify(logs));
-      global.localStorage.removeItem('logs_v1');
-    } catch (e) { /* ignore */ }
+    if (typeof ringHistoryView_ !== 'undefined') ringHistoryView_.clear();
     try {
       global.sessionStorage.removeItem('ring_factory_vin_search_flash_v1');
     } catch (e2) { /* ignore */ }
@@ -63,8 +51,19 @@
     return gasPost('get_maintenance_photo', { vin: vin, log_id: logId });
   }
 
+  global.ringRenderLocalQr_ = function (host, value) {
+    var qr = global.qrcode(0, 'M');
+    qr.addData(value); qr.make();
+    host.innerHTML = qr.createSvgTag({ scalable: true, margin: 8 });
+    host.style.maxWidth = '216px';
+  };
   global.ringOwnerPlatform = {
     active: ownerPlatformActive,
+    ready: async function () {
+      if (ownerPlatformActive()) return true;
+      var result = await global.ringVerifySession(global.ringResolveActiveAuthToken(), global.ringGetActiveMode());
+      return !!(result.success && !result.offline && ownerPlatformActive());
+    },
     purgeSensitiveCaches: purgeSensitiveCaches,
     claimTransfer: function (p) { return gasPost('owner_claim_transfer', p); },
     claimWithShakenOcr: function (p) { return gasPost('owner_claim_shaken_ocr', p); },

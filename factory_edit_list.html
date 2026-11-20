@@ -12,8 +12,8 @@
   <link rel="manifest" href="manifest.json">
     <title>車のお薬手帳</title>
   
-  <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20261118-v50" integrity="sha256-ZevdKzRSCi4Z3RoWBO5isnEHEfBYWWROfSjloAKrSFc= sha256-00mt5W4gxaY949Uzz47wWzw/2bttpeuWaMvdgoIFA5o=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
+  <link rel="stylesheet" href="common.css?v=20261119-v53" integrity="sha256-gLucbh3x/eHe8dwKjoDqhIUOP4FyREhbu0/Nw6Ru/Jg= sha256-osnzRLygeh+f5oe7OwTD0igkrzro60pxtPktN7UnkC8=">
+  <script src="app.js?v=20261119-v53" integrity="sha256-mYkvMkMthkjAxQuNG5iBpOPOVghxdn4q2eWB9kexH+0= sha256-XB/v5iOjR2mMPWO/lkxrNQxLvQUbaYHXnNiTLSc2q2o=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
   <script src="theme.js"></script>
   
   <style>
@@ -164,7 +164,7 @@
     }
 
     function getMyRecentShopLogs() {
-      let logs = typeof readLogsArray === 'function' ? readLogsArray() : safeJsonParse(localStorage.getItem('nappy_logs_v1'), []);
+      let logs = ringReadableHistoryRows_();
       const myShopId = (currentProfile.shopId || "").trim();
       const cutoffMs = Date.now() - (7 * 24 * 60 * 60 * 1000);
       return logs.filter(log => {
@@ -217,15 +217,21 @@
               <div class="log-title">${safeTitle}</div>
               <div class="log-parts">内容: ${safeParts}</div>
             </div>
-            <div class="action-row">
-              <button type="button" onclick="voidLog('${safeId}')" class="btn btn-danger">取消する</button>
-              <a href="factory_edit_detail.html?log_id=${safeId}&vin=${safeVinEnc}" class="btn btn-secondary">内容を修正</a>
-            </div>
+            ${log.historyContentEditable ? `<div class="action-row">
+              <button type="button" data-void-log="${safeId}" class="btn btn-danger">取消する</button>
+              <a href="factory_edit_detail.html?log_id=${encodeURIComponent(uniqueId)}&vin=${safeVinEnc}" class="btn btn-secondary">内容を修正</a>
+            </div>` : ''}
           </div>
         `;
       });
 
       container.innerHTML = html;
+      container.querySelectorAll('[data-void-log]').forEach(button => {
+        button.onclick = async () => {
+          button.disabled = true;
+          try { await voidLog(button.dataset.voidLog); } finally { button.disabled = false; }
+        };
+      });
       if (showOverlay !== false && typeof hideLoading === 'function') hideLoading();
       if (scrollYToRestore != null && typeof ringRestoreScrollY_ === 'function') ringRestoreScrollY_(scrollYToRestore);
     }

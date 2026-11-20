@@ -12,10 +12,10 @@
   <link rel="manifest" href="manifest.json">
     <title>車のお薬手帳</title>
   
-  <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20261118-v50" integrity="sha256-ZevdKzRSCi4Z3RoWBO5isnEHEfBYWWROfSjloAKrSFc= sha256-00mt5W4gxaY949Uzz47wWzw/2bttpeuWaMvdgoIFA5o=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
+  <link rel="stylesheet" href="common.css?v=20261119-v53" integrity="sha256-gLucbh3x/eHe8dwKjoDqhIUOP4FyREhbu0/Nw6Ru/Jg= sha256-osnzRLygeh+f5oe7OwTD0igkrzro60pxtPktN7UnkC8=">
+  <script src="app.js?v=20261119-v53" integrity="sha256-mYkvMkMthkjAxQuNG5iBpOPOVghxdn4q2eWB9kexH+0= sha256-XB/v5iOjR2mMPWO/lkxrNQxLvQUbaYHXnNiTLSc2q2o=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
   <script src="theme.js"></script>
-  <script src="owner-platform.js"></script>
+  <script src="owner-platform.js?v=20261119-v53" integrity="sha256-9NMxbN/nLqDtbnU61091juoQouSv3egfSKXP+W/svSk= sha256-mcbxkbvK1YuwqASWD5iBdNV39empv7e0QH4E3FLqWXk="></script>
   
   <style>
     /* 34pxグリッド設計：ノートの世界観に統一 */
@@ -99,6 +99,17 @@
   </div>
 
   <script>
+    const favoriteContext = ringCaptureRequestContext_();
+    function verifyFavoritePage() {
+      if (!ringRequestContextIsCurrent_(favoriteContext)) {
+        document.body.hidden = true;
+        location.replace('user_home.html');
+      }
+    }
+    window.addEventListener('ring-auth-context-changed', verifyFavoritePage);
+    window.addEventListener('storage', verifyFavoritePage);
+    window.addEventListener('pageshow', verifyFavoritePage);
+
     window.addEventListener('DOMContentLoaded', () => {
       renderFavShops();
     });
@@ -106,11 +117,20 @@
     function renderFavShops() {
       showLoading("読込中", "読み込み中…");
 
-      setTimeout(() => {
-        let favShops = safeJsonParse(localStorage.getItem('nappy_fav_shops_v1'), []);
+      setTimeout(async () => {
+        let favShops = loadFavShops();
 
         const container = document.getElementById('shopListArea');
         let html = "";
+        try {
+          var response = await ringOwnerPlatform.listFavoriteShops();
+          if (!ringRequestContextIsCurrent_(favoriteContext)) { verifyFavoritePage(); return; }
+          if (!response.success) throw new Error('READ_FAILED');
+          var local = favShops;
+          favShops = response.favorites.filter(r => !r.vin).map(r => Object.assign({}, local.find(l => l.shopId === r.shopId) || {}, r))
+            .concat(local.filter(r => String(r.shopId).startsWith('FAV-LOCAL-')));
+          ringSaveFavShops_(favShops);
+        } catch (err) { container.textContent = '登録状況を取得できません。通信を確認して再読み込みしてください。'; hideLoading(); return; }
 
         if (favShops.length === 0) {
           container.innerHTML = '<div class="empty-msg">まだかかりつけが登録されていません。<br><a href="user_fav_shop_edit.html" style="color:var(--accent);font-weight:900;">検索して追加</a> または <a href="user_mypage.html" style="color:var(--accent);font-weight:900;">マイページ</a> からどうぞ。</div>';
@@ -119,15 +139,15 @@
         }
 
         favShops.forEach(shop => {
-          const telBtn = shop.tel ? `<a href="tel:${shop.tel}" class="btn-action btn-tel">📞 電話</a>` : `<span class="btn-action disabled-btn">📞 なし</span>`;
-          const mailBtn = shop.email ? `<a href="mailto:${shop.email}" class="btn-action btn-mail">✉️ メール</a>` : `<span class="btn-action disabled-btn">✉️ なし</span>`;
-          const lineBtn = shop.lineUrl && shop.lineUrl !== "#" ? `<a href="${shop.lineUrl}" target="_blank" class="btn-action btn-line">💬 LINE</a>` : `<span class="btn-action disabled-btn">💬 なし</span>`;
+          const telBtn = shop.tel ? `<a href="tel:${escapeHtml(shop.tel)}" class="btn-action btn-tel">📞 電話</a>` : `<span class="btn-action disabled-btn">📞 なし</span>`;
+          const mailBtn = shop.email ? `<a href="mailto:${escapeHtml(shop.email)}" class="btn-action btn-mail">✉️ メール</a>` : `<span class="btn-action disabled-btn">✉️ なし</span>`;
+          const lineBtn = /^https:\/\//i.test(shop.lineUrl || '') ? `<a href="${escapeHtml(shop.lineUrl)}" target="_blank" class="btn-action btn-line">💬 LINE</a>` : `<span class="btn-action disabled-btn">💬 なし</span>`;
           
           const mapUrl = shop.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(shop.address)}` : '#';
           const mapBtn = shop.address ? `<a href="${mapUrl}" target="_blank" class="btn-action btn-map">📍 MAP</a>` : `<span class="btn-action disabled-btn">📍 なし</span>`;
 
           html += `
-            <div class="shop-card" id="card-${shop.shopId}">
+            <div class="shop-card" id="card-${escapeHtml(shop.shopId)}">
               <div class="shop-header">
                 <h2 class="shop-name">${escapeHtml(shop.shopName)}</h2>
                 ${shop.factoryNumber ? `<div class="shop-cert">${escapeHtml(shop.factoryNumber)}</div>` : ''}
@@ -146,23 +166,29 @@
 
               <div class="remove-area">
                 <a href="user_fav_shop_edit.html?shopId=${encodeURIComponent(shop.shopId)}" class="btn btn-secondary" style="min-width:96px;">編集</a>
-                <button type="button" class="btn-remove" onclick="removeShop('${shop.shopId}')">登録を解除する</button>
+                <button type="button" class="btn-remove" data-remove-id="${escapeHtml(shop.shopId)}">登録を解除する</button>
               </div>
             </div>
           `;
         });
         
         container.innerHTML = html;
+        container.querySelectorAll('[data-remove-id]').forEach(button => {
+          button.onclick = async () => {
+            button.disabled = true;
+            try { await removeShop(button.dataset.removeId); } finally { button.disabled = false; }
+          };
+        });
         hideLoading();
-        if (window.ringOwnerPlatform && ringOwnerPlatform.active()) {
-          ringEnhanceFavShopPrivateToggles_(favShops);
+        if (window.ringOwnerPlatform) {
+          ringEnhanceFavShopPrivateToggles_(favShops, response);
         }
       }, 300);
     }
 
-    async function ringEnhanceFavShopPrivateToggles_(localShops) {
+    async function ringEnhanceFavShopPrivateToggles_(localShops, json) {
       try {
-        var json = await ringOwnerPlatform.listFavoriteShops();
+
         var rows = (json && json.favorites) || [];
         var byShop = {};
         rows.forEach(function (r) {
@@ -174,6 +200,8 @@
           var card = document.getElementById('card-' + shop.shopId);
           if (!card) return;
           var grants = byShop[shop.shopId] || [];
+          var member = grants.find(r => !r.vin);
+          if (!member) return;
           var grantMap = {};
           grants.forEach(function (g) { if (g.vin) grantMap[g.vin] = g.allowPrivateView !== false; });
           var block = document.createElement('details');
@@ -181,25 +209,26 @@
           block.innerHTML = '<summary style="font-weight:800;cursor:pointer">非公開履歴の閲覧許可（車両別）</summary>';
           var inner = document.createElement('div');
           inner.style.paddingTop = '8px';
-          vehicles.forEach(function (car) {
+          [{vin:"",label:"店舗全体の初期許可"}].concat(vehicles).forEach(function (car) {
             var vin = String(car.vin || '').trim();
-            if (!vin) return;
-            var checked = grantMap[vin] !== false;
+            if (vin && car.ownerMark !== 'current') return;
+            var checked = Object.hasOwn(grantMap,_normalize(vin)) ? grantMap[_normalize(vin)] : member.allowPrivateView;
             var row = document.createElement('label');
             row.style.display = 'flex'; row.style.alignItems = 'center'; row.style.gap = '8px'; row.style.marginBottom = '6px';
             row.innerHTML = '<input type="checkbox" data-vin="' + escapeHtml(vin) + '" ' + (checked ? 'checked' : '') + '> ' +
-              escapeHtml(typeof ringVehicleDisplayName_ === 'function' ? ringVehicleDisplayName_(car) : vin);
+              escapeHtml(car.label || (typeof ringVehicleDisplayName_ === 'function' ? ringVehicleDisplayName_(car) : vin));
             inner.appendChild(row);
           });
           block.appendChild(inner);
           card.insertBefore(block, card.querySelector('.remove-area'));
           block.querySelectorAll('input[type=checkbox]').forEach(function (cb) {
-            cb.addEventListener('change', function () {
-              ringOwnerPlatform.setFavoriteVehiclePermission({
+            cb.addEventListener('change', async function () {
+              cb.disabled = true;
+              try { await ringOwnerPlatform.setFavoriteVehiclePermission({
                 shopId: shop.shopId,
                 vin: cb.getAttribute('data-vin'),
                 allowPrivateView: cb.checked
-              });
+              }); renderFavShops(); } catch (err) { cb.checked = !cb.checked; showToast("error","許可を保存できませんでした"); } finally { cb.disabled = false; }
             });
           });
         });
@@ -216,16 +245,19 @@
             danger: true,
           })
         : confirm("このお店をお気に入りから解除しますか？");
-      if (!ok) return;
+      if (!ok || !ringRequestContextIsCurrent_(favoriteContext)) return;
 
       const card = document.getElementById(`card-${shopId}`);
       if (card) {
+        try { if (!String(shopId).startsWith('FAV-LOCAL-')) await ringOwnerPlatform.unregisterFavoriteShop({shopId: shopId}); }
+        catch (err) { showToast('error','解除を確認できません。通信を確認して再試行してください。'); return; }
+        if (!ringRequestContextIsCurrent_(favoriteContext)) return;
         card.style.opacity = '0.5';
         card.style.pointerEvents = 'none';
 
-        let favShops = safeJsonParse(localStorage.getItem('nappy_fav_shops_v1'), []);
+        let favShops = loadFavShops();
         favShops = favShops.filter(s => s.shopId !== shopId);
-        localStorage.setItem('nappy_fav_shops_v1', JSON.stringify(favShops));
+        ringSaveFavShops_(favShops);
 
         if (typeof showToast === 'function') showToast('success', '解除しました。');
         renderFavShops();

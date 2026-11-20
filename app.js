@@ -1899,7 +1899,7 @@ function ringSetRefreshButtonBusy_(btn, busy, defaultLabel) {
     if (defaultLabel) btn.textContent = busy ? "読み込み中…" : defaultLabel;
 }
 
-/** 整備ログキャッシュ破損検知（破損時はキー削除） */
+/** 整備ログキャッシュの破損検知。復旧のため元データは保持する。 */
 function ringTryReadLogsArray_() {
     try {
         var raw = localStorage.getItem(DB_LOGS);
@@ -1908,7 +1908,6 @@ function ringTryReadLogsArray_() {
         if (!Array.isArray(v)) throw new Error("NOT_ARRAY");
         return { ok: true, logs: v, corrupt: false };
     } catch (e) {
-        try { localStorage.removeItem(DB_LOGS); } catch (e2) { /* ignore */ }
         return { ok: false, logs: [], corrupt: true };
     }
 }
@@ -2022,6 +2021,7 @@ function mapGasMaintenanceLogToLocal(row) {
         visibility: String(row.visibility || "public"),
         ownerPeriodId: String(row.ownerPeriodId || ""),
         historyVisibilityEditable: !!row.historyVisibilityEditable,
+        historyContentEditable: !!row.historyContentEditable,
         hasPhoto: !!row.hasPhoto,
         photoAccess: photoAccess || (row.hasPhoto ? "fetch" : "none"),
         photoUrl: photoUrl,
@@ -2253,6 +2253,7 @@ async function fetchMaintenanceHistoryFromGas(vin) {
     if (ringIsDemoGasOffline_()) return { logs: [], ok: false };
     try {
         const json = await sendToGAS_Safe("get_maintenance_history", { vin: String(vin).trim() });
+        if (json.historyAclVersion !== 1) return { ok: false, logs: [], error: 'SERVER_UPDATE_REQUIRED' };
         return { logs: Array.isArray(json.logs) ? json.logs : [], ok: true };
     } catch (e) {
         return { logs: [], ok: false };
@@ -2267,6 +2268,7 @@ async function fetchShopMaintenanceHistoryFromGas(options) {
     if (ringIsDemoGasOffline_()) return { logs: [], ok: false };
     try {
         const json = await sendToGAS_Safe("get_shop_maintenance_history", {}, options);
+        if (json.historyAclVersion !== 1) return { ok: false, logs: [], error: "SERVER_UPDATE_REQUIRED" };
         return { logs: Array.isArray(json.logs) ? json.logs : [], ok: true };
     } catch (e) {
         return { logs: [], ok: false, error: String(e && e.message || e) };
@@ -2286,30 +2288,64 @@ function mapGasMaintenanceLogsToLocal_(serverList) {
  * VIN 単位: History_Events を SSOT として localStorage キャッシュを置換
  * @returns {Promise<{ ok: boolean, logs: object[], signature: string }>}
  */
-async function syncMaintenanceHistoryForVin(vin) {
-    if (!vin) return { ok: false, logs: [], signature: "0::0" };
-    const vinNorm = _normalize(vin);
-    const allLogs = readLogsArray();
-    const otherLogs = allLogs.filter(function (l) { return _normalize(l.vin) !== vinNorm; });
-    const inspectionLocal = allLogs.filter(function (l) {
-        return _normalize(l.vin) === vinNorm &&
-            (l.type === "inspection" || l.type === "inspection_user");
-    });
+// Authorized history lives only in this document and authenticated session.
+var ringHistoryView_ = new Map();
+var ringHistoryReads_ = new Map();
+var ringHistoryContext_ = null;
 
-    const fetched = await fetchMaintenanceHistoryFromGas(vin);
-    if (!fetched.ok) {
-        const cached = allLogs.filter(function (l) { return _normalize(l.vin) === vinNorm; });
-        return { ok: false, logs: cached, signature: ringMaintenanceLogsSignature_(cached) };
+// Remove displayed history immediately on context change, including another tab's login.
+if (typeof window !== 'undefined' && window.addEventListener) {
+    function checkHistoryPageContext() {
+        if (ringHistoryContext_ && !ringRequestContextIsCurrent_(ringHistoryContext_)) {
+            ringHistoryContext_ = null;
+            ringHistoryView_.clear();
+            window.location.reload();
+        }
     }
+    window.addEventListener('storage', checkHistoryPageContext);
+    window.addEventListener('ring-auth-context-changed', checkHistoryPageContext);
+    window.addEventListener('pageshow', function(event) { if (event.persisted && ringHistoryContext_) window.location.reload(); });
+}
 
-    const maintenance = mapGasMaintenanceLogsToLocal_(fetched.logs);
-    const mergedVin = inspectionLocal.concat(maintenance);
-    localStorage.setItem(DB_LOGS, JSON.stringify(otherLogs.concat(mergedVin)));
-    return {
-        ok: true,
-        logs: mergedVin,
-        signature: ringMaintenanceLogsSignature_(maintenance.concat(inspectionLocal))
-    };
+async function ringShowMaintenancePhoto_(log, img) {
+    var context = ringCaptureRequestContext_();
+    var request = {};
+    img.ringPhotoRequest = request;
+    try {
+        var url = log.photoUrl || log.partsPhoto;
+        if (!url && log.hasPhoto) {
+            var res = await sendToGAS_Safe('get_maintenance_photo', {vin:log.vin, log_id:log.log_id});
+            url = res.photoUrl;
+        }
+        if (!url || !ringRequestContextIsCurrent_(context) || img.ringPhotoRequest !== request) return;
+        img.src = url;
+        img.style.display = 'block';
+    } catch (err) {
+        if (img.ringPhotoRequest === request && ringRequestContextIsCurrent_(context)) img.alt = '写真を取得できません。再読み込みしてください。';
+    }
+}
+
+function ringReadableHistoryRows_() {
+    var inspection = readLogsArray().filter(function (r) { return !isMaintenanceLogType(r); });
+    if (!ringRequestContextIsCurrent_(ringHistoryContext_)) return inspection;
+    return inspection.concat(Array.from(ringHistoryView_.values()));
+}
+
+async function syncMaintenanceHistoryForVin(vin) {
+    if (!vin) return { ok: false, logs: [], signature: '0::0' };
+    var key = _normalize(vin);
+    var context = ringCaptureRequestContext_();
+    var request = {};
+    ringHistoryReads_.set(key, request);
+    var fetched = await fetchMaintenanceHistoryFromGas(vin);
+    if (!ringRequestContextIsCurrent_(context) || ringHistoryReads_.get(key) !== request)
+        return { ok: false, error: 'STALE_SESSION', logs: [] };
+    if (!ringRequestContextIsCurrent_(ringHistoryContext_)) ringHistoryView_.clear();
+    ringHistoryContext_ = context;
+    ringHistoryView_.forEach(function (row, id) { if (_normalize(row.vin) === key) ringHistoryView_.delete(id); });
+    var logs = fetched.ok ? mapGasMaintenanceLogsToLocal_(fetched.logs) : [];
+    logs.forEach(function (row) { ringHistoryView_.set(row.log_id, row); });
+    return { ok: fetched.ok, logs: logs, signature: ringMaintenanceLogsSignature_(logs) };
 }
 
 /** 工場 VIN 履歴検索: 最終同期メタ（将来の課金カウント用フック含む） */
@@ -2579,26 +2615,12 @@ async function syncShopMaintenanceLogsForEdit(shopId) {
     var context = ringCaptureRequestContext_();
     var fetched = await fetchShopMaintenanceHistoryFromGas({ silentToast: true });
     if (!ringRequestContextIsCurrent_(context)) return { ok: false, error: "STALE_SESSION" };
-    var allLogs = readLogsArray();
-    if (!fetched.ok) {
-        var cached = allLogs.filter(function (l) {
-            return String(l.shopId || "").trim() === sid && ringIsLogEditableWithin7Days_(l);
-        });
-        return { ok: false, error: fetched.error, signature: ringMaintenanceLogsSignature_(cached) };
-    }
-
+    if (!ringRequestContextIsCurrent_(ringHistoryContext_)) ringHistoryView_.clear();
+    ringHistoryContext_ = context;
+    ringHistoryView_.forEach(function (row, id) { if (row.shopId === sid) ringHistoryView_.delete(id); });
+    if (!fetched.ok) return { ok: false, error: fetched.error, signature: '0::0' };
     var serverLogs = mapGasMaintenanceLogsToLocal_(fetched.logs);
-
-    var cutoffMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    var kept = allLogs.filter(function (l) {
-        if (String(l.shopId || "").trim() !== sid) return true;
-        var ms = ringLogCreatedAtMs_(l);
-        if (ms && ms < cutoffMs) return true;
-        return false;
-    });
-
-    var merged = kept.concat(serverLogs);
-    localStorage.setItem(DB_LOGS, JSON.stringify(merged));
+    serverLogs.forEach(function (row) { ringHistoryView_.set(row.log_id, row); });
     return { ok: true, signature: ringMaintenanceLogsSignature_(serverLogs) };
 }
 
@@ -2817,6 +2839,7 @@ function ringClassifyRetryQueueGasError_(item, msg, profile) {
     var action = item && item.action;
     var isVehicleWrite = (action === 'vehicle' || action === 'update_vehicle') &&
         !(item.payload && item.payload.nicknameOnly);
+    if (action === 'log' && /OWNER_PERIOD_CHANGED/.test(msg)) return 'owner_period';
     if (isVehicleWrite && ringIsGasVehicleConflictError_(msg)) return 'conflict';
     if (/VEHICLE_NOT_REGISTERED/.test(msg)) {
         return ringVehicleOwnerHasQueuedVehicleWrite_(item && item.payload && item.payload.vin, profile)
@@ -2848,6 +2871,7 @@ function ringGasPermanentErrorMessage_(code) {
     var c = String(code || '');
     if (c === 'RETRY_REVIEW_REQUIRED') return '保存状態を確認できない変更を保持しています。車両の内容を確認して再保存してください';
     if (/DAILY_INSPECTION_LOG_ID_CONFLICT/.test(c)) return '同じ記録番号の別の日常点検がサーバーにあるため保存できませんでした';
+    if (/OWNER_PERIOD_CHANGED/.test(c)) return 'オーナーが交代したため送信を保留しました。入力内容は端末に残っています。';
     if (/LOG_ID_CONFLICT/.test(c)) return '同じ記録番号の別の整備記録がサーバーにあるため保存できませんでした';
     if (/LOG_CREATE_ROLE_DENIED/.test(c)) return 'この権限では整備記録を登録できません（店舗の管理者・スタッフのみ登録できます）';
     if (/VEHICLE_NOT_REGISTERED/.test(c)) return 'この車両がサーバーに登録されていないため保存できませんでした。先に車両を登録してください';
@@ -3404,6 +3428,7 @@ function ringRetrySyncVehicleUpdateItem_(item, profile) {
     }
     if (payRev < localRev) {
         var fresh = ringBuildVehicleGasPayload_(car, profile);
+        if (item.action === 'vehicle' && typeof item.payload.ownerConfirmed === 'boolean') fresh.ownerConfirmed = item.payload.ownerConfirmed;
         fresh.vehicleSaveRev = localRev;
         item.payload = fresh;
     }
@@ -3815,6 +3840,11 @@ function ringRememberGasServerFeatures_(gasJson, request) {
         expiresAt: Date.now() + 300000
     };
     ringRetryQueueResumePlateGasBlocks_(!wasSupported);
+    if (typeof document !== 'undefined' && typeof document.querySelector === 'function' &&
+        typeof window !== 'undefined' && window.ringOwnerPlatformUi && ringGasOwnerPlatformOperational_()) {
+        var menu = document.querySelector('#nappy-settings-panel [data-owner-settings]');
+        if (menu) window.ringOwnerPlatformUi.appendOwnerSettings(menu);
+    }
 }
 
 function ringReadGasServerFeatures_() {
@@ -6565,6 +6595,7 @@ async function addVehicle(v, opts) {
     }
     var backupAdd = i !== -1 ? JSON.parse(JSON.stringify(list[i])) : null;
     const merged = i !== -1 ? { ...list[i], ...v } : { ...v };
+    delete merged.ownerConfirmed;
     ringKeepDeviceVehicleSyncState_(merged, i !== -1 ? list[i] : null, v);
     merged.createdAt = merged.createdAt || new Date().toISOString();
     merged.vehicleSaveRev = ringNextVehicleSaveRev_(i !== -1 ? list[i] : {});
@@ -6589,12 +6620,13 @@ async function addVehicle(v, opts) {
     }
     var carForGasAdd = ringFindLocalVehicleByOwner_(merged.vin, profile) || merged;
     var gasPayload = ringBuildVehicleGasPayload_(carForGasAdd, profile);
+    if (typeof v.ownerConfirmed === 'boolean') gasPayload.ownerConfirmed = v.ownerConfirmed;
     gasPayload.vehicleSaveRev = ringGetVehicleSaveRev_(merged);
     var payloadHadNickname = ringVehicleGasPayloadIncludesNickname_(gasPayload);
     try {
         const json = await sendToGAS_Safe('vehicle', gasPayload);
         if (json && json.error === 'OWNER_CLAIM_REQUIRED' && json.ownerClaimRequired) {
-            if (typeof window.ringOwnerPlatformUi !== 'undefined' && window.ringOwnerPlatformUi.showOwnerClaimModal) {
+            if (v.ownerConfirmed !== false && typeof window.ringOwnerPlatformUi !== 'undefined' && window.ringOwnerPlatformUi.showOwnerClaimModal) {
                 var claimRes = await window.ringOwnerPlatformUi.showOwnerClaimModal(merged.vin);
                 if (claimRes && claimRes.claimToken) gasPayload.claimToken = claimRes.claimToken;
                 if (claimRes && claimRes.claimToken) {
@@ -6785,6 +6817,8 @@ async function saveLog(d) {
         factoryType: d.factoryType || profile.factoryType || "",
         factoryNumber: d.factoryNumber || profile.factoryNumber || ""
     };
+    var ownedCar = ringFindLocalVehicleByOwner_(cleanVin, profile);
+    if (ownedCar && ownedCar.ownerPeriodId) newEntry.ownerPeriodId = ownedCar.ownerPeriodId;
     newEntry.createdAt = newEntry.createdAt || new Date().toISOString();
 
     list.push(newEntry);
@@ -6803,7 +6837,7 @@ async function saveLog(d) {
             });
             return { logId: newLogId, localSaved: true, serverSaved: false, error: msg, queued: false };
         }
-        enqueueRetry('log', newEntry);
+        enqueueRetry('log', Object.assign({}, newEntry, { ownerResend: true }));
         return { logId: newLogId, localSaved: true, serverSaved: false, error: err.message, queued: true };
     }
 }
@@ -6879,7 +6913,7 @@ async function ringAfterMaintenanceSaveComplete_(vin, logResult, dest) {
  */
 function getLogsByVin(vin) { 
     const searchTarget = _normalize(vin);
-    return readLogsArray().filter(l => {
+    return ringReadableHistoryRows_().filter(l => {
         return _normalize(l.vin) === searchTarget;
     }).sort((a,b) => new Date(b.date)-new Date(a.date)); 
 }
@@ -7031,6 +7065,7 @@ async function sendToGAS_Safe(actionType, data, opts) {
         if (actionType === 'update_vehicle' && json && String(json.error || '') === 'NICKNAME_CONFLICT') {
             return json;
         }
+        if (actionType === 'vehicle' && json && json.error === 'OWNER_CLAIM_REQUIRED') return json;
         var gasErr = (json && json.error) ? String(json.error) : 'GAS保存に失敗しました';
         var gasErrObj = new Error(gasErr);
         if (json && typeof json === 'object') gasErrObj.gasResponse = json;
@@ -7346,7 +7381,8 @@ async function flushRetryQueue(opts) {
                 continue;
             }
             try {
-                var flushJson = await sendToGAS_Safe(flushItem.action, flushItem.payload, {
+                var resend = flushItem.action === 'log' ? Object.assign({}, flushItem.payload, {ownerResend: true}) : flushItem.payload;
+                var flushJson = await sendToGAS_Safe(flushItem.action, resend, {
                     authToken: flushCtx.token,
                     silentToast: true
                 });
@@ -7506,8 +7542,8 @@ async function flushRetryQueue(opts) {
                     ringRetryQueuePushOrKeep_(remaining, flushItem);
                     continue;
                 }
-                if (flushErrKind === 'permanent') {
-                    ringRetryQueueMarkBlocked_(flushItem, flushErrMsg, 'permanent');
+                if (flushErrKind === 'permanent' || flushErrKind === 'owner_period') {
+                    ringRetryQueueMarkBlocked_(flushItem, flushErrMsg, flushErrKind);
                     ringRetryQueuePushOrKeep_(remaining, flushItem);
                     continue;
                 }
@@ -8146,21 +8182,21 @@ async function runOnce(button, task) {
     }
 }
 
-/**
- * かかりつけ店舗の読み込み（旧キーからマイグレーション付き）
- */
+function ringFavoriteLocalKey_() {
+    var p = getCurrentProfile();
+    if (!p || !p.userId || !ringIsUserAccountProfile(p) || !ringResolveActiveAuthToken()) return '';
+    return 'nappy_fav_shops_v2:' + encodeURIComponent(GAS_URL) + ':' + encodeURIComponent(p.userId);
+}
+
 function loadFavShops() {
-    const current = safeJsonParse(localStorage.getItem('nappy_fav_shops_v1'), []);
-    const legacy  = safeJsonParse(localStorage.getItem('nappy_fav_shops'), []);
-    if (!legacy.length) return current;
-    const byId = {};
-    current.concat(legacy).forEach(function (shop) {
-        if (shop && shop.shopId) byId[shop.shopId] = Object.assign({}, byId[shop.shopId] || {}, shop);
-    });
-    const merged = Object.values(byId);
-    localStorage.setItem('nappy_fav_shops_v1', JSON.stringify(merged));
-    localStorage.removeItem('nappy_fav_shops');
-    return merged;
+    var key = ringFavoriteLocalKey_();
+    return key ? safeJsonParse(localStorage.getItem(key), []) : [];
+}
+
+function ringSaveFavShops_(rows) {
+    var key = ringFavoriteLocalKey_();
+    if (!key) throw new Error('LOGIN_REQUIRED');
+    localStorage.setItem(key, JSON.stringify(rows));
 }
 
 /**
@@ -10294,10 +10330,10 @@ function createGlobalUI() {
         `;
         panelsHtml = `
           ${qrPanelBlock}
-          <div id="nappy-settings-panel"><div class="settings-header"><h2>設定</h2><button class="settings-close" id="nappy-settings-close">✖</button></div><div class="settings-body">${menuBodyHtml}</div></div>
+          <div id="nappy-settings-panel"><div class="settings-header"><h2>設定</h2><button class="settings-close" id="nappy-settings-close">✖</button></div><div class="settings-body" data-owner-settings>${menuBodyHtml}</div></div>
         `;
         setTimeout(function () {
-            var body = document.querySelector('#nappy-settings-panel .settings-body');
+            var body = document.querySelector('#nappy-settings-panel [data-owner-settings]');
             if (body && typeof window.ringOwnerPlatformUi !== 'undefined' && window.ringOwnerPlatformUi.appendOwnerSettings) {
                 window.ringOwnerPlatformUi.appendOwnerSettings(body);
             }
@@ -10402,6 +10438,9 @@ function createGlobalUI() {
     const setClose = document.getElementById('nappy-settings-close');
     if (setTab) setTab.addEventListener('click', () => {
         setPanel.classList.toggle('open');
+        if (setPanel.classList.contains('open') && window.ringOwnerPlatformUi) {
+            window.ringOwnerPlatformUi.appendOwnerSettings(setPanel.querySelector('[data-owner-settings]'));
+        }
         if (qrPanel) qrPanel.classList.remove('open');
     });
     if (setClose) setClose.addEventListener('click', () => { setPanel.classList.remove('open'); });
@@ -10654,11 +10693,8 @@ var RING_PENDING_FAV_SHOP_KEY = 'ring_pending_fav_shop';
 async function ringPromptAndSaveFavShop_(shopId) {
     shopId = String(shopId || '').trim();
     if (!shopId) return { ok: false };
-    var fav = loadFavShops();
-    if (fav.some(function (s) { return s.shopId === shopId; })) {
-        if (typeof showToast === 'function') showToast('info', 'かかりつけに登録済みです');
-        return { ok: true, duplicate: true };
-    }
+    var context = ringCaptureRequestContext_();
+    if (!ringFavoriteLocalKey_()) return {ok:false};
     var info = {};
     try {
         var res = await fetch(GAS_URL, {
@@ -10677,9 +10713,10 @@ async function ringPromptAndSaveFavShop_(shopId) {
     } catch (e) {
         return { ok: false, commError: true };
     }
+    if (!ringRequestContextIsCurrent_(context)) return {ok:false};
     var ok = false;
     if (typeof showRingConfirm === 'function') {
-        var confirmMsg = String(info.shopName).trim() + 'をかかりつけ工場に登録しますか？';
+        var confirmMsg = String(info.shopName).trim() + 'を登録しますか？ 管理中の車両の非公開整備履歴もこの店舗に共有されます。車両別に変更できます。';
         ok = await showRingConfirm({
             title: 'かかりつけ工場の登録',
             message: confirmMsg,
@@ -10687,7 +10724,9 @@ async function ringPromptAndSaveFavShop_(shopId) {
             cancelLabel: 'キャンセル'
         });
     }
-    if (!ok) return { ok: false, cancelled: true };
+    if (!ok || !ringRequestContextIsCurrent_(context)) return { ok: false, cancelled: true };
+    try { await sendToGAS_Safe('owner_register_favorite_shop', {shopId: shopId}); }
+    catch (err) { return {ok:false, commError:true}; }
     var row = {
         shopId: shopId,
         shopName: (info.shopName && String(info.shopName).trim()) ? String(info.shopName).trim() : '登録されたお店',
@@ -10698,9 +10737,10 @@ async function ringPromptAndSaveFavShop_(shopId) {
         lineUrl: info.lineUrl || '#'
     };
     if (row.lineUrl === '') row.lineUrl = '#';
-    fav = fav.filter(function (s) { return s.shopId !== shopId; });
+    if (!ringRequestContextIsCurrent_(context)) return {ok:false};
+    var fav = loadFavShops().filter(function (s) { return s.shopId !== shopId; });
     fav.push(row);
-    localStorage.setItem('nappy_fav_shops_v1', JSON.stringify(fav));
+    ringSaveFavShops_(fav);
     if (typeof showToast === 'function') showToast('success', 'かかりつけに追加しました');
     return { ok: true };
 }

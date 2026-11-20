@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
   <link rel="manifest" href="manifest.json">
   <title>QRコード読み取り — 車のお薬手帳</title>
-  <link rel="stylesheet" href="common.css">
-  <script src="app.js?v=20261118-v50" integrity="sha256-ZevdKzRSCi4Z3RoWBO5isnEHEfBYWWROfSjloAKrSFc= sha256-00mt5W4gxaY949Uzz47wWzw/2bttpeuWaMvdgoIFA5o=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
+  <link rel="stylesheet" href="common.css?v=20261119-v53" integrity="sha256-gLucbh3x/eHe8dwKjoDqhIUOP4FyREhbu0/Nw6Ru/Jg= sha256-osnzRLygeh+f5oe7OwTD0igkrzro60pxtPktN7UnkC8=">
+  <script src="app.js?v=20261119-v53" integrity="sha256-mYkvMkMthkjAxQuNG5iBpOPOVghxdn4q2eWB9kexH+0= sha256-XB/v5iOjR2mMPWO/lkxrNQxLvQUbaYHXnNiTLSc2q2o=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
   <script src="theme.js"></script>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <style>
@@ -249,6 +249,19 @@
 
       async function processQrResult(rawText) {
         try {
+          if (/^[A-Z2-9]{6}$/.test(rawText.trim())) {
+            location.href = 'user_fav_shop_edit.html?referral=' + encodeURIComponent(rawText.trim()); return;
+          }
+          try {
+            var invite = new URL(rawText);
+            var accept = new URL('user_sub_invite_accept.html', location.href);
+            var grant = invite.searchParams.get('grant');
+            if (invite.origin === accept.origin && invite.pathname === accept.pathname && /^SUB-[a-zA-Z0-9-]+$/.test(grant || '')) {
+              accept.searchParams.set('grant', grant);
+              location.assign(accept.href);
+              return;
+            }
+          } catch (invalidUrl) { /* Existing QR formats can be plain text. */ }
           var parsed = parseQrParams(rawText);
           var p = parsed.params;
           var action = String(p.get('action') || '').trim().toLowerCase();
