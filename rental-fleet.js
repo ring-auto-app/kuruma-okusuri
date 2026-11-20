@@ -2055,8 +2055,8 @@
     var results;
     try {
       results = await Promise.all([
-        syncFleetBookingsFromServer(y1, m1),
-        syncFleetBookingsFromServer(nm.y, nm.m)
+        syncFleetBookingsFromServer(y1, m1, true),
+        syncFleetBookingsFromServer(nm.y, nm.m, true)
       ]);
     } catch (e) {
       results = [{ ok: false, bookings: [], error: 'NETWORK' }, { ok: false, bookings: [], error: 'NETWORK' }];

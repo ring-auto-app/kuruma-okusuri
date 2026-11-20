@@ -5355,13 +5355,13 @@ function mergeFleetBookingsForShop_(serverList, profile) {
     return Array.from(map.values());
 }
 
-async function syncFleetBookingsForVinHistory_(vin) {
+async function syncFleetBookingsForVinHistory_(vin, calendarRefresh) {
     var profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
     if (!profile || !profile.shopId) return { ok: false, bookings: [], error: 'NO_SHOP' };
     var vinNorm = typeof _normalize === 'function' ? _normalize(vin) : String(vin || '').trim().toUpperCase();
     if (!vinNorm) return { ok: false, bookings: [], error: 'VIN_REQUIRED' };
     var requestContext = ringCaptureRequestContext_();
-    var readKey = requestContext.scope + ':history:' + vinNorm;
+    var readKey = requestContext.scope + ':history:' + vinNorm + (calendarRefresh === true ? ':calendar' : ':operation');
     var readSerial = (ringFleetReadSerials_[readKey] || 0) + 1;
     ringFleetReadSerials_[readKey] = readSerial;
     try {
@@ -5381,12 +5381,13 @@ async function syncFleetBookingsForVinHistory_(vin) {
     }
 }
 
-async function syncFleetBookingsFromServer(year, month) {
+async function syncFleetBookingsFromServer(year, month, calendarRefresh) {
     var profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
     if (!profile || !profile.shopId) return { ok: false, fromCache: false, bookings: [], error: 'NO_SHOP' };
     var cachedOnly = loadFleetBookingsLocal_(profile);
     var requestContext = ringCaptureRequestContext_();
-    var readKey = requestContext.scope + ':month:' + year + ':' + month;
+    // A passive calendar refresh must not cancel an action's fresh read for the same month.
+    var readKey = requestContext.scope + ':month:' + year + ':' + month + (calendarRefresh === true ? ':calendar' : ':operation');
     var readSerial = (ringFleetReadSerials_[readKey] || 0) + 1;
     ringFleetReadSerials_[readKey] = readSerial;
     try {
@@ -5410,7 +5411,7 @@ async function syncFleetBookingsFromServer(year, month) {
             if (b.status === 'out' && !incoming.some(function(row){return row.bookingId === b.bookingId;}) && missingVins.indexOf(b.vin) < 0) missingVins.push(b.vin);
         });
         for (var vi = 0; vi < missingVins.length; vi++) {
-            var history = await syncFleetBookingsForVinHistory_(missingVins[vi]);
+            var history = await syncFleetBookingsForVinHistory_(missingVins[vi], calendarRefresh);
             if (!ringRequestContextIsCurrent_(requestContext) || ringFleetReadSerials_[readKey] !== readSerial) return ringFleetReadFailure_('STALE_SESSION', []);
             if (!history.ok) return ringFleetReadFailure_(history.error || 'GET_FLEET_BOOKINGS_FAILED', loadFleetBookingsLocal_(profile));
             incoming = incoming.concat(history.bookings);
