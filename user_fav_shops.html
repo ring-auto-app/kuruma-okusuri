@@ -12,10 +12,10 @@
   <link rel="manifest" href="manifest.json">
     <title>車のお薬手帳</title>
   
-  <link rel="stylesheet" href="common.css?v=20261119-v53" integrity="sha256-gLucbh3x/eHe8dwKjoDqhIUOP4FyREhbu0/Nw6Ru/Jg= sha256-osnzRLygeh+f5oe7OwTD0igkrzro60pxtPktN7UnkC8=">
-  <script src="app.js?v=20261119-v53" integrity="sha256-Hy8J+9KQp7cFCBUmEvkEqeFYwSFR6H4oj1rkQ4bTUeU= sha256-GfoJc54H3QYIf/M7GWJftPRodM46umHiE8dI0ORU7hY=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
+  <link rel="stylesheet" href="common.css?v=20261120-v54" integrity="sha256-yO0OlNXeXZ4584IXby/Gc5wRQVQHSLTSU7Z+QJycOCQ= sha256-HnQmEMCmw/wnKwUmcXXHCcMzFehK3s7aud7AqTiS3WU=">
+  <script src="app.js?v=20261120-v54" integrity="sha256-YzfYrexyxJhCeaTaGq4JNFnecx0NeEEFhVTnk6tnvxg= sha256-ZuN1EPbYZo1AxOa9dSBooVyMe851luta3zGSLRb9Txs=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
   <script src="theme.js"></script>
-  <script src="owner-platform.js?v=20261119-v53" integrity="sha256-9NMxbN/nLqDtbnU61091juoQouSv3egfSKXP+W/svSk= sha256-mcbxkbvK1YuwqASWD5iBdNV39empv7e0QH4E3FLqWXk="></script>
+  <script src="owner-platform.js?v=20261120-v54" integrity="sha256-9NMxbN/nLqDtbnU61091juoQouSv3egfSKXP+W/svSk= sha256-mcbxkbvK1YuwqASWD5iBdNV39empv7e0QH4E3FLqWXk="></script>
   
   <style>
     /* 34pxグリッド設計：ノートの世界観に統一 */
@@ -81,6 +81,8 @@
     .btn-remove:active { transform: scale(0.97); }
 
     .empty-msg { text-align: center; background: var(--paper); padding: 34px 16px; border-radius: 16px; border: 2px dashed var(--line); line-height: 34px; }
+    .btn-remove,.shop-card summary,.shop-card label,.shop-card .btn { box-sizing:border-box; min-height:44px; min-width:44px; }
+    .shop-card summary { align-content:center; } .shop-name { overflow-wrap:anywhere; }
   </style>
 </head>
 <body>
@@ -108,30 +110,33 @@
     }
     window.addEventListener('ring-auth-context-changed', verifyFavoritePage);
     window.addEventListener('storage', verifyFavoritePage);
-    window.addEventListener('pageshow', verifyFavoritePage);
+    window.addEventListener('pageshow', e => { verifyFavoritePage(); if (e.persisted && !document.body.hidden) renderFavShops(); });
 
     window.addEventListener('DOMContentLoaded', () => {
       renderFavShops();
     });
 
+    let favoriteViewVersion = 0;
     function renderFavShops() {
+      const version = ++favoriteViewVersion;
       showLoading("読込中", "読み込み中…");
 
       setTimeout(async () => {
-        let favShops = loadFavShops();
+        let favShops;
 
         const container = document.getElementById('shopListArea');
         let html = "";
         try {
-          var response = await ringOwnerPlatform.listFavoriteShops();
-          if (!ringRequestContextIsCurrent_(favoriteContext)) { verifyFavoritePage(); return; }
-          if (!response.success) throw new Error('READ_FAILED');
-          var local = favShops;
-          favShops = response.favorites.filter(r => !r.vin).map(r => Object.assign({}, local.find(l => l.shopId === r.shopId) || {}, r))
-            .concat(local.filter(r => String(r.shopId).startsWith('FAV-LOCAL-')));
-          ringSaveFavShops_(favShops);
-        } catch (err) { container.textContent = '登録状況を取得できません。通信を確認して再読み込みしてください。'; hideLoading(); return; }
+          var response = await ringRefreshFavoriteShops_();
+          favShops = response.shops;
+        } catch (err) {
+          if (!ringRequestContextIsCurrent_(favoriteContext) || err.message === 'STALE_FAVORITE_READ') return;
+          if (version !== favoriteViewVersion) return;
+          ringShowFavoriteReadFailure_(container, favoriteContext);
+          hideLoading(); return;
+        }
 
+        if (version !== favoriteViewVersion || !ringRequestContextIsCurrent_(favoriteContext)) return;
         if (favShops.length === 0) {
           container.innerHTML = '<div class="empty-msg">まだかかりつけが登録されていません。<br><a href="user_fav_shop_edit.html" style="color:var(--accent);font-weight:900;">検索して追加</a> または <a href="user_mypage.html" style="color:var(--accent);font-weight:900;">マイページ</a> からどうぞ。</div>';
           hideLoading();
@@ -154,6 +159,7 @@
               </div>
               
               <div class="shop-address">
+                ${shop.favoriteSource === 'gas' ? '' : '端末の連絡先（非公開履歴の共有なし）<br>'}
                 ${shop.address ? escapeHtml(shop.address) : '住所未登録'}
               </div>
               
@@ -165,7 +171,7 @@
               </div>
 
               <div class="remove-area">
-                <a href="user_fav_shop_edit.html?shopId=${encodeURIComponent(shop.shopId)}" class="btn btn-secondary" style="min-width:96px;">編集</a>
+                ${shop.favoriteSource === 'gas' ? '' : `<a href="user_fav_shop_edit.html?shopId=${encodeURIComponent(shop.shopId)}" class="btn btn-secondary" style="min-width:96px;">編集</a>`}
                 <button type="button" class="btn-remove" data-remove-id="${escapeHtml(shop.shopId)}">登録を解除する</button>
               </div>
             </div>
@@ -181,12 +187,12 @@
         });
         hideLoading();
         if (window.ringOwnerPlatform) {
-          ringEnhanceFavShopPrivateToggles_(favShops, response);
+          ringEnhanceFavShopPrivateToggles_(favShops, response, version);
         }
       }, 300);
     }
 
-    async function ringEnhanceFavShopPrivateToggles_(localShops, json) {
+    async function ringEnhanceFavShopPrivateToggles_(localShops, json, version) {
       try {
 
         var rows = (json && json.favorites) || [];
@@ -195,7 +201,9 @@
           if (!byShop[r.shopId]) byShop[r.shopId] = [];
           byShop[r.shopId].push(r);
         });
-        var vehicles = typeof loadVehicles === 'function' ? loadVehicles() : [];
+        var carRead = await syncVehiclesFromServer({returnStatus:true}).catch(() => ({ok:false}));
+        if (version !== favoriteViewVersion || !ringRequestContextIsCurrent_(favoriteContext)) return;
+        var vehicles = loadVehicles().filter(car => ringIsMyVehicleRecord_(car, getCurrentProfile()));
         localShops.forEach(function (shop) {
           var card = document.getElementById('card-' + shop.shopId);
           if (!card) return;
@@ -209,6 +217,7 @@
           block.innerHTML = '<summary style="font-weight:800;cursor:pointer">非公開履歴の閲覧許可（車両別）</summary>';
           var inner = document.createElement('div');
           inner.style.paddingTop = '8px';
+          if (!carRead || !carRead.ok) inner.textContent = '車両一覧を更新できません。車両別の許可を変更するには再読み込みしてください。';
           [{vin:"",label:"店舗全体の初期許可"}].concat(vehicles).forEach(function (car) {
             var vin = String(car.vin || '').trim();
             if (vin && car.ownerMark !== 'current') return;
@@ -217,6 +226,7 @@
             row.style.display = 'flex'; row.style.alignItems = 'center'; row.style.gap = '8px'; row.style.marginBottom = '6px';
             row.innerHTML = '<input type="checkbox" data-vin="' + escapeHtml(vin) + '" ' + (checked ? 'checked' : '') + '> ' +
               escapeHtml(car.label || (typeof ringVehicleDisplayName_ === 'function' ? ringVehicleDisplayName_(car) : vin));
+            if (vin && (!carRead || !carRead.ok)) row.querySelector('input').disabled = true;
             inner.appendChild(row);
           });
           block.appendChild(inner);
@@ -224,11 +234,11 @@
           block.querySelectorAll('input[type=checkbox]').forEach(function (cb) {
             cb.addEventListener('change', async function () {
               cb.disabled = true;
-              try { await ringOwnerPlatform.setFavoriteVehiclePermission({
+              try { var saved = await ringOwnerPlatform.setFavoriteVehiclePermission({
                 shopId: shop.shopId,
                 vin: cb.getAttribute('data-vin'),
                 allowPrivateView: cb.checked
-              }); renderFavShops(); } catch (err) { cb.checked = !cb.checked; showToast("error","許可を保存できませんでした"); } finally { cb.disabled = false; }
+              }); if (!saved || saved.success !== true) throw new Error('UNCONFIRMED'); renderFavShops(); } catch (err) { cb.checked = !cb.checked; showToast("error","許可を保存できませんでした"); } finally { cb.disabled = false; }
             });
           });
         });
@@ -249,7 +259,10 @@
 
       const card = document.getElementById(`card-${shopId}`);
       if (card) {
-        try { if (!String(shopId).startsWith('FAV-LOCAL-')) await ringOwnerPlatform.unregisterFavoriteShop({shopId: shopId}); }
+        try { if (!String(shopId).startsWith('FAV-LOCAL-')) {
+          const saved = await ringOwnerPlatform.unregisterFavoriteShop({shopId: shopId});
+          if (!saved || saved.success !== true) throw new Error('UNCONFIRMED');
+        } }
         catch (err) { showToast('error','解除を確認できません。通信を確認して再試行してください。'); return; }
         if (!ringRequestContextIsCurrent_(favoriteContext)) return;
         card.style.opacity = '0.5';

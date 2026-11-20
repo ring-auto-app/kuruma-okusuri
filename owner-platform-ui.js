@@ -12,6 +12,7 @@
   function ownerDialog(title, message, choices, extra) {
     var dialog = document.createElement('dialog');
     dialog.className = 'owner-dialog';
+    dialog.setAttribute('aria-label', title);
     var heading = document.createElement('h2');
     heading.textContent = title;
     var description = document.createElement('p');
@@ -19,19 +20,66 @@
     dialog.append(heading, description);
     if (extra) dialog.append(extra);
     return new Promise(function (resolve) {
-      function finish(value) { dialog.close(); dialog.remove(); resolve(value); }
+      var scope = ringCaptureRequestContext_();
+      function invalidate() {
+        if (!ringRequestContextIsCurrent_(scope)) finish(null);
+      }
+      function finish(value) {
+        global.removeEventListener('storage', invalidate);
+        global.removeEventListener('ring-auth-context-changed', invalidate);
+        dialog.close(); dialog.remove(); resolve(value);
+      }
+      global.addEventListener('storage', invalidate);
+      global.addEventListener('ring-auth-context-changed', invalidate);
       choices.forEach(function (choice) {
         var button = document.createElement('button');
         button.type = 'button';
         button.className = 'btn btn-secondary';
         button.textContent = choice[1];
-        button.onclick = function () { finish(choice[0]); };
+        button.onclick = function () {
+          if (typeof choice[0] === 'function') {
+            var value = choice[0]();
+            if (value !== undefined) finish(value);
+          } else finish(choice[0]);
+        };
         dialog.append(button);
       });
       dialog.oncancel = function (event) { event.preventDefault(); finish(null); };
       document.body.append(dialog);
       dialog.showModal();
     });
+  }
+
+  function ownerInputDialog(title, message, label, submit, isCode) {
+    var field = document.createElement('label');
+    field.className = 'owner-input-field';
+    field.textContent = label;
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.autocomplete = 'off';
+    input.autocapitalize = isCode ? 'off' : 'characters';
+    input.autofocus = true;
+    if (isCode) {
+      input.inputMode = 'numeric';
+      input.maxLength = 4;
+    }
+    var error = document.createElement('span');
+    error.setAttribute('role','alert');
+    field.append(input, error);
+    function collect() {
+      var value = input.value.trim();
+      if (isCode && !/^[0-9]{4}$/.test(value)) {
+        error.textContent = '半角の数字4桁を入力してください。';
+        input.setAttribute('aria-invalid','true'); input.focus();
+        return;
+      }
+      return isCode ? value : value.toUpperCase();
+    }
+    input.oninput = function () { error.textContent = ''; input.removeAttribute('aria-invalid'); };
+    input.onkeydown = function (e) {
+      if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); field.closest('dialog').querySelector('button').click(); }
+    };
+    return ownerDialog(title, message, [[collect,submit],[null,'キャンセル']], field);
   }
 
   function ownerMarkLabel(car) {
@@ -76,45 +124,37 @@
 
   async function showOwnerClaimModal(vin, onSuccess) {
     if (!await OP.ready()) { global.showToast('error','接続とログイン状態を確認してください'); return false; }
-    var ok = confirm(
-      'この車両のオーナー（管理責任者）ですか？\n\n' +
-      '他の方が既に登録している場合、車検証写真の撮影と電子車検証の専用4桁コード照合が必要です。\n' +
-      '（ナンバー下4桁・型式指定番号ではありません）'
-    );
-    if (!ok) return false;
-    var securityCode = prompt('電子車検証に記載された専用4桁を半角で入力してください。先頭の0も入力してください。', '');
-    if (securityCode === null) return false;
-    if (!/^[0-9]{4}$/.test(securityCode)) { global.showToast('error','専用コードは半角数字4桁です'); return false; }
+    var context = ringCaptureRequestContext_();
+    var securityCode = await ownerInputDialog('オーナーの確認', '対象車両 ' + vin +
+      '。ご本人の電子車検証を用意してください。写真のVIN・専用コードと照合します。',
+      '電子車検証の専用4桁（先頭の0を含む）', '車検証の写真を選ぶ', true);
+    if (securityCode === null || !ringRequestContextIsCurrent_(context)) return false;
     var file = await pickShakenImageFile_();
-    if (!file) return false;
-    var b64 = '';
-    if (typeof global.ringOcrCompressImageToBase64_ === 'function') {
-      b64 = await global.ringOcrCompressImageToBase64_(file);
-    } else if (typeof global.ringGeminiReadFileAsBase64_ === 'function') {
-      b64 = await global.ringGeminiReadFileAsBase64_(file);
-    } else {
-      if (typeof global.showToast === 'function') global.showToast('error', 'OCRモジュールが読み込まれていません');
-      return false;
-    }
-    if (typeof global.showLoading === 'function') global.showLoading('照合中', '車検証を読み取っています…');
+    if (!file || !ringRequestContextIsCurrent_(context)) return false;
     try {
+      if (typeof global.showLoading === 'function') global.showLoading('照合中', '車検証を読み取っています…');
+      var read = global.ringOcrCompressImageToBase64_ || global.ringGeminiReadFileAsBase64_;
+      if (!read) throw new Error('OCR_UNAVAILABLE');
+      var b64 = await read(file);
+      if (!ringRequestContextIsCurrent_(context)) return false;
       var res = await OP.claimWithShakenOcr({ vin: vin, image: b64, securityCode: securityCode, clientRequestId: 'claim-' + Date.now() });
-      if (typeof global.hideLoading === 'function') global.hideLoading();
-      if (!res || !res.success) {
-        if (typeof global.showToast === 'function') {
-          global.showToast('error', (res && res.error) || 'オーナー確認に失敗しました');
-        }
-        return false;
-      }
-      if (typeof OP.purgeSensitiveCaches === 'function') OP.purgeSensitiveCaches();
-      if (vin && typeof global.syncMaintenanceHistoryForVin === 'function') await global.syncMaintenanceHistoryForVin(vin);
-      if (typeof global.showToast === 'function') global.showToast('success', 'オーナーを確認しました');
+      if (!ringRequestContextIsCurrent_(context)) return false;
+      if (!res || !res.success) throw new Error((res && res.error) || 'OCR_FAILED');
+      OP.purgeSensitiveCaches();
+      if (typeof global.syncMaintenanceHistoryForVin === 'function') await global.syncMaintenanceHistoryForVin(vin);
+      if (!ringRequestContextIsCurrent_(context)) return false;
+      global.showToast('success', 'オーナーを確認しました');
       if (onSuccess) onSuccess(res);
       return res;
     } catch (e) {
-      if (typeof global.hideLoading === 'function') global.hideLoading();
-      if (typeof global.showToast === 'function') global.showToast('error', /MISMATCH/.test(String(e)) ? '車台番号または専用4桁が一致しません。写真と入力を確認してください。' : '確認できませんでした。通信と写真を確認して再試行してください。');
+      if (!ringRequestContextIsCurrent_(context)) return false;
+      var message = /MISMATCH/.test(String(e)) ? '車台番号または専用4桁が一致しません。写真と入力を確認してください。'
+        : /OCR|NO_IMAGES/.test(String(e)) ? '車検証を読み取れませんでした。文字が鮮明な写真で再試行してください。'
+        : '確認結果を取得できません。通信復旧後に車両情報を再読み込みしてください。';
+      global.showToast('error', message);
       return false;
+    } finally {
+      if (ringRequestContextIsCurrent_(context) && typeof global.hideLoading === 'function') global.hideLoading();
     }
   }
 
@@ -273,14 +313,18 @@
     var subL = block.querySelector('#ring-sub-invite-link');
     if (subL) subL.onclick = async function (e) {
       e.preventDefault();
-      var vin = prompt('招待する車両のVIN（空欄＝全車両）', '');
-      if (vin === null) return;
       if (subL.dataset.saving) return;
       subL.dataset.saving = '1';
+      var context = ringCaptureRequestContext_();
+      var vin = await ownerInputDialog('副ユーザーの招待', '車両を指定してください。空欄の場合は現在管理している全車両が対象です。',
+        '招待する車両のVIN', '招待QRを作成', false);
+      if (vin === null || !ringRequestContextIsCurrent_(context)) { delete subL.dataset.saving; return; }
+      global.showLoading('招待を作成中','');
       var res;
       try { res = await OP.createSubInvite(String(vin || '').trim()); }
-      catch (err) { global.showToast('error','招待を作成できませんでした。対象車両と通信を確認してください。'); return; }
-      finally { delete subL.dataset.saving; }
+      catch (err) { if (ringRequestContextIsCurrent_(context)) global.showToast('error','招待を作成できませんでした。対象車両と通信を確認してください。'); return; }
+      finally { if (ringRequestContextIsCurrent_(context)) global.hideLoading(); delete subL.dataset.saving; }
+      if (!ringRequestContextIsCurrent_(context)) return;
       if (!res || !res.success) {
         if (typeof global.showToast === 'function') global.showToast('error', (res && res.error) || '招待できませんでした');
         return;
@@ -298,9 +342,8 @@
 
   async function promptOwnerOnVehicleAdd(vin) {
     if (!vin) return false;
-    var ok = confirm('この車両のオーナーですか？\n\n別の方が既に登録している場合は、車検証写真の読み取りと電子車検証の4桁コードが必要です。');
-    if (!ok) return false;
-    return true;
+    return ownerDialog('オーナーの登録', '車台番号 ' + vin + ' のオーナーですか？ 別の登録者がいる場合は車検証で確認します。',
+      [[true,'はい、オーナーです'],[false,'オーナーではありません'],[null,'登録を中止']]);
   }
 
   document.addEventListener('click', async function (event) {

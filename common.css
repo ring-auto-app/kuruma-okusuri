@@ -1361,3 +1361,9 @@ textarea.ring-auto-grow {
 .owner-dialog input { box-sizing:border-box; width:100%; min-height:44px; font-size:16px; }
 .owner-dialog button, [data-owner-claim], #ring-history-vis-bar button { min-height:44px; }
 label:has(#ring-log-vis-toggle), .back-link { display:inline-flex; align-items:center; min-height:44px; min-width:44px; }
+
+.owner-dialog { overflow-wrap:anywhere; color:var(--text); }
+.owner-dialog button, [data-owner-claim], #ring-sub-invite-link, #ring-history-vis-bar button { min-width:44px; min-height:44px; }
+.owner-input-field { display:grid; gap:.45rem; font-weight:700; }
+.owner-input-field input { padding:.65rem; border:1px solid #94a3b8; border-radius:8px; }
+.owner-input-field [role=alert] { color:#9b2525; }

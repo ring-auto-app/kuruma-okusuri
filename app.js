@@ -8194,6 +8194,44 @@ function loadFavShops() {
     return key ? safeJsonParse(localStorage.getItem(key), []) : [];
 }
 
+// Only rows returned by the authenticated list represent a server membership.
+var ringFavoriteReadGeneration_ = 0;
+async function ringRefreshFavoriteShops_() {
+    var context = ringCaptureRequestContext_();
+    var generation = ++ringFavoriteReadGeneration_;
+    var result = await sendToGAS_Safe('owner_list_favorite_shops', {});
+    if (!ringRequestContextIsCurrent_(context) || generation !== ringFavoriteReadGeneration_) throw new Error('STALE_FAVORITE_READ');
+    if (!result || result.success !== true || !Array.isArray(result.favorites)) throw new Error('FAVORITES_UNAVAILABLE');
+    var registered = result.favorites.filter(row => !row.vin).map(row => Object.assign({}, row, {favoriteSource:'gas'}));
+    var contacts = loadFavShops().filter(row => row && row.favoriteSource !== 'gas')
+        .map(function (row) {
+            var id = String(row.shopId || '');
+            if (!id.startsWith('FAV-LOCAL-')) id = 'FAV-LOCAL-' + ringGenerateMaintenanceLogId_();
+            return Object.assign({}, row, {shopId:id, favoriteSource:'manual'});
+        });
+    var display = registered.concat(contacts);
+    ringSaveFavShops_(display);
+    return {shops:display, favorites:result.favorites};
+}
+
+// Cached contacts are display-only while offline. An auth error must never reveal a cached list.
+function ringShowFavoriteReadFailure_(container, context) {
+    if (!ringRequestContextIsCurrent_(context)) return;
+    container.textContent = '現在の登録・閲覧許可を確認できません。通信を確認して再読み込みしてください。';
+    if (navigator.onLine || !ringFavoriteLocalKey_()) return;
+    var rows = loadFavShops();
+    if (!rows.length) return;
+    var title = document.createElement('p');
+    title.textContent = 'この端末に保存された連絡先（オフライン表示）';
+    var list = document.createElement('ul');
+    rows.forEach(function (row) {
+        var item = document.createElement('li');
+        item.textContent = [row.shopName, row.tel].filter(Boolean).join('　');
+        list.appendChild(item);
+    });
+    container.append(title, list);
+}
+
 function ringSaveFavShops_(rows) {
     var key = ringFavoriteLocalKey_();
     if (!key) throw new Error('LOGIN_REQUIRED');
@@ -10726,9 +10764,13 @@ async function ringPromptAndSaveFavShop_(shopId) {
         });
     }
     if (!ok || !ringRequestContextIsCurrent_(context)) return { ok: false, cancelled: true };
-    try { await sendToGAS_Safe('owner_register_favorite_shop', {shopId: shopId}); }
+    try { var confirmed = await sendToGAS_Safe('owner_register_favorite_shop', {shopId: shopId});
+        if (!confirmed || confirmed.success !== true || confirmed.shopId !== shopId) throw new Error('FAVORITE_UNCONFIRMED'); }
     catch (err) { return {ok:false, commError:true}; }
+    if (!ringRequestContextIsCurrent_(context)) return {ok:false, cancelled:true};
+    ringFavoriteReadGeneration_++;
     var row = {
+        favoriteSource: 'gas',
         shopId: shopId,
         shopName: (info.shopName && String(info.shopName).trim()) ? String(info.shopName).trim() : '登録されたお店',
         factoryNumber: (info.factoryNumber && String(info.factoryNumber).trim()) ? String(info.factoryNumber).trim() : '---',
@@ -10739,7 +10781,10 @@ async function ringPromptAndSaveFavShop_(shopId) {
     };
     if (row.lineUrl === '') row.lineUrl = '#';
     if (!ringRequestContextIsCurrent_(context)) return {ok:false};
-    var fav = loadFavShops().filter(function (s) { return s.shopId !== shopId; });
+    var fav = loadFavShops().filter(function (s) { return s.shopId !== shopId || s.favoriteSource !== 'gas'; })
+        .map(function (s) {
+            return s.shopId === shopId ? Object.assign({}, s, {shopId:'FAV-LOCAL-' + ringGenerateMaintenanceLogId_(), favoriteSource:'manual'}) : s;
+        });
     fav.push(row);
     ringSaveFavShops_(fav);
     if (typeof showToast === 'function') showToast('success', 'かかりつけに追加しました');

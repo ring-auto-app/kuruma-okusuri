@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
   <link rel="manifest" href="manifest.json">
     <title>車のお薬手帳</title>
-  <link rel="stylesheet" href="common.css?v=20261119-v53" integrity="sha256-gLucbh3x/eHe8dwKjoDqhIUOP4FyREhbu0/Nw6Ru/Jg= sha256-osnzRLygeh+f5oe7OwTD0igkrzro60pxtPktN7UnkC8=">
-  <script src="app.js?v=20261119-v53" integrity="sha256-Hy8J+9KQp7cFCBUmEvkEqeFYwSFR6H4oj1rkQ4bTUeU= sha256-GfoJc54H3QYIf/M7GWJftPRodM46umHiE8dI0ORU7hY=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
+  <link rel="stylesheet" href="common.css?v=20261120-v54" integrity="sha256-yO0OlNXeXZ4584IXby/Gc5wRQVQHSLTSU7Z+QJycOCQ= sha256-HnQmEMCmw/wnKwUmcXXHCcMzFehK3s7aud7AqTiS3WU=">
+  <script src="app.js?v=20261120-v54" integrity="sha256-YzfYrexyxJhCeaTaGq4JNFnecx0NeEEFhVTnk6tnvxg= sha256-ZuN1EPbYZo1AxOa9dSBooVyMe851luta3zGSLRb9Txs=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
   <script src="theme.js"></script>
   <style>
     body { margin: 0; font-family: -apple-system, sans-serif; background: var(--page-bg); color: var(--text); padding: 34px 16px 120px; }
@@ -47,7 +47,7 @@
     .edit-panel { margin-top: 24px; padding-top: 20px; border-top: 2px dashed var(--line); }
     .section-label { font-size: 13px; font-weight: 900; margin-bottom: 10px; }
   </style>
-  <script src="owner-platform.js?v=20261119-v53" integrity="sha256-9NMxbN/nLqDtbnU61091juoQouSv3egfSKXP+W/svSk= sha256-mcbxkbvK1YuwqASWD5iBdNV39empv7e0QH4E3FLqWXk="></script>
+  <script src="owner-platform.js?v=20261120-v54" integrity="sha256-9NMxbN/nLqDtbnU61091juoQouSv3egfSKXP+W/svSk= sha256-mcbxkbvK1YuwqASWD5iBdNV39empv7e0QH4E3FLqWXk="></script>
 </head>
 <body>
   <div class="container">
@@ -243,6 +243,7 @@
     function openEdit(shopId) {
       var fav = loadFavShops();
       var s = fav.find(function (x) { return String(x.shopId) === String(shopId); });
+      if (s && s.favoriteSource === 'gas') { location.replace('user_fav_shops.html'); return; }
       if (!s) {
         alert('見つかりませんでした');
         location.href = 'user_mypage.html';
@@ -266,7 +267,7 @@
       var shopId = document.getElementById('editShopId').value;
       var fav = loadFavShops();
       var idx = fav.findIndex(function (x) { return String(x.shopId) === String(shopId); });
-      if (idx < 0) return;
+      if (idx < 0 || fav[idx].favoriteSource === 'gas') return;
       fav[idx] = {
         shopId: shopId,
         shopName: document.getElementById('editName').value.trim() || fav[idx].shopName,
@@ -302,6 +303,7 @@
         var fav = loadFavShops();
         fav.push({
           shopId: id,
+          favoriteSource: 'manual',
           shopName: '',
           factoryNumber: '',
           address: '',
