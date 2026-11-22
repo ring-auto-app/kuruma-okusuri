@@ -13,7 +13,7 @@
     <title>車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css?v=20261120-v54" integrity="sha256-yO0OlNXeXZ4584IXby/Gc5wRQVQHSLTSU7Z+QJycOCQ= sha256-HnQmEMCmw/wnKwUmcXXHCcMzFehK3s7aud7AqTiS3WU=">
-  <script src="app.js?v=20261120-v54" integrity="sha256-YzfYrexyxJhCeaTaGq4JNFnecx0NeEEFhVTnk6tnvxg= sha256-ZuN1EPbYZo1AxOa9dSBooVyMe851luta3zGSLRb9Txs=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
+  <script src="app.js?v=20261120-v54" integrity="sha256-27vutQEqXAEgijRerLvcM/C4cVx1r2mwuAgvBlLCRo8= sha256-EF/g95rL5E6Gqr1GmEsRFTExXaMhI5/BtgFsZALCG+k=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
   <script src="theme.js"></script>
   
   <style>
@@ -221,7 +221,7 @@
       el.textContent = '最終同期：' + formatted;
     }
 
-    function renderFactoryEmptyState_(kind) {
+    function renderFactoryEmptyState_(kind, customMsg) {
       var listContainer = document.getElementById('historyList');
       if (!listContainer) return;
       var msgs = {
@@ -229,7 +229,8 @@
         empty: 'この車両の整備履歴はまだ登録されていません',
         error: '通信できませんでした。ネットワークを確認してください'
       };
-      listContainer.innerHTML = '<div class="empty-msg">' + (msgs[kind] || msgs.fetching) + '</div>';
+      var text = customMsg || msgs[kind] || msgs.fetching;
+      listContainer.innerHTML = '<div class="empty-msg">' + text + '</div>';
     }
 
     function renderFactoryHistoryFromCache_() {
@@ -303,7 +304,10 @@
           applyFilter();
         }
       } else if (allLogs.length === 0) {
-        renderFactoryEmptyState_('error');
+        var errText = (syncResult && typeof ringMaintenanceSyncUserMessage_ === 'function')
+          ? ringMaintenanceSyncUserMessage_(syncResult)
+          : '';
+        renderFactoryEmptyState_('error', errText);
       }
     }
 

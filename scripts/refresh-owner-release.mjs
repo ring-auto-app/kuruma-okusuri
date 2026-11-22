@@ -45,7 +45,7 @@ for (const url of list) {
   const key = url.split('?')[0];
   if (/\.(?:css|js|html|mjs)$/.test(key)) manifest[key] = releaseDigests(key.slice(2), 'hex');
 }
-worker = worker.replace(/car-nappy-v\d+(?=";)/, 'car-nappy-v54')
+worker = worker.replace(/car-nappy-v\d+(?=";)/, 'car-nappy-v55')
   .replace(entries, 'const PRECACHE_URLS = ' + JSON.stringify(list,null,2) + ';')
   .replace(hashes, 'const RELEASE_SHA256 = ' + JSON.stringify(manifest,null,2) + ';');
 write(name, worker);

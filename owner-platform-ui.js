@@ -288,8 +288,9 @@
     if (menuEl.querySelector('#ring-owner-pref-public')) return;
     var block = document.createElement('div');
     block.className = 'settings-group';
-    block.innerHTML = '<div class="settings-group-title">整備履歴の公開</div>' +
+    block.innerHTML = '<div class="settings-group-title">🔒 整備履歴の公開設定</div>' +
       '<ul class="settings-list">' +
+      '<li><a href="history_visibility_settings.html">設定画面を開く</a></li>' +
       '<li><a href="#" id="ring-owner-pref-public">新規履歴を公開で保存（既定）</a></li>' +
       '<li><a href="#" id="ring-owner-pref-private">新規履歴を非公開で保存</a></li>' +
       '<li><a href="user_past_vehicles.html">過去の車両</a></li>' +
@@ -303,7 +304,11 @@
         e.preventDefault();
         if (block.dataset.saving) return;
         block.dataset.saving = '1';
-        try { await OP.setDefaultVisibility(value); global.showToast('success', label); }
+        try {
+          await OP.setDefaultVisibility(value);
+          try { global.localStorage.setItem('ring_owner_default_vis', value === 'private' ? '非公開' : '公開'); } catch (eLS) { /* ignore */ }
+          global.showToast('success', label);
+        }
         catch (err) { global.showToast('error', '初期設定を保存できませんでした。再試行してください。'); }
         finally { delete block.dataset.saving; }
       };

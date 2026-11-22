@@ -354,7 +354,10 @@ async function runFactoryVinHistorySearch(rawInput) {
         var syncResult = await syncFn(displayVin);
         if (!syncResult || syncResult.ok !== true) {
             if (errorMsg) {
-                errorMsg.innerText = '通信できませんでした。ネットワークを確認してください';
+                var syncMsg = (typeof ringMaintenanceSyncUserMessage_ === 'function')
+                    ? ringMaintenanceSyncUserMessage_(syncResult)
+                    : '通信できませんでした。ネットワークを確認してください';
+                errorMsg.innerText = syncMsg || '通信できませんでした。ネットワークを確認してください';
                 errorMsg.style.display = 'block';
             }
             return 'error';

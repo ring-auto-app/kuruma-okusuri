@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>整備履歴の公開設定｜車のお薬手帳</title>
+  <link rel="stylesheet" href="common.css?v=20261120-v54" integrity="sha256-yO0OlNXeXZ4584IXby/Gc5wRQVQHSLTSU7Z+QJycOCQ= sha256-HnQmEMCmw/wnKwUmcXXHCcMzFehK3s7aud7AqTiS3WU=">
+  <script src="app.js?v=20261120-v54" integrity="sha256-27vutQEqXAEgijRerLvcM/C4cVx1r2mwuAgvBlLCRo8= sha256-EF/g95rL5E6Gqr1GmEsRFTExXaMhI5/BtgFsZALCG+k="></script>
+  <script src="owner-platform.js?v=20261120-v54" integrity="sha256-9NMxbN/nLqDtbnU61091juoQouSv3egfSKXP+W/svSk= sha256-mcbxkbvK1YuwqASWD5iBdNV39empv7e0QH4E3FLqWXk="></script>
+  <style>
+    .hvs-section { margin-bottom: 20px; }
+    .hvs-section h2 { font-size: 15px; margin: 0 0 8px; font-weight: 900; }
+    .hvs-note { font-size: 12px; font-weight: 700; color: var(--muted); line-height: 1.55; margin: 0 0 12px; }
+    .hvs-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      padding: 10px 12px; border-radius: 10px; background: var(--paper); margin-bottom: 8px;
+      border: 1px solid rgba(0,0,0,0.08);
+    }
+    .hvs-row-meta { font-size: 11px; font-weight: 700; color: var(--muted); }
+    .hvs-row-title { font-size: 13px; font-weight: 900; }
+    .hvs-toggle[disabled] { opacity: 0.45; }
+    .hvs-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <a href="#" id="hvsBack" class="back-link">◁ 戻る</a>
+      <h1 class="title">🔒 整備履歴の公開設定</h1>
+    </header>
+    <p class="hvs-note">公開にすると車台番号で検索した人が閲覧できます。非公開でも、当時のオーナー・入力した工場・閲覧を許可した店舗は確認できます。</p>
+    <div id="hvsRoot">読み込み中…</div>
+  </div>
+  <script>
+    document.addEventListener('DOMContentLoaded', async function () {
+      var OP = window.ringOwnerPlatform;
+      var root = document.getElementById('hvsRoot');
+      var profile = typeof loadProfile === 'function' ? loadProfile() : null;
+      var isUser = profile && profile.shopType === 'user';
+      var back = document.getElementById('hvsBack');
+      if (back) {
+        back.href = isUser ? 'user_home.html' : (profile && profile.shopType === 'dealer' ? 'dealer_home.html' : 'factory_home.html');
+      }
+
+      if (!OP || !(await OP.ready())) {
+        root.innerHTML = '<div class="card">オーナー機能の準備ができていません。通信を確認してから再度お試しください。</div>';
+        return;
+      }
+
+      var defaultHint = '';
+      try {
+        defaultHint = localStorage.getItem('ring_owner_default_vis') || '（未設定・公開が既定）';
+      } catch (e0) { defaultHint = '（未設定・公開が既定）'; }
+
+      root.innerHTML =
+        '<div class="hvs-section" id="hvsDefaultBlock">' +
+        '<h2>今後の整備履歴の初期公開設定</h2>' +
+        '<p class="hvs-note" id="hvsDefaultLabel">現在の設定: ' + escapeHtml(defaultHint) + '</p>' +
+        '<div class="hvs-actions" id="hvsDefaultActions"></div></div>' +
+        '<div class="hvs-section"><h2>既存の整備履歴</h2>' +
+        '<p class="hvs-note">変更できる履歴だけ切り替えできます。権限のない履歴は表示のみです。</p>' +
+        '<div id="hvsLogList">履歴を読み込み中…</div></div>';
+
+      if (!isUser) {
+        document.getElementById('hvsDefaultBlock').innerHTML =
+          '<h2>今後の整備履歴の初期公開設定</h2>' +
+          '<p class="hvs-note">新規履歴の既定公開設定は、車両オーナー（一般ユーザー）が設定します。工場・事業者は入力した履歴の公開状態を、権限がある場合のみ変更できます。</p>';
+      } else {
+        var act = document.getElementById('hvsDefaultActions');
+        act.innerHTML =
+          '<button type="button" class="btn btn-secondary" id="hvsSetPublic">公開を既定にする</button>' +
+          '<button type="button" class="btn btn-secondary" id="hvsSetPrivate">非公開を既定にする</button>';
+        document.getElementById('hvsSetPublic').onclick = function () { saveDefault_('public', '公開'); };
+        document.getElementById('hvsSetPrivate').onclick = function () { saveDefault_('private', '非公開'); };
+      }
+
+      await loadEditableLogs_();
+
+      async function saveDefault_(value, label) {
+        try {
+          var res = await OP.setDefaultVisibility(value);
+          if (!res || res.success !== true) throw new Error('SAVE');
+          try { localStorage.setItem('ring_owner_default_vis', label); } catch (e1) { /* ignore */ }
+          document.getElementById('hvsDefaultLabel').textContent = '現在の設定: ' + label;
+          if (typeof showToast === 'function') showToast('success', '新規履歴は「' + label + '」が既定になります');
+        } catch (err) {
+          if (typeof showToast === 'function') showToast('error', '初期設定を保存できませんでした。再試行してください。');
+        }
+      }
+
+      async function loadEditableLogs_() {
+        var listEl = document.getElementById('hvsLogList');
+        var cars = typeof loadVehicles === 'function' ? loadVehicles() : [];
+        var vins = cars.map(function (c) { return c.vin; }).filter(Boolean);
+        if (!vins.length) {
+          listEl.innerHTML = '<div class="card">登録車両がありません。車両を登録してから再度開いてください。</div>';
+          return;
+        }
+        var rows = [];
+        for (var i = 0; i < vins.length; i++) {
+          var vin = vins[i];
+          var sync;
+          try {
+            sync = typeof syncMaintenanceHistoryForVin === 'function'
+              ? await syncMaintenanceHistoryForVin(vin)
+              : { ok: false };
+          } catch (eSync) {
+            sync = { ok: false };
+          }
+          if (!sync || sync.ok !== true) continue;
+          var logs = typeof getMaintenanceLogsByVin === 'function' ? getMaintenanceLogsByVin(vin) : (sync.logs || []);
+          logs.forEach(function (log) { rows.push(log); });
+        }
+        if (!rows.length) {
+          listEl.innerHTML = '<div class="card">表示できる整備履歴がありません（未登録、または閲覧権限がありません）。</div>';
+          return;
+        }
+        rows.sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
+        listEl.innerHTML = rows.map(function (log) {
+          var priv = log.visibility === 'private';
+          var canEdit = !!log.historyVisibilityEditable;
+          var state = priv ? '非公開' : '公開';
+          return '<div class="hvs-row">' +
+            '<div><div class="hvs-row-title">' + escapeHtml(log.title || log.date || '整備') + '</div>' +
+            '<div class="hvs-row-meta">' + escapeHtml(log.vin) + ' · ' + escapeHtml(log.date || '') + ' · ' + state +
+            (canEdit ? '' : ' · 変更不可') + '</div></div>' +
+            '<label class="hvs-toggle" style="font-size:12px;font-weight:800;white-space:nowrap">' +
+            '<input type="checkbox" data-log-id="' + escapeHtml(log.log_id) + '" data-vin="' + escapeHtml(log.vin) + '"' +
+            (priv ? '' : ' checked') + (canEdit ? '' : ' disabled') + '> 公開</label></div>';
+        }).join('');
+
+        listEl.querySelectorAll('input[type=checkbox][data-log-id]').forEach(function (el) {
+          if (el.disabled) return;
+          el.addEventListener('change', async function () {
+            var logId = el.getAttribute('data-log-id');
+            var vin = el.getAttribute('data-vin');
+            var vis = el.checked ? 'public' : 'private';
+            el.disabled = true;
+            try {
+              var result = await OP.setHistoryVisibility(logId, vis);
+              if (!result || result.success !== true) throw new Error('FAIL');
+              if (vis === 'private' && typeof OP.purgeSensitiveCaches === 'function') OP.purgeSensitiveCaches();
+              if (typeof syncMaintenanceHistoryForVin === 'function') await syncMaintenanceHistoryForVin(vin);
+              if (typeof showToast === 'function') showToast('success', '公開設定を保存しました');
+            } catch (eSave) {
+              el.checked = !el.checked;
+              if (typeof showToast === 'function') showToast('error', '保存を確認できません。履歴を再取得してください。');
+            } finally {
+              el.disabled = false;
+            }
+          });
+        });
+      }
+    });
+  </script>
+</body>
+</html>

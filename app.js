@@ -1184,8 +1184,8 @@ function ringDemoGasStubResponse_(actionType) {
     if (actionType === 'get_vehicle_info') return { success: true, found: false };
     if (actionType === 'verify_session') return { success: true };
     if (actionType === 'get_daily_history') return { success: true, history: [] };
-    if (actionType === 'get_maintenance_history') return { success: true, logs: [] };
-    if (actionType === 'get_shop_maintenance_history') return { success: true, logs: [] };
+    if (actionType === 'get_maintenance_history') return { success: true, historyAclVersion: 1, logs: [] };
+    if (actionType === 'get_shop_maintenance_history') return { success: true, historyAclVersion: 1, logs: [] };
     if (actionType === 'delete_log') return { success: true, log_id: '' };
     if (actionType === 'delete_vehicle') return { success: true, ok: true };
     if (actionType === 'list_trashed_vehicles') return { success: true, items: [] };
@@ -2244,19 +2244,63 @@ function ringFormatFactoryHistoryCardBodyHtml_(log) {
     return html;
 }
 
+/** get_maintenance_history / get_shop_maintenance_history の ACL 付き応答か */
+function ringGasHistoryResponseOk_(json) {
+    if (!json || json.success !== true) return false;
+    var v = json.historyAclVersion;
+    return v === 1 || v === '1';
+}
+
+/**
+ * 履歴同期失敗を通信エラー・認証・0件に区別したユーザー向け文言
+ * @param {{ ok?: boolean, error?: string, empty?: boolean }} result
+ */
+function ringMaintenanceSyncUserMessage_(result) {
+    if (result && result.ok) return '';
+    var code = result && result.error ? String(result.error) : '';
+    if (code === 'STALE_SESSION') return '表示を更新しています。もう一度お試しください。';
+    if (code === 'AUTH' || /AUTH_EXPIRED|AUTH_REQUIRED/i.test(code)) {
+        return 'ログインの有効期限が切れました。再ログインしてください。';
+    }
+    if (code === 'SERVER_UPDATE_REQUIRED') {
+        return 'サーバーの更新が必要です。しばらくしてから再試行してください。';
+    }
+    if (code === 'GAS' || code === 'GAS_RESPONSE') {
+        return 'サーバーから履歴を取得できませんでした。しばらくしてから再度お試しください。';
+    }
+    return '通信できませんでした。ネットワークを確認してください';
+}
+
 /**
  * GAS から整備履歴（History_Events）を取得
- * @returns {Promise<{ logs: object[], ok: boolean }>}
+ * @returns {Promise<{ logs: object[], ok: boolean, error?: string }>}
  */
 async function fetchMaintenanceHistoryFromGas(vin) {
-    if (!vin) return { logs: [], ok: false };
-    if (ringIsDemoGasOffline_()) return { logs: [], ok: false };
+    if (!vin) return { logs: [], ok: false, error: 'VIN_REQUIRED' };
+    if (ringIsDemoGasOffline_()) return { logs: [], ok: false, error: 'DEMO' };
     try {
         const json = await sendToGAS_Safe("get_maintenance_history", { vin: String(vin).trim() });
-        if (json.historyAclVersion !== 1) return { ok: false, logs: [], error: 'SERVER_UPDATE_REQUIRED' };
-        return { logs: Array.isArray(json.logs) ? json.logs : [], ok: true };
+        if (!ringGasHistoryResponseOk_(json)) {
+            var aclV = json && json.historyAclVersion;
+            var aclDeclared = aclV === 1 || aclV === '1';
+            return {
+                ok: false,
+                logs: [],
+                error: aclDeclared ? 'GAS_RESPONSE' : 'SERVER_UPDATE_REQUIRED',
+                gasError: json && json.error
+            };
+        }
+        return { logs: Array.isArray(json.logs) ? json.logs : [], ok: true, empty: !(json.logs && json.logs.length) };
     } catch (e) {
-        return { logs: [], ok: false };
+        var msg = String(e && e.message ? e.message : e || '');
+        var kind = 'NETWORK';
+        if (/AUTH_EXPIRED|AUTH_REQUIRED/i.test(msg)) kind = 'AUTH';
+        else if (/STALE_SESSION/i.test(msg)) kind = 'STALE_SESSION';
+        else if (e && e.gasResponse) kind = 'GAS';
+        var userMsg = typeof ringGasErrorToUserMessage_ === 'function'
+            ? ringGasErrorToUserMessage_(msg, 'get_maintenance_history')
+            : null;
+        return { ok: false, logs: [], error: kind, gasMessage: userMsg || msg };
     }
 }
 
@@ -2268,7 +2312,9 @@ async function fetchShopMaintenanceHistoryFromGas(options) {
     if (ringIsDemoGasOffline_()) return { logs: [], ok: false };
     try {
         const json = await sendToGAS_Safe("get_shop_maintenance_history", {}, options);
-        if (json.historyAclVersion !== 1) return { ok: false, logs: [], error: "SERVER_UPDATE_REQUIRED" };
+        if (!ringGasHistoryResponseOk_(json)) {
+            return { ok: false, logs: [], error: "SERVER_UPDATE_REQUIRED" };
+        }
         return { logs: Array.isArray(json.logs) ? json.logs : [], ok: true };
     } catch (e) {
         return { logs: [], ok: false, error: String(e && e.message || e) };
@@ -2291,6 +2337,7 @@ function mapGasMaintenanceLogsToLocal_(serverList) {
 // Authorized history lives only in this document and authenticated session.
 var ringHistoryView_ = new Map();
 var ringHistoryReads_ = new Map();
+var ringHistorySyncInflight_ = new Map();
 var ringHistoryContext_ = null;
 
 // Remove displayed history immediately on context change, including another tab's login.
@@ -2334,18 +2381,36 @@ function ringReadableHistoryRows_() {
 async function syncMaintenanceHistoryForVin(vin) {
     if (!vin) return { ok: false, logs: [], signature: '0::0' };
     var key = _normalize(vin);
-    var context = ringCaptureRequestContext_();
-    var request = {};
-    ringHistoryReads_.set(key, request);
-    var fetched = await fetchMaintenanceHistoryFromGas(vin);
-    if (!ringRequestContextIsCurrent_(context) || ringHistoryReads_.get(key) !== request)
-        return { ok: false, error: 'STALE_SESSION', logs: [] };
-    if (!ringRequestContextIsCurrent_(ringHistoryContext_)) ringHistoryView_.clear();
-    ringHistoryContext_ = context;
-    ringHistoryView_.forEach(function (row, id) { if (_normalize(row.vin) === key) ringHistoryView_.delete(id); });
-    var logs = fetched.ok ? mapGasMaintenanceLogsToLocal_(fetched.logs) : [];
-    logs.forEach(function (row) { ringHistoryView_.set(row.log_id, row); });
-    return { ok: fetched.ok, logs: logs, signature: ringMaintenanceLogsSignature_(logs) };
+    var inflight = ringHistorySyncInflight_.get(key);
+    if (inflight) return inflight;
+
+    var job = (async function () {
+        var context = ringCaptureRequestContext_();
+        var request = {};
+        ringHistoryReads_.set(key, request);
+        var fetched = await fetchMaintenanceHistoryFromGas(vin);
+        if (!ringRequestContextIsCurrent_(context) || ringHistoryReads_.get(key) !== request)
+            return { ok: false, error: 'STALE_SESSION', logs: [], empty: false };
+        if (!ringRequestContextIsCurrent_(ringHistoryContext_)) ringHistoryView_.clear();
+        ringHistoryContext_ = context;
+        ringHistoryView_.forEach(function (row, id) { if (_normalize(row.vin) === key) ringHistoryView_.delete(id); });
+        var logs = fetched.ok ? mapGasMaintenanceLogsToLocal_(fetched.logs) : [];
+        logs.forEach(function (row) { ringHistoryView_.set(row.log_id, row); });
+        return {
+            ok: !!fetched.ok,
+            logs: logs,
+            signature: ringMaintenanceLogsSignature_(logs),
+            error: fetched.error,
+            empty: !!(fetched.ok && !logs.length)
+        };
+    })();
+
+    ringHistorySyncInflight_.set(key, job);
+    try {
+        return await job;
+    } finally {
+        if (ringHistorySyncInflight_.get(key) === job) ringHistorySyncInflight_.delete(key);
+    }
 }
 
 /** 工場 VIN 履歴検索: 最終同期メタ（将来の課金カウント用フック含む） */
@@ -10337,6 +10402,7 @@ function createGlobalUI() {
           <div class="settings-group-title">ユーザーメニュー</div>
           <ul class="settings-list">
             <li><a href="user_mypage.html">👤 プロフィール / マイページ</a></li>
+            <li><a href="history_visibility_settings.html">🔒 整備履歴の公開設定</a></li>
             <li><a href="change_password.html">🔑 パスワード変更</a></li>
           </ul>
         </div>
@@ -10396,6 +10462,7 @@ function createGlobalUI() {
           <div class="settings-group-title">${bizMenuLabel}</div>
           <ul class="settings-list">
             <li><a href="factory_info.html">🏢 会社情報</a></li>
+            <li><a href="history_visibility_settings.html">🔒 整備履歴の公開設定</a></li>
             <li><a href="ads/ad_recruit.html">📢 広告掲載のお申し込み</a></li>
             ${staffMenuItem}
             ${pwMenuItem}
