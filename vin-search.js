@@ -248,6 +248,26 @@ function ringVinSearchNavigateToHistory_(vinOrResult, opts) {
 }
 
 var ringFactoryVinSearchInFlight_ = false;
+var ringFactoryVinSearchJob_ = null;
+
+/** 検索 UI が busy のまま固まったときに復帰（iPhone の戻る／bfcache 対策） */
+function ringFactoryVinSearchResetInteractive_() {
+    if (ringFactoryVinSearchJob_) return;
+    ringFactoryVinSearchInFlight_ = false;
+    ringFactoryVinSearchSetButtonBusy_(false);
+    ringFactoryVinSearchShowStatus_('', false);
+}
+
+if (typeof window !== 'undefined' && window.addEventListener) {
+    window.addEventListener('pageshow', function (ev) {
+        if (!ev || ev.persisted || document.visibilityState === 'visible') {
+            ringFactoryVinSearchResetInteractive_();
+        }
+    });
+    document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'visible') ringFactoryVinSearchResetInteractive_();
+    });
+}
 
 /** 工場検索ボタンの busy / 通常状態 */
 function ringFactoryVinSearchSetButtonBusy_(busy) {
@@ -297,7 +317,11 @@ function ringFactoryVinSearchIsValidInput_(rawInput) {
  * @returns {Promise<'invalid'|'navigated_cache'|'success'|'empty'|'error'|'busy'>}
  */
 async function runFactoryVinHistorySearch(rawInput) {
-    if (ringFactoryVinSearchInFlight_) return 'busy';
+    if (ringFactoryVinSearchJob_) return 'busy';
+    var btnEarly = document.getElementById('searchBtn');
+    if (btnEarly && btnEarly.disabled) {
+        ringFactoryVinSearchSetButtonBusy_(false);
+    }
 
     var errorMsg = document.getElementById('errorMsg');
     if (errorMsg) errorMsg.style.display = 'none';
@@ -331,6 +355,7 @@ async function runFactoryVinHistorySearch(rawInput) {
     ringFactoryVinSearchSetButtonBusy_(true);
     ringFactoryVinSearchShowStatus_('履歴を読み込み中…', false);
 
+  ringFactoryVinSearchJob_ = true;
     try {
         if (typeof navigator !== 'undefined' && navigator.onLine === false) {
             if (errorMsg) {
@@ -402,6 +427,7 @@ async function runFactoryVinHistorySearch(rawInput) {
         }
         return 'error';
     } finally {
+        ringFactoryVinSearchJob_ = null;
         ringFactoryVinSearchSetButtonBusy_(false);
         ringFactoryVinSearchShowStatus_('', false);
     }

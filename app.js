@@ -2252,6 +2252,31 @@ function ringGasHistoryResponseOk_(json) {
 }
 
 /**
+ * 履歴 API 応答を分類（ACL なしの成功応答は履歴を載せない）
+ * @returns {{ ok: boolean, logs?: object[], error?: string, gasError?: string, empty?: boolean }}
+ */
+function ringClassifyMaintenanceHistoryGasJson_(json, actionType) {
+    if (!json || json.success !== true) {
+        var gasErr = json && json.error != null ? String(json.error) : '';
+        if (/AUTH_/i.test(gasErr)) return { ok: false, error: 'AUTH', gasError: gasErr };
+        if (gasErr) return { ok: false, error: 'GAS', gasError: gasErr };
+        return { ok: false, error: 'GAS_RESPONSE', gasError: gasErr || 'GAS_FAILED' };
+    }
+    if (!ringGasHistoryResponseOk_(json)) {
+        var hasLogs = Array.isArray(json.logs) && json.logs.length > 0;
+        return {
+            ok: false,
+            logs: [],
+            error: 'HISTORY_ACL_MISSING',
+            gasError: hasLogs ? 'HISTORY_ACL_MISSING_WITH_LOGS' : 'HISTORY_ACL_MISSING',
+            empty: false
+        };
+    }
+    var logs = Array.isArray(json.logs) ? json.logs : [];
+    return { ok: true, logs: logs, empty: !logs.length };
+}
+
+/**
  * 履歴同期失敗を通信エラー・認証・0件に区別したユーザー向け文言
  * @param {{ ok?: boolean, error?: string, empty?: boolean }} result
  */
@@ -2261,6 +2286,9 @@ function ringMaintenanceSyncUserMessage_(result) {
     if (code === 'STALE_SESSION') return '表示を更新しています。もう一度お試しください。';
     if (code === 'AUTH' || /AUTH_EXPIRED|AUTH_REQUIRED/i.test(code)) {
         return 'ログインの有効期限が切れました。再ログインしてください。';
+    }
+    if (code === 'HISTORY_ACL_MISSING') {
+        return '履歴取得APIが安全確認（historyAclVersion）に未対応です。GASをオーナー対応版へ更新してください。表示は中断しています。';
     }
     if (code === 'SERVER_UPDATE_REQUIRED') {
         return 'サーバーの更新が必要です。しばらくしてから再試行してください。';
@@ -2280,23 +2308,41 @@ async function fetchMaintenanceHistoryFromGas(vin) {
     if (ringIsDemoGasOffline_()) return { logs: [], ok: false, error: 'DEMO' };
     try {
         const json = await sendToGAS_Safe("get_maintenance_history", { vin: String(vin).trim() });
-        if (!ringGasHistoryResponseOk_(json)) {
-            var aclV = json && json.historyAclVersion;
-            var aclDeclared = aclV === 1 || aclV === '1';
+        var classified = ringClassifyMaintenanceHistoryGasJson_(json, 'get_maintenance_history');
+        if (!classified.ok) {
             return {
                 ok: false,
                 logs: [],
-                error: aclDeclared ? 'GAS_RESPONSE' : 'SERVER_UPDATE_REQUIRED',
-                gasError: json && json.error
+                error: classified.error,
+                gasError: classified.gasError,
+                empty: !!classified.empty
             };
         }
-        return { logs: Array.isArray(json.logs) ? json.logs : [], ok: true, empty: !(json.logs && json.logs.length) };
+        return {
+            logs: classified.logs,
+            ok: true,
+            empty: !!classified.empty
+        };
     } catch (e) {
         var msg = String(e && e.message ? e.message : e || '');
         var kind = 'NETWORK';
         if (/AUTH_EXPIRED|AUTH_REQUIRED/i.test(msg)) kind = 'AUTH';
         else if (/STALE_SESSION/i.test(msg)) kind = 'STALE_SESSION';
-        else if (e && e.gasResponse) kind = 'GAS';
+        else if (e && e.gasResponse) {
+            var gr = e.gasResponse;
+            var gasErr = gr && gr.error != null ? String(gr.error) : msg;
+            if (/AUTH_/i.test(gasErr)) kind = 'AUTH';
+            else kind = 'GAS';
+            return {
+                ok: false,
+                logs: [],
+                error: kind,
+                gasError: gasErr,
+                gasMessage: typeof ringGasErrorToUserMessage_ === 'function'
+                    ? ringGasErrorToUserMessage_(gasErr, 'get_maintenance_history')
+                    : gasErr
+            };
+        }
         var userMsg = typeof ringGasErrorToUserMessage_ === 'function'
             ? ringGasErrorToUserMessage_(msg, 'get_maintenance_history')
             : null;
@@ -2312,10 +2358,16 @@ async function fetchShopMaintenanceHistoryFromGas(options) {
     if (ringIsDemoGasOffline_()) return { logs: [], ok: false };
     try {
         const json = await sendToGAS_Safe("get_shop_maintenance_history", {}, options);
-        if (!ringGasHistoryResponseOk_(json)) {
-            return { ok: false, logs: [], error: "SERVER_UPDATE_REQUIRED" };
+        var shopClassified = ringClassifyMaintenanceHistoryGasJson_(json, 'get_shop_maintenance_history');
+        if (!shopClassified.ok) {
+            return {
+                ok: false,
+                logs: [],
+                error: shopClassified.error,
+                gasError: shopClassified.gasError
+            };
         }
-        return { logs: Array.isArray(json.logs) ? json.logs : [], ok: true };
+        return { logs: shopClassified.logs, ok: true };
     } catch (e) {
         return { logs: [], ok: false, error: String(e && e.message || e) };
     }
