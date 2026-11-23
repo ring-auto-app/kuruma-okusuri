@@ -10445,8 +10445,36 @@ async function analyzeDocument(files, opts) {
     }
 }
 
-/** 設定メニューに広告リンクを出す（広告運用再開時に true） */
-var RING_SETTINGS_SHOW_AD_MENU_ = false;
+/** 広告UI（設定メニュー・ホーム枠）。運用再開時に true */
+var RING_ADS_UI_ENABLED_ = false;
+/** 設定メニュー広告リンク（RING_ADS_UI_ENABLED_ と連動） */
+var RING_SETTINGS_SHOW_AD_MENU_ = RING_ADS_UI_ENABLED_;
+
+function ringAdsUiEnabled_() {
+    return !!RING_ADS_UI_ENABLED_;
+}
+
+/**
+ * ホーム画面の広告枠。無効時は枠を確実に非表示（ads/ads.js 未読込でも安全）。
+ * 運用再開時は ads.js が window.__ringAdsInitImpl を定義して委譲可能。
+ */
+function ringAdsInit(surfaceId) {
+    if (!ringAdsUiEnabled_()) {
+        if (typeof document !== 'undefined') {
+            document.querySelectorAll('.ring-ad-section').forEach(function (el) {
+                el.style.display = 'none';
+                el.setAttribute('aria-hidden', 'true');
+            });
+        }
+        return;
+    }
+    if (typeof window !== 'undefined' && typeof window.__ringAdsInitImpl === 'function') {
+        window.__ringAdsInitImpl(surfaceId);
+    }
+}
+if (typeof window !== 'undefined') {
+    window.ringAdsInit = ringAdsInit;
+}
 
 /**
  * グローバルUI生成（設定・QR・かかりつけボタン）
@@ -10503,10 +10531,10 @@ function createGlobalUI() {
     let menuBodyHtml = "";
     let tabsHtml = "";
     let panelsHtml = "";
-    const settingsAdMenuUserHtml = RING_SETTINGS_SHOW_AD_MENU_
+    const settingsAdMenuUserHtml = ringAdsUiEnabled_()
         ? '<li><a href="ads/ad_recruit.html">📢 広告掲載について（事業者向け）</a></li>'
         : '';
-    const settingsAdMenuBizHtml = RING_SETTINGS_SHOW_AD_MENU_
+    const settingsAdMenuBizHtml = ringAdsUiEnabled_()
         ? '<li><a href="ads/ad_recruit.html">📢 広告掲載のお申し込み</a></li>'
         : '';
 
@@ -10572,6 +10600,7 @@ function createGlobalUI() {
         const pwMenuItem = canManageStaff
             ? '<li><a href="change_password.html">🔑 パスワード変更</a></li>' : '';
         const bizMenuLabel = profile && profile.shopType === 'dealer' ? '事業者専用メニュー' : '店舗・工場専用メニュー';
+        // 店舗・工場／事業者専用メニュー順: ①会社情報 ②スタッフ管理 ③整備履歴の公開設定
         menuBodyHtml = `<div class="ring-line-promo-slot ring-line-promo-slot--top" data-ring-line-promo></div>` + accountSwitchHtml + `
         <div class="settings-group">
           <div class="settings-group-title">${bizMenuLabel}</div>
