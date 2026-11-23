@@ -2113,15 +2113,11 @@
   }
 
   function fleetRenderCalendarMonth_() {
-    var needRefresh = !fleetVisibleMonthsFresh_();
-    if (needRefresh) {
-      fleetBookingsRefreshing = true;
-      fleetBookingsSyncOk = false;
-    }
+    if (!fleetVisibleMonthsFresh_()) fleetBookingsSyncOk = false;
     renderCalendars_();
     renderMobDayAgenda_();
     renderFleetSummary_();
-    if (needRefresh) fleetScheduleMonthRefresh_();
+    fleetScheduleMonthRefresh_();
   }
 
   /**
@@ -2208,6 +2204,18 @@
     }
   }
 
+  function fleetRerenderAfterLoad_(scrollY) {
+    renderFleetSummary_();
+    renderFleetList_(false);
+    renderCalendars_();
+    renderMobDayAgenda_();
+    renderDeskTodayPanel_();
+    renderDeskEmptyState_();
+    renderDeskOutPanel_();
+    renderDetailPanel_();
+    if (scrollY != null && typeof ringRestoreScrollY_ === 'function') ringRestoreScrollY_(scrollY);
+  }
+
   async function loadFleetPage_(manual) {
     if (!fleetContextCurrent_()) return;
     var loadShop = fleetCurrentShopId_();
@@ -2216,38 +2224,36 @@
     if (manual && typeof showLoading === 'function') showLoading('更新中', '読み込み中…');
     if (!fleetVehiclesDisplayable_() || manual) {
       fleetVehiclesLoading = true;
-      renderFleetSummary_();
+      if (!manual) renderFleetSummary_();
     }
-  try {
     var vehiclesP = typeof syncVehiclesFromServer === 'function'
-      ? syncVehiclesFromServer({returnStatus:true}).catch(function () { return {ok:false}; })
-      : Promise.resolve({ok:false});
-    var bookingsP = refreshBookings_(loadShop, loadGen, manual ? null : { quiet: true });
-    var vehiclesResult = await vehiclesP;
-    if (fleetContextCurrent_() && loadGen === fleetLoadGen && fleetCurrentShopId_() === loadShop) {
-      fleetVehiclesLoading = false;
-      fleetVehiclesSyncOk = !!(vehiclesResult && vehiclesResult.ok);
-      if (fleetVehiclesSyncOk) {
-        var snapKey = fleetVehicleSnapshotKey_();
-        if (snapKey) localStorage.setItem(snapKey, '1');
+      ? syncVehiclesFromServer({ returnStatus: true }).catch(function () { return { ok: false }; })
+      : Promise.resolve({ ok: false });
+    var bookingsP = refreshBookings_(loadShop, loadGen);
+    try {
+      var vehiclesResult = await vehiclesP;
+      if (fleetContextCurrent_() && loadGen === fleetLoadGen && fleetCurrentShopId_() === loadShop) {
+        fleetVehiclesLoading = false;
+        fleetVehiclesSyncOk = !!(vehiclesResult && vehiclesResult.ok);
+        if (fleetVehiclesSyncOk) {
+          var snapKey = fleetVehicleSnapshotKey_();
+          if (snapKey) localStorage.setItem(snapKey, '1');
+        }
+        renderFleetList_(true);
       }
-      renderFleetList_(true);
+      await bookingsP;
+    } finally {
+      if (!manual && fleetBootSyncPending_ && fleetContextCurrent_() && loadGen === fleetLoadGen) {
+        fleetBootSyncPending_ = false;
+      }
+      if (fleetContextCurrent_() && loadGen === fleetLoadGen && fleetCurrentShopId_() === loadShop) {
+        fleetRerenderAfterLoad_();
+        if (typeof ringUpdateLastSyncLabel_ === 'function') {
+          ringUpdateLastSyncLabel_('ringFleetLastSync', fleetCacheKey);
+        }
+      }
+      if (manual && fleetContextCurrent_() && typeof hideLoading === 'function') hideLoading();
     }
-    var ok = await bookingsP;
-    if (ok && fleetContextCurrent_() && loadGen === fleetLoadGen && fleetCurrentShopId_() === loadShop &&
-        typeof ringUpdateLastSyncLabel_ === 'function') {
-      ringUpdateLastSyncLabel_('ringFleetLastSync', fleetCacheKey);
-    }
-  } finally {
-    if (!manual && fleetBootSyncPending_ && fleetContextCurrent_() && loadGen === fleetLoadGen) {
-      fleetBootSyncPending_ = false;
-    }
-    if (fleetContextCurrent_() && loadGen === fleetLoadGen && fleetCurrentShopId_() === loadShop) {
-      renderFleetSummary_();
-      renderMobDayAgenda_();
-    }
-    if (manual && fleetContextCurrent_() && typeof hideLoading === 'function') hideLoading();
-  }
   }
 
   window.addEventListener('DOMContentLoaded', function () {
