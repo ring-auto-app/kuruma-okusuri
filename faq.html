@@ -12,184 +12,147 @@
   <link rel="manifest" href="manifest.json">
     <title>車のお薬手帳</title>
   <link rel="stylesheet" href="common.css?v=20261120-v54" integrity="sha256-yO0OlNXeXZ4584IXby/Gc5wRQVQHSLTSU7Z+QJycOCQ= sha256-HnQmEMCmw/wnKwUmcXXHCcMzFehK3s7aud7AqTiS3WU=">
-  <script src="app.js?v=20261120-v54" integrity="sha256-27vutQEqXAEgijRerLvcM/C4cVx1r2mwuAgvBlLCRo8= sha256-EF/g95rL5E6Gqr1GmEsRFTExXaMhI5/BtgFsZALCG+k=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
   <script src="theme.js"></script>
   <style>
-    .faq-item {
-      background: var(--paper); border: 1px solid var(--line); border-radius: 14px;
-      margin-bottom: 10px; overflow: hidden; box-shadow: var(--shadow);
-    }
-    .faq-q {
-      display: flex; justify-content: space-between; align-items: center; gap: 12px;
-      padding: 16px; cursor: pointer; user-select: none; transition: background 0.15s;
-    }
-    .faq-q:active { background: var(--page-bg); }
-    .faq-q-text { font-size: 14px; font-weight: 900; color: var(--text); flex: 1; line-height: 1.4; }
-    .faq-q-icon { font-size: 18px; color: var(--accent); flex-shrink: 0; transition: transform 0.2s; }
-    .faq-a {
-      display: none; padding: 0 16px 16px;
-      font-size: 13px; font-weight: 700; color: var(--muted); line-height: 1.8;
-      border-top: 1px dashed var(--line); padding-top: 12px;
-    }
-    .faq-item.open .faq-q-icon { transform: rotate(45deg); }
-    .faq-item.open .faq-a { display: block; }
-
-    .cat-title {
-      font-size: 13px; font-weight: 900; color: var(--muted);
-      margin: 28px 0 10px; padding-left: 4px;
-      border-left: 3px solid var(--accent); padding-left: 10px;
-    }
+    .support-page { max-width: 740px; padding-bottom: max(32px, env(safe-area-inset-bottom)); font-size: 1rem; line-height: 1.75; overflow-wrap: anywhere; }
+    .support-page .header { margin-bottom: 16px; }
+    .support-lead { margin: 0 0 20px; }
+    .support-toc, .support-links { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0 0 20px; }
+    .support-toc a, .support-links a { display: inline-flex; align-items: center; min-height: 44px; }
+    .support-page a:not(.back-link) { color: var(--text); text-decoration: underline; text-underline-offset: .18em; }
+    .support-page a:hover { text-decoration-thickness: 2px; }
+    .support-card { margin: 0 0 14px; padding: clamp(14px, 4vw, 24px); border-radius: 16px; border: 1px solid var(--line); background: var(--paper); box-shadow: var(--shadow); scroll-margin-top: 16px; }
+    .support-card h2 { font-size: 1.15rem; line-height: 1.45; margin: 0 0 12px; }
+    .support-card p, .support-card ol, .support-card ul { margin: 0 0 12px; }
+    .support-card :last-child { margin-bottom: 0; }
+    .support-card ol, .support-card ul { padding: 0 0 0 1.5em; }
+    .support-card li + li { margin-top: .65em; }
+    .support-note { padding: 12px; border-inline-start: 3px solid var(--accent); background: var(--bg); border-radius: 5px; }
+    .support-card details { border-top: 1px solid var(--line); }
+    .support-card summary { min-height: 44px; padding: 9px 0; font-weight: 750; cursor: pointer; }
+    .support-card details p { margin: 0 0 12px; }
+    .support-conditions { margin: 0; }
+    .support-conditions div { display: grid; grid-template-columns: minmax(0, 10.5em) minmax(0, 1fr); gap: 4px 14px; padding: 10px 0; border-top: 1px solid var(--line); }
+    .support-conditions dt { font-weight: 750; }
+    .support-conditions dd { margin: 0; }
+    @media (max-width: 520px) { .support-conditions div { grid-template-columns: minmax(0, 1fr); } }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="header">
-      <a href="#" onclick="ringBackFromSupportPage(); return false;" class="back-link">≪戻る</a>
+  <main class="container support-page" id="support-content">
+    <header class="header">
+      <a href="index.html" id="support-back" class="back-link">≪戻る</a>
       <h1 class="title">よくある質問</h1>
-    </div>
+    </header>
+    <p class="support-lead">質問を開くと回答が表示されます。オーナー管理や非公開設定の回答は、接続先でオーナー機能が有効な場合に適用されます。</p>
 
-    <p style="font-size:13px; font-weight:700; color:var(--muted); margin-bottom:24px; line-height:1.6;">
-      タップで回答を表示します。解決しない場合はお問い合わせください。
-    </p>
+      <nav class="support-toc" aria-label="ページ内の目次">
+        <a href="#faq-trial">料金・退会</a>
+        <a href="#faq-owner">車両・オーナー</a>
+        <a href="#faq-history">整備履歴の公開範囲</a>
+        <a href="#faq-sharing">かかりつけ・副ユーザー</a>
+        <a href="#faq-operations">入力・通信・貸出</a>
+      </nav>
 
-    <div class="cat-title">🚙 車両・VINについて</div>
+      <section class="support-card" id="faq-trial">
+        <h2>料金・退会</h2>
+        <details><summary>今は無料ですか？　あとから自動課金されますか？</summary>
+          <p>無料の試験運用中です。一般ユーザー、整備工場、その他事業者（レンタカー事業者を含む）の利用料金は0円で、アプリ内の課金・決済はありません。将来有料サービスを提供する場合は、料金・解約・返金などの条件を事前に告知し、申し込んだ方だけが契約します。広告掲載は現在運用していません。</p>
+        </details>
+        <details><summary>試験運用中に使えない機能はありますか？</summary>
+          <p>機能の利用可否は、提供環境やアカウントの権限・設定によって異なります。試験運用中は不具合や一時停止、操作や仕様の変更が生じることがあります。</p>
+        </details>
+        <details><summary>退会するにはどうすればよいですか？</summary>
+          <p>一般ユーザーは、設定の「アカウントを退会」を開き、確認に進んでください。処理後はログインできなくなります。店舗・スタッフのアカウントや、手続を再開できない場合は<a href="mailto:info@ring-auto.com">運営窓口</a>へご連絡ください。</p>
+        </details>
+        <details><summary>退会したら個人情報や整備履歴はどうなりますか？</summary>
+          <p>氏名・メールアドレス等の退会者の個人情報は削除対象とします。車両の整備記録を継続して管理するため、入力済みの整備履歴は退会だけで自動削除しません。非公開履歴を自動公開せず、新オーナーに旧管理期間の非公開履歴を開放することもありません。入力店舗は権限に基づき、自店舗が入力した記録を引き続き閲覧できます。メモや写真に含まれる退会者の個人情報も取り除く方針です。詳しくは<a href="privacy.html#privacy-retention">退会時のデータの取扱い</a>をご確認ください。</p>
+        </details>
+      </section>
 
-    <div class="faq-item">
-      <div class="faq-q" onclick="toggle(this)">
-        <div class="faq-q-text">Q. 車台番号（VIN）はどこで確認できますか？</div>
-        <div class="faq-q-icon">＋</div>
-      </div>
-      <div class="faq-a">
-        車検証の「車台番号」欄に記載されています。また、運転席ドア付近のステッカー（コーションプレート）や、ダッシュボード下部にも刻印されています。
-      </div>
-    </div>
+      <section class="support-card" id="faq-owner">
+        <h2>車両・オーナー</h2>
+        <details><summary>◎オーナーマークは何ですか？</summary>
+          <p>アプリ上で現在の管理オーナーとして登録されていることを示します。車検証上の名義や法的な所有権は、車検証や公的手続きで確認してください。</p>
+        </details>
+        <details><summary>電子車検証の専用4桁は何に使いますか？</summary>
+          <p>利用者が入力した4桁と、画像から読み取った4桁を車台番号とあわせて照合します。先頭の0も含めて入力し、コードは共有しないでください。数字を記録用の項目として保存する処理はありません。撮影画像にはコードが含まれ、読取先へ送信されます。</p>
+        </details>
+        <details><summary>前のオーナーの承認は必要ですか？</summary>
+          <p>車台番号と専用4桁が一致して交代した場合、前の管理オーナーにはアプリ内で通知されます。前のオーナーによる承認操作は不要です。</p>
+        </details>
+        <details><summary>車を売却したら整備履歴は消えますか？</summary>
+          <p>登録車両から外しても、車両の整備・点検履歴は残ります。外す手続きでは非公開のままにでき、対象があれば自分の管理期間の履歴を公開して外すこともできます。</p>
+        </details>
+      </section>
 
-    <div class="faq-item">
-      <div class="faq-q" onclick="toggle(this)">
-        <div class="faq-q-text">Q. VINを入力しても検索結果が出ません</div>
-        <div class="faq-q-icon">＋</div>
-      </div>
-      <div class="faq-a">
-        まだ整備工場からの記録が入力されていない車両は履歴が表示されません。また、全角・半角・大文字・小文字は自動で変換されますが、スペースや記号が混入していないかご確認ください。
-      </div>
-    </div>
+      <section class="support-card" id="faq-history">
+        <h2>整備履歴の公開範囲</h2>
+        <details><summary>整備履歴は誰でも見られますか？</summary>
+          <p>公開履歴は、ログインして車台番号で検索した利用者が閲覧できます。非公開履歴はその記録の管理期間のオーナーと入力店舗、該当する現管理期間で閲覧を許可されたかかりつけ店舗が対象です。</p>
+        </details>
+        <details><summary>新オーナーは前オーナーの非公開履歴を見られますか？</summary>
+          <p>オーナー交代だけでは見られません。新しい管理期間のオーナー権限は以前の非公開履歴へ引き継がれません。公開履歴は引き続き車台番号で検索できます。</p>
+        </details>
+        <details><summary>工場は自分の店舗で入力した非公開履歴を見られますか？</summary>
+          <p>入力店舗のアカウントには閲覧権限があります。履歴の内容の訂正や公開設定の変更には、閲覧とは別の条件があります。</p>
+        </details>
+        <details><summary>非公開を解除したらどうなりますか？</summary>
+          <p>公開にした記録はログインして車台番号で検索した利用者が閲覧できます。写真がある場合は写真の共有範囲も確認し、公開する権限を持つ方が操作してください。</p>
+        </details>
+        <details><summary>写真付きの履歴を非公開にできません。</summary>
+          <p>写真の共有設定を確認できない場合、非公開への変更が受け付けられないことがあります。画面で保存結果を確認し、解決しなければ<a href="mailto:info@ring-auto.com">運営窓口</a>にご相談ください。</p>
+        </details>
+        <details><summary>検索しても履歴が見つかりません。</summary>
+          <p>車台番号、利用中のアカウント・店舗、整備履歴と日常点検のどちらを開いているかを確認してください。通信エラーなら再取得してください。取得できても、非公開で閲覧権限のない記録は表示されません。</p>
+        </details>
+      </section>
 
-    <div class="faq-item">
-      <div class="faq-q" onclick="toggle(this)">
-        <div class="faq-q-text">Q. 同じVINを複数のアカウントで登録できますか？</div>
-        <div class="faq-q-icon">＋</div>
-      </div>
-      <div class="faq-a">
-        はい。同一のVINを複数のアカウントで閲覧・登録できます。整備履歴はVINを共通キーとして全員が参照できます。
-      </div>
-    </div>
+      <section class="support-card" id="faq-sharing">
+        <h2>かかりつけ・副ユーザー</h2>
+        <details><summary>かかりつけ店舗に何が共有されますか？</summary>
+          <p>正式に登録した店舗には、許可の範囲で現管理期間の非公開履歴が表示されます。車両別設定を指定した場合は店舗全体の初期許可に優先します。登録を解除すると、その登録に基づく許可はなくなります。</p>
+        </details>
+        <details><summary>副ユーザーは何ができますか？</summary>
+          <p>招待を受諾すると対象車両の公開履歴への入口が表示されます。副ユーザーの招待だけでは非公開履歴の閲覧、公開設定の変更、管理オーナーの交代はできません。対象車両のオーナーが交代すると共有は失効します。個別解除の相談は<a href="contact.html">お問い合わせ</a>へお寄せください。</p>
+        </details>
+        <details><summary>紹介QRと副ユーザーの招待QRは何が違いますか？</summary>
+          <p>紹介QRは店舗のかかりつけ登録に使う6文字のコードです。招待QRは相手に車両の共有を案内するリンクです。「副ユーザーを招待（QR）」で発行したリンクの受諾期限は24時間です。</p>
+        </details>
+      </section>
 
-    <div class="cat-title">📋 整備履歴について</div>
+      <section class="support-card" id="faq-operations">
+        <h2>入力・通信・貸出</h2>
+        <details><summary>請求書の読み取り結果は直せますか？</summary>
+          <p>保存前に内容を見直して修正できます。読み取ったVINや作業内容などを原本と照らし合わせ、必要な箇所を修正してから確定・保存してください。</p>
+        </details>
+        <details><summary>通信できない場合、入力内容はどうなりますか？</summary>
+          <p>未送信として残った入力は端末に保持され、接続が戻ると再送されます。未送信の間はブラウザのデータを消さず、同じアカウントで結果を確認してください。貸出・返却や公開設定の変更など、最新の状態を確認できる接続が必要な操作もあります。</p>
+        </details>
+        <details><summary>貸出先の情報はどこに表示されますか？</summary>
+          <p>対応する店の環境では「予約の詳細」や車両ごとの「貸出履歴」に表示されます。店舗向けの予約情報として扱われ、一般利用者向けの整備履歴検索には表示されません。</p>
+        </details>
+      </section>
 
-    <div class="faq-item">
-      <div class="faq-q" onclick="toggle(this)">
-        <div class="faq-q-text">Q. 入力した整備記録を修正したいのにできません</div>
-        <div class="faq-q-icon">＋</div>
-      </div>
-      <div class="faq-a">
-        整備記録は入力から<strong>7日間のみ修正可能</strong>です。7日が経過すると改ざん防止のため自動ロックされます。修正が必要な場合はお問い合わせください。
-      </div>
-    </div>
-
-    <div class="faq-item">
-      <div class="faq-q" onclick="toggle(this)">
-        <div class="faq-q-text">Q. 他の工場が入力した記録は見られますか？</div>
-        <div class="faq-q-icon">＋</div>
-      </div>
-      <div class="faq-a">
-        ユーザーは全工場の整備履歴を閲覧できます。工場・事業者は自社が入力した記録のみ修正できます（7日以内）。他社の記録は閲覧のみです。
-      </div>
-    </div>
-
-    <div class="faq-item">
-      <div class="faq-q" onclick="toggle(this)">
-        <div class="faq-q-text">Q. 日常点検と整備履歴の違いは何ですか？</div>
-        <div class="faq-q-icon">＋</div>
-      </div>
-      <div class="faq-a">
-        <strong>日常点検</strong>はユーザー自身が行う目視チェック（オイル量・タイヤ・ライトなど）の記録です。<br>
-        <strong>整備履歴</strong>は工場・事業者が実施した専門的な整備・部品交換の記録です。データは別々に管理されています。
-      </div>
-    </div>
-
-    <div class="faq-item">
-      <div class="faq-q" onclick="toggle(this)">
-        <div class="faq-q-text">Q. 作業日に制限がありますか？</div>
-        <div class="faq-q-icon">＋</div>
-      </div>
-      <div class="faq-a">
-        はい。作業日・点検日は<strong>今日から2週間前まで</strong>の範囲のみ選択できます。未来の日付や2週間以上前の日付は入力できません（改ざん防止のため）。
-      </div>
-    </div>
-
-    <div class="cat-title">🔑 アカウント・ログインについて</div>
-
-    <div class="faq-item">
-      <div class="faq-q" onclick="toggle(this)">
-        <div class="faq-q-text">Q. パスワードを忘れました</div>
-        <div class="faq-q-icon">＋</div>
-      </div>
-      <div class="faq-a">
-        スタッフの方は所属する工場・事業者のオーナーにご連絡ください。オーナーがパスワードの再設定を行えます。<br>
-        オーナー自身がパスワードを忘れた場合はお問い合わせフォームからご連絡ください。
-      </div>
-    </div>
-
-    <div class="faq-item">
-      <div class="faq-q" onclick="toggle(this)">
-        <div class="faq-q-text">Q. スタッフに整備記録の入力をさせたくない</div>
-        <div class="faq-q-icon">＋</div>
-      </div>
-      <div class="faq-a">
-        オーナー権限で「スタッフ管理」を開き、対象スタッフの「整備入力許可」をOFFにしてください。OFFにすると閲覧のみのアカウントになります。
-      </div>
-    </div>
-
-    <div class="cat-title">📱 アプリの操作について</div>
-
-    <div class="faq-item">
-      <div class="faq-q" onclick="toggle(this)">
-        <div class="faq-q-text">Q. しおり（⚙）アイコンが表示されません</div>
-        <div class="faq-q-icon">＋</div>
-      </div>
-      <div class="faq-a">
-        しおりアイコンはホーム画面にのみ表示されます。ホーム画面（ログイン後の最初の画面）に戻ってご確認ください。
-      </div>
-    </div>
-
-    <div class="faq-item">
-      <div class="faq-q" onclick="toggle(this)">
-        <div class="faq-q-text">Q. QRコードの読み取りが使えません</div>
-        <div class="faq-q-icon">＋</div>
-      </div>
-      <div class="faq-a">
-        QRコード読み取りはカメラの許可が必要です。ブラウザの設定からカメラへのアクセスを許可してください。また、PCブラウザでは使用できない場合があります。スマートフォンでのご利用を推奨します。
-      </div>
-    </div>
-
-    <div class="faq-item">
-      <div class="faq-q" onclick="toggle(this)">
-        <div class="faq-q-text">Q. データが消えてしまいました</div>
-        <div class="faq-q-icon">＋</div>
-      </div>
-      <div class="faq-a">
-        本アプリはサーバーにデータを同期保存しています。ブラウザのキャッシュやCookieを削除した場合、端末上の一時データが消える場合がありますが、サーバー上のデータは保持されています。ログインし直すとデータが復元されます。
-      </div>
-    </div>
-
-    <div style="height: 40px;"></div>
-  </div>
-
+    <nav class="support-links" aria-label="関連ページ">
+      <a href="manual.html">使い方ガイド</a>
+      <a href="terms.html">利用規約</a>
+      <a href="privacy.html">プライバシーポリシー</a>
+      <a href="tokushoho.html">特定商取引法に基づく表示</a>
+      <a href="contact.html">お問い合わせ</a>
+    </nav>
+  </main>
   <script>
-    function toggle(qEl) {
-      const item = qEl.closest('.faq-item');
-      item.classList.toggle('open');
+    // theme.js reads the local profile for the palette. Help pages do not need application APIs.
+    function safeJsonParse(value, fallback) {
+      try { return JSON.parse(value); } catch (error) { return fallback; }
     }
+    document.getElementById('support-back').addEventListener('click', function (event) {
+      if (!document.referrer || history.length < 2) return;
+      if (new URL(document.referrer).origin !== location.origin) return;
+      event.preventDefault();
+      history.back();
+    });
   </script>
 </body>
 </html>

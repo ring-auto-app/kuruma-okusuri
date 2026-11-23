@@ -12,107 +12,128 @@
   <link rel="manifest" href="manifest.json">
     <title>車のお薬手帳</title>
   <link rel="stylesheet" href="common.css?v=20261120-v54" integrity="sha256-yO0OlNXeXZ4584IXby/Gc5wRQVQHSLTSU7Z+QJycOCQ= sha256-HnQmEMCmw/wnKwUmcXXHCcMzFehK3s7aud7AqTiS3WU=">
-  <script src="app.js?v=20261120-v54" integrity="sha256-27vutQEqXAEgijRerLvcM/C4cVx1r2mwuAgvBlLCRo8= sha256-EF/g95rL5E6Gqr1GmEsRFTExXaMhI5/BtgFsZALCG+k=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
   <script src="theme.js"></script>
   <style>
-    .legal-doc { font-size: 13px; font-weight: 700; color: var(--text); line-height: 1.8; }
-    .legal-doc h2 { font-size: 15px; font-weight: 900; margin: 28px 0 10px; border-bottom: 1px solid var(--line); padding-bottom: 6px; line-height: 1.4; }
-    .legal-doc p { margin: 0 0 12px; }
-    .legal-doc ol, .legal-doc ul { margin: 0 0 12px; padding-left: 1.35em; }
-    .legal-doc li { margin-bottom: 6px; }
-    .legal-note {
-      font-size: 12px; font-weight: 700; color: var(--muted);
-      background: rgba(255,255,255,0.6); border: 1px dashed var(--line); border-radius: 10px;
-      padding: 14px; margin-bottom: 20px; line-height: 1.7;
-    }
-    .legal-meta { font-size: 12px; color: var(--muted); margin-bottom: 16px; }
+    .support-page { max-width: 740px; padding-bottom: max(32px, env(safe-area-inset-bottom)); font-size: 1rem; line-height: 1.75; overflow-wrap: anywhere; }
+    .support-page .header { margin-bottom: 16px; }
+    .support-lead { margin: 0 0 20px; }
+    .support-toc, .support-links { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0 0 20px; }
+    .support-toc a, .support-links a { display: inline-flex; align-items: center; min-height: 44px; }
+    .support-page a:not(.back-link) { color: var(--text); text-decoration: underline; text-underline-offset: .18em; }
+    .support-page a:hover { text-decoration-thickness: 2px; }
+    .support-card { margin: 0 0 14px; padding: clamp(14px, 4vw, 24px); border-radius: 16px; border: 1px solid var(--line); background: var(--paper); box-shadow: var(--shadow); scroll-margin-top: 16px; }
+    .support-card h2 { font-size: 1.15rem; line-height: 1.45; margin: 0 0 12px; }
+    .support-card p, .support-card ol, .support-card ul { margin: 0 0 12px; }
+    .support-card :last-child { margin-bottom: 0; }
+    .support-card ol, .support-card ul { padding: 0 0 0 1.5em; }
+    .support-card li + li { margin-top: .65em; }
+    .support-note { padding: 12px; border-inline-start: 3px solid var(--accent); background: var(--bg); border-radius: 5px; }
+    .support-card details { border-top: 1px solid var(--line); }
+    .support-card summary { min-height: 44px; padding: 9px 0; font-weight: 750; cursor: pointer; }
+    .support-card details p { margin: 0 0 12px; }
+    .support-conditions { margin: 0; }
+    .support-conditions div { display: grid; grid-template-columns: minmax(0, 10.5em) minmax(0, 1fr); gap: 4px 14px; padding: 10px 0; border-top: 1px solid var(--line); }
+    .support-conditions dt { font-weight: 750; }
+    .support-conditions dd { margin: 0; }
+    @media (max-width: 520px) { .support-conditions div { grid-template-columns: minmax(0, 1fr); } }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="header">
-      <a href="#" onclick="ringBackFromSupportPage(); return false;" class="back-link">≪戻る</a>
+  <main class="container support-page" id="support-content">
+    <header class="header">
+      <a href="index.html" id="support-back" class="back-link">≪戻る</a>
       <h1 class="title">プライバシーポリシー</h1>
-    </div>
+    </header>
+    <p class="support-lead">改定案（運営者確認用・未施行）</p>
 
-    <div class="legal-meta">制定日：2026年4月28日　最終改定日：2026年4月28日</div>
+      <nav class="support-toc" aria-label="ページ内の目次">
+        <a href="#privacy-data">取り扱う情報</a>
+        <a href="#privacy-use">利用目的</a>
+        <a href="#privacy-ocr">画像・OCR・管理画面AI</a>
+        <a href="#privacy-sharing">公開範囲と共有</a>
+        <a href="#privacy-external">保存先・外部サービス</a>
+        <a href="#privacy-local">端末への保存と未送信データ</a>
+        <a href="#privacy-retention">保存期間・削除・退会</a>
+        <a href="#privacy-contact">安全管理・変更・お問い合わせ</a>
+      </nav>
 
-    <div class="legal-note">
-      車のお薬手帳（以下「本サービス」）の運営者（以下「当社」）は、利用者の個人情報等の取扱いについて、個人情報の保護に関する法律（個人情報保護法）その他関連法令を遵守し、以下のとおりプライバシーポリシー（以下「本ポリシー」）を定めます。本サービスを利用することで、本ポリシーに同意したものとみなします。運営者情報の詳細は <a href="tokushoho.html">特定商取引法に基づく表示</a> をご確認ください。
-    </div>
+      <section class="support-card" id="privacy-data">
+        <h2>1. 取り扱う情報</h2>
+        <ul>
+        <li>登録・ログインに使う氏名又は表示名、メールアドレス、ログインID、パスワードの認証用記録、役割・所属、事業者の名称・連絡先・工場等の登録情報、スタッフ情報</li>
+        <li>車台番号（VIN）、車名・型式、ナンバー等の登録情報、車検満了日、走行距離、車両の区分、オーナーの管理期間や確認・交代の記録</li>
+        <li>整備内容、作業日、交換部品、メモ、整備写真、日常点検、事業者の予約期間・貸出先名・貸出・返却の記録</li>
+        <li>店舗紹介コード、かかりつけ登録・閲覧許可、車両共有の招待・受諾と権限の記録</li>
+        <li>読み取りを利用した場合の車検証・請求書・見積書等の画像と、そこに含まれる氏名、住所、車台番号、専用4桁、取引内容等。記録に保存する項目は操作により異なります。</li>
+        <li>端末・ブラウザの種別、操作やエラーの診断情報、ログイン状態等。外部アカウント連携が提供され、利用者が選択した場合は、連携に必要な識別情報等も取り扱います。</li>
+        </ul>
+      </section>
 
-    <div class="card legal-doc">
+      <section class="support-card" id="privacy-use">
+        <h2>2. 利用目的</h2>
+        <p>アカウント認証・権限管理、車両や整備・点検・貸出記録の保存と閲覧、書類の読み取り、オーナー確認・交代、店舗との共有、再送・障害対応、不正利用防止、お問い合わせ・通知等のために利用します。運用の把握・改善には、必要な範囲で利用状況と診断情報を用います。</p>
+      </section>
 
-      <h2>1. 取得する情報</h2>
-      <p>当社は、本サービスの提供にあたり、次の情報を取得する場合があります。</p>
-      <ul>
-        <li><strong>アカウント情報</strong>　ログイン ID、パスワード（ハッシュ化等により安全に管理）、表示名、店舗名、店舗種別（工場・事業者・一般ユーザー等）、権限に関する情報</li>
-        <li><strong>車両・業務情報</strong>　車台番号（VIN）、車種情報、走行距離、車検満了日、整備内容、日常点検の結果、メモ、画像（書類・部品写真等）</li>
-        <li><strong>技術情報</strong>　アクセスログ、Cookie・ローカルストレージに保存された識別子、ブラウザ種別、端末情報、IP アドレス（サーバ側で取得する場合）</li>
-        <li><strong>決済に関する情報</strong>　有料プラン導入後、決済代行業者（Stripe 等）を通じて処理される情報。クレジットカード番号等の機微な決済情報は、原則として当社が直接保持せず、決済代行業者が取得・保管します。</li>
-        <li><strong>外部サービス連携に関する情報</strong>　Google、LINE等の外部サービスのアカウントを利用して本サービスに登録・ログインする場合、利用者の同意に基づき、当該外部サービス提供元から氏名（アカウント表示名）、メールアドレス、プロフィール画像等の情報を取得します。なお、当社が実際に受け取る項目は、当該外部サービスの仕様及び利用者が連携時に認可した範囲により異なる場合があります。</li>
-      </ul>
-      <p>車検証、請求書その他の書類・画像をアップロードして入力を補助する機能において、当社が指定する外部のAI・OCR等のサービス提供者に、当該画像データが送信・処理される場合があります。詳細は <a href="terms.html">利用規約</a> 第8条に加え、本ポリシー第2条・第4条に定めるところによります。</p>
-      <p>当該外部サービスには、文字認識等の処理に必要な範囲で画像データ及び当該画像に含まれる情報が送信されます。</p>
-      <p>利用者は、当該解析結果を自己の責任において確認し、必要に応じて修正するものとします。</p>
-      <p>現行の PWA では、位置情報（GPS）を取得する機能はありません。ネイティブアプリ化等で取得する場合は、本ポリシーを改定し、利用目的・オプトアウト等を明示します。</p>
+      <section class="support-card" id="privacy-ocr">
+        <h2>3. 画像・OCR・管理画面AI</h2>
+        <p>車検証や請求書等の読み取りを選ぶと、画像と読み取り指示がGoogle Apps Scriptを経由してGoogleのGemini APIに送信されます。対応する読み取り画面では、PDFの選択ページを画像に変換して送信します。整備履歴検索の車台番号読み取りでは、構成に応じてGoogle Cloud Vision APIを使用します。</p>
+        <p>電子車検証のオーナー確認では、利用者が入力した4桁をアプリのサーバーに送り、画像から読み取った車台番号・4桁と照合します。入力した4桁は照合に使用し、オーナー記録の保存項目には含めません。写真に写った4桁は画像の一部として読み取り先へ送られます。管理オーナーの交代・管理期間・照合後の登録に使う一時的な識別情報は、アプリのサーバーで管理します。</p>
+        <p>読み取り用の原画像は、OCR操作だけで整備履歴の添付写真には登録されません。読み取った文字を作業内容等として確定した場合や、「写真（任意）」等に別途添付した場合は、確定した文字や添付画像が記録に残ります。入力欄・メモ・写真に不要な氏名や連絡先等が含まれていないことを、送信・保存前に確認してください。管理者が管理画面のAI分析を使う場合は、質問文と、利用件数・エラー情報等の運用データの抜粋がGemini APIに送信されます。</p>
+        <p>Googleによる処理には利用先プロジェクトの契約条件が適用されます。Gemini APIの無償サービスでは入力・出力をGoogleの製品改善に利用する場合があり、人による確認の可能性もあります。Googleは無償サービスへ機微情報・秘密情報・個人情報を送らないよう定めています。有償サービスでは入力・出力を製品改善に使わないと定めていますが、安全対策等のため限られた期間ログを保持する場合があります。</p>
+        <p class="support-source"><a href="https://ai.google.dev/gemini-api/terms" target="_blank" rel="noopener noreferrer">GoogleのGemini API追加利用規約</a></p>
+      </section>
 
-      <h2>2. 利用目的</h2>
-      <p>取得した情報は、次の目的のために利用します。</p>
-      <ul>
-        <li>本サービスの提供・認証・サポート対応</li>
-        <li>外部サービス（Google、LINE等）のアカウント連携による本人確認、アカウントの紐付け、およびアプリ内でのユーザー名（プロフィール）表示のため</li>
-        <li>書類・車検証等の画像に対する文字読取（OCR）・入力補助のため、外部AIサービスへの送信及び解析結果の利用（<a href="terms.html">利用規約</a> 第8条）</li>
-        <li>利用料の請求、決済、契約管理（有料プラン）</li>
-        <li>不正利用の防止、セキュリティ確保</li>
-        <li>本サービスの改善、新機能の開発、利用状況の分析（統計的処理を含む）</li>
-        <li>車両・業務情報を匿名加工情報又は統計情報とした上での分析、中古車流通市場における価値証明、部品需要予測、モビリティ産業に関する調査・提携先への提供（いずれも個人を特定できない形に加工した場合に限ります）</li>
-        <li>お知らせ・規約変更等の連絡</li>
-        <li>法令に基づく対応</li>
-      </ul>
+      <section class="support-card" id="privacy-sharing">
+        <h2>4. 公開範囲と共有</h2>
+        <p>公開の整備履歴はログインした利用者が車台番号で検索できます。オーナー機能が有効な環境の非公開履歴は、その履歴の管理期間のオーナー、入力店舗、該当する現管理期間について閲覧許可を得たかかりつけ店舗が閲覧できます。現在のオーナーに旧管理期間の非公開履歴の閲覧権限は引き継がれません。副ユーザーとしての招待は対象車両の公開履歴への入口を提供します。</p>
+        <p>写真は登録方法と公開設定に応じて、リンクで表示される場合と、閲覧権限を確認して取得する場合があります。公開時に取得されたコピーは、後から設定を変更しても回収できません。貸出先は事業者の予約情報として扱い、整備履歴の車台番号検索には表示しません。日常点検の結果が整備履歴にも登録される場合、その記録の表示には整備履歴の公開条件が適用されます。</p>
+      </section>
 
-      <h2>3. 解析・分析ツール（外部送信）</h2>
-      <p>当社は、本サービスの利用状況の把握・改善のため、第三者が提供するアクセス解析ツール等を利用する場合があります。その場合、当該提供者のプライバシーポリシーに従い、Cookie 等を用いて利用者の閲覧・操作に関する情報が送信・記録されることがあります。導入するツール名・オプトアウト方法等は、利用開始時または本ポリシー改定により明示します。</p>
-      <p>利用者は、ブラウザの設定により Cookie の受け取りを拒否することができますが、その場合、本サービスの一部機能が正常に利用できない場合があります。</p>
-      <p>Cookie の利用に関する詳細は、本ポリシー又は別途本サービス上に表示するクッキーポリシーにて定めます。</p>
-      <p>広告配信等に Cookie を利用する場合には、その内容及びオプトアウト方法を別途明示します。</p>
+      <section class="support-card" id="privacy-external">
+        <h2>5. 保存先・外部サービス</h2>
+        <p>アプリのサーバー処理にはGoogle Apps Script、構造化した記録の管理にはGoogle スプレッドシート、保存する添付写真にはGoogle Driveを使用します。書類の読み取り、メール通知等は、利用目的に必要な範囲で外部サービスを使用します。外部連携や通知には設定に応じてLINE等を用いる場合があります。</p>
+        <p>運営者は、利用者の設定に基づく共有、利用者の同意がある場合、運営に必要な委託、法令に基づく場合等に、必要な範囲で情報を取り扱います。外国における取扱いがある場合は、委託・提供の形態と適用法令に応じて、必要な措置と情報提供を行います。</p>
+      </section>
 
-      <h2>4. 第三者への提供・委託</h2>
-      <p>当社は、次の場合を除き、個人情報を第三者に提供しません。</p>
-      <ul>
-        <li>利用者の同意がある場合</li>
-        <li>決済代行、クラウドインフラ、メール送信、データ分析、外部AI・OCRサービス（画像の文字認識等）等の業務委託に必要な範囲で提供する場合（委託先には適切な監督を行います）</li>
-        <li>Google スプレッドシートや Google Apps Script 等を利用してデータを保存・処理する場合（データは Google LLC 等のサーバ<strong>（主にアメリカ合衆国）</strong>に保存され得ます）</li>
-        <li>法令に基づく開示請求があった場合</li>
-      </ul>
-      <p>上記の委託先又はサービス提供者には、外国に所在する事業者が含まれる場合があります。この場合、当社は、個人情報保護法その他関連法令に従い、必要な措置を講じた上で個人情報を取り扱います。</p>
-      <p>当社は、委託先の所在国、当該国における個人情報保護制度の概要等について、法令に従い、利用者からの求めに応じて情報提供を行います。</p>
-      <p>なお、当社は、車台番号（VIN）、整備内容、走行距離などの「車両・業務情報」について、氏名等の個人を特定できる情報を排除し、匿名加工情報又は統計情報とした上で、中古車流通市場における価値証明、部品需要予測、その他モビリティ産業の発展を目的として、提携先企業等の第三者に提供・開示することがあります。</p>
-      <p>これらの情報は、個人を特定できず、かつ復元できない形式に加工されたものに限ります。</p>
-      <p>当社は、匿名加工情報を作成する場合には、個人情報保護法その他の法令に従い、適切な加工及び安全管理措置を講じます。</p>
+      <section class="support-card" id="privacy-local">
+        <h2>6. 端末への保存と未送信データ</h2>
+        <p>ブラウザのローカルストレージ等に、ログイン状態、設定、表示用データ、未送信の車両・整備・点検入力等が保持されます。貸出チェックシートの下書き等はブラウザのIndexedDBに保存されます。アプリの表示に必要なファイルにはブラウザのキャッシュを利用します。ブラウザのデータを削除すると、その端末だけにある未送信データや下書きが失われる場合があります。</p>
+      </section>
 
-      <h2>5. 保存期間および退会後のデータ取扱い</h2>
-      <p>個人情報は、利用目的の達成に必要な期間保存し、その後適切に削除又は匿名化します。ただし、本サービスの性質上、車両記録の信頼性・改ざん防止に資するため、利用者が退会等によりアカウントを削除した場合であっても、車台番号（VIN）及び当該車両に紐づく「整備・点検履歴等の車両・業務情報」については、個人を特定できないよう匿名化又は非識別化した上で、当社のデータベース（確定保存領域等）に継続して保持・利用されるものとします。</p>
+      <section class="support-card" id="privacy-retention">
+        <h2>7. 保存期間・削除・退会</h2>
+        <p>車両一覧の通常削除では、対象の車両登録を同じアカウントで復元できる期間は原則30日です。これは車両登録の復元期間であり、整備履歴や日常点検記録の削除期限ではありません。譲渡等で「登録車両から外す」を選んだ場合や公開範囲を変えた場合も、整備履歴を削除する操作にはなりません。</p>
+        <p>退会時の運営方針として、退会者の氏名・メールアドレス等の個人情報は削除対象とし、車両の整備記録を継続して管理するため、入力済みの整備履歴は退会だけで自動削除しません。アカウント情報と整備履歴を区別し、履歴のメモや添付等に退会者の個人情報が含まれている場合も、該当部分の削除等により個人情報を残さない方針です。法令に基づいて保管が必要な情報は、必要な範囲で取り扱います。</p>
+        <p>退会により非公開履歴を自動公開することはありません。オーナー交代前後の管理期間に応じた閲覧制限と、入力店舗が権限に基づいて自店舗入力分を閲覧できる範囲を維持します。</p>
+        <p>一般ユーザーの退会は設定の「アカウントを退会」から手続できます。メモや画像など、自動処理で確認できない情報の確認や、開示・訂正・削除・利用停止等の請求は<a href="#privacy-contact">お問い合わせ窓口</a>へご連絡ください。本人確認のうえ、対象データと対応方法を個別にご案内します。外部サービスに送信された情報やバックアップ等の取扱いは、保存先、契約条件及び適用法令によって異なります。</p>
+      </section>
 
-      <h2>6. 利用者の権利（開示・訂正・利用停止等）</h2>
-      <p>利用者は、個人情報保護法その他法令に従い、当社が保有する自己の個人情報について、開示・訂正・利用停止等を請求することができます。ただし、本サービスの改ざん防止のためのシステム仕様（<a href="terms.html">利用規約</a> 第9条に定める確定保存・論理訂正等を含みます）上、確定保存された「利用データ」については、直接的な削除又は上書きによる訂正には応じられない場合があり、当社が定める論理的訂正（無効化フラグの付与と新規データの追記等）による対応となる場合があります。また、個人情報に該当しない匿名加工情報又は統計情報に相当する車両履歴データについては、個人情報としての削除請求等の対象とならない場合があります。請求は <a href="contact.html">お問い合わせ</a> より受け付けます。法令により応じられない場合があります。</p>
+      <section class="support-card" id="privacy-contact">
+        <h2>8. 安全管理・変更・お問い合わせ</h2>
+        <p>認証や閲覧制御などの安全管理措置を講じます。共用端末では使用後にログアウトしてください。保護者の同意が必要な方は、同意を得てからご利用ください。</p>
+        <p>運営者は重要な変更の内容と適用時期を、アプリ内のお知らせ等で事前に案内します。利用目的の変更は法令に従って通知又は公表し、事前の同意が必要な場合は同意を取得します。</p>
+        <p>運営者はRinG Autoです。個人情報の取扱いや退会に関するお問い合わせは <a href="mailto:info@ring-auto.com">info@ring-auto.com</a> へご連絡ください。</p>
+      </section>
 
-      <h2>7. セキュリティ</h2>
-      <p>当社は、個人情報の漏えい、滅失または毀損の防止その他の安全管理のため、合理的な措置を講じます。不正アクセスの防止、通信の暗号化（SSL/TLS 等）その他の措置を含みます。インターネット上の送信は完全に安全ではないことをご了承ください。</p>
-      <p>また、当社は、アクセス制御、認証管理、ログ管理等の技術的・組織的安全管理措置を講じます。</p>
-      <p>当社は、セキュリティ確保及び不正防止のため、アクセスログ等を一定期間保存する場合があります。</p>
-      <p>当社は合理的な安全管理措置を講じますが、利用者の通信環境その他当社の管理外に起因するリスクについて責任を負うものではありません。</p>
-
-      <h2>8. 未成年者</h2>
-      <p>未成年者が本サービスを利用する場合、保護者の同意を得たうえで利用してください。</p>
-
-      <h2>9. 本ポリシーの変更</h2>
-      <p>当社は、法令の改正や事業内容の変更等に応じて、本ポリシーを変更することがあります。変更後の内容は本サービス上に掲示し、掲載後の利用により変更に同意したものとみなします。</p>
-
-      <h2>10. お問い合わせ窓口</h2>
-      <p>本ポリシーに関するお問い合わせは、<a href="contact.html">お問い合わせフォーム</a> または <a href="tokushoho.html">特定商取引法に基づく表示</a> に記載の連絡先までご連絡ください。</p>
-
-    </div>
-  </div>
+    <nav class="support-links" aria-label="関連ページ">
+      <a href="manual.html">使い方ガイド</a>
+      <a href="faq.html">よくある質問</a>
+      <a href="terms.html">利用規約</a>
+      <a href="tokushoho.html">特定商取引法に基づく表示</a>
+      <a href="contact.html">お問い合わせ</a>
+    </nav>
+  </main>
+  <script>
+    // theme.js reads the local profile for the palette. Help pages do not need application APIs.
+    function safeJsonParse(value, fallback) {
+      try { return JSON.parse(value); } catch (error) { return fallback; }
+    }
+    document.getElementById('support-back').addEventListener('click', function (event) {
+      if (!document.referrer || history.length < 2) return;
+      if (new URL(document.referrer).origin !== location.origin) return;
+      event.preventDefault();
+      history.back();
+    });
+  </script>
 </body>
 </html>

@@ -1049,6 +1049,59 @@ function getCurrentProfile() {
     return safeJsonParse(localStorage.getItem(DB_LEGACY_PROFILE), null);
 }
 
+
+function ringWithdrawalStorageKey_() {
+    return 'ring_account_withdrawal_v1:' + encodeURIComponent(GAS_URL);
+}
+
+function ringWithdrawalEligibleProfile_(profile) {
+    return !!(profile && profile.userId && !profile.shopId && profile.role === 'user' &&
+        profile.shopType === 'user' && !ringIsDemoGasOffline_());
+}
+
+function ringClearWithdrawnAccount_(userId) {
+    userId = String(userId);
+    function matches(row, fields) {
+        return row && !row.shopId && fields.some(function (field) { return String(row[field] || '') === userId; });
+    }
+    function filterStorage(key, match) {
+        var rows = safeJsonParse(localStorage.getItem(key), null);
+        if (Array.isArray(rows)) localStorage.setItem(key, JSON.stringify(rows.filter(function (row) { return !match(row); })));
+    }
+
+    // Remove only records attributable to this account, including its queued writes.
+    filterStorage(DB_VEHICLES, function (row) { return matches(row, ['userId', 'ownerId']); });
+    filterStorage(DB_LOGS, function (row) { return matches(row, ['userId', 'staffId']); });
+    [DB_INSPECTIONS, 'nappy_inspections_v1'].forEach(function (key) {
+        filterStorage(key, function (row) { return matches(row, ['userId', 'staffId']); });
+    });
+    var removedItems = [];
+    filterStorage(DB_RETRY_QUEUE, function (item) {
+        if (!item || item.queueOwnerShopId || String(item.queueOwnerUserId || '') !== userId) return false;
+        removedItems.push(item);
+        return true;
+    });
+    if (removedItems.length) ringVoidRetryQueueItems_(removedItems);
+    localStorage.removeItem('nappy_fav_shops_v2:' + encodeURIComponent(GAS_URL) + ':' + encodeURIComponent(userId));
+
+    var active = safeJsonParse(localStorage.getItem(DB_CURRENT_USER), null);
+    var legacy = safeJsonParse(localStorage.getItem(DB_LEGACY_PROFILE), null);
+    var legacyUser = safeJsonParse(localStorage.getItem(RING_PROFILE_USER), null);
+    var slot = ringReadAuthSlot('user');
+    if (matches(slot && slot.profile, ['userId'])) ringClearAuthSlot('user');
+    if (matches(legacyUser && (legacyUser.profile || legacyUser), ['userId'])) localStorage.removeItem(RING_PROFILE_USER);
+    if (matches(active, ['userId'])) {
+        localStorage.removeItem(DB_CURRENT_USER);
+        localStorage.removeItem('ring_auth_token');
+        localStorage.removeItem(RING_CURRENT_MODE);
+        localStorage.removeItem(RING_ACTIVE_ACCOUNT);
+    }
+    if (matches(legacy, ['userId'])) localStorage.removeItem(DB_LEGACY_PROFILE);
+    if (typeof ringHistoryView_ !== 'undefined') ringHistoryView_.clear();
+    if (window.ringOwnerPlatform) window.ringOwnerPlatform.purgeSensitiveCaches();
+    ringNotifyRequestContextChanged_();
+}
+
 function logout() {
     if (typeof window !== 'undefined' && window.ringOwnerPlatform && typeof window.ringOwnerPlatform.purgeSensitiveCaches === 'function') {
         window.ringOwnerPlatform.purgeSensitiveCaches();
@@ -10392,6 +10445,9 @@ async function analyzeDocument(files, opts) {
     }
 }
 
+/** 設定メニューに広告リンクを出す（広告運用再開時に true） */
+var RING_SETTINGS_SHOW_AD_MENU_ = false;
+
 /**
  * グローバルUI生成（設定・QR・かかりつけボタン）
  */
@@ -10447,6 +10503,12 @@ function createGlobalUI() {
     let menuBodyHtml = "";
     let tabsHtml = "";
     let panelsHtml = "";
+    const settingsAdMenuUserHtml = RING_SETTINGS_SHOW_AD_MENU_
+        ? '<li><a href="ads/ad_recruit.html">📢 広告掲載について（事業者向け）</a></li>'
+        : '';
+    const settingsAdMenuBizHtml = RING_SETTINGS_SHOW_AD_MENU_
+        ? '<li><a href="ads/ad_recruit.html">📢 広告掲載のお申し込み</a></li>'
+        : '';
 
     if (isUserMode) {
         menuBodyHtml = `<div class="ring-line-promo-slot ring-line-promo-slot--top" data-ring-line-promo></div>` + accountSwitchHtml + `
@@ -10456,6 +10518,7 @@ function createGlobalUI() {
             <li><a href="user_mypage.html">👤 プロフィール / マイページ</a></li>
             <li><a href="history_visibility_settings.html">🔒 整備履歴の公開設定</a></li>
             <li><a href="change_password.html">🔑 パスワード変更</a></li>
+            ${ringWithdrawalEligibleProfile_(profile) ? '<li><a href="account_withdraw.html" class="danger-link">アカウントを退会</a></li>' : ''}
           </ul>
         </div>
         <div class="settings-group">
@@ -10464,7 +10527,7 @@ function createGlobalUI() {
             <li><a href="manual.html">📖 使い方ガイド</a></li>
             <li><a href="faq.html">❓ よくある質問</a></li>
             <li><a href="contact.html">📧 お問い合わせ</a></li>
-            <li><a href="ads/ad_recruit.html">📢 広告掲載について（事業者向け）</a></li>
+            ${settingsAdMenuUserHtml}
           </ul>
         </div>
         <div class="settings-group">
@@ -10514,9 +10577,9 @@ function createGlobalUI() {
           <div class="settings-group-title">${bizMenuLabel}</div>
           <ul class="settings-list">
             <li><a href="factory_info.html">🏢 会社情報</a></li>
-            <li><a href="history_visibility_settings.html">🔒 整備履歴の公開設定</a></li>
-            <li><a href="ads/ad_recruit.html">📢 広告掲載のお申し込み</a></li>
             ${staffMenuItem}
+            <li><a href="history_visibility_settings.html">🔒 整備履歴の公開設定</a></li>
+            ${settingsAdMenuBizHtml}
             ${pwMenuItem}
           </ul>
         </div>

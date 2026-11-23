@@ -12,99 +12,75 @@
   <link rel="manifest" href="manifest.json">
     <title>車のお薬手帳</title>
   <link rel="stylesheet" href="common.css?v=20261120-v54" integrity="sha256-yO0OlNXeXZ4584IXby/Gc5wRQVQHSLTSU7Z+QJycOCQ= sha256-HnQmEMCmw/wnKwUmcXXHCcMzFehK3s7aud7AqTiS3WU=">
-  <script src="app.js?v=20261120-v54" integrity="sha256-27vutQEqXAEgijRerLvcM/C4cVx1r2mwuAgvBlLCRo8= sha256-EF/g95rL5E6Gqr1GmEsRFTExXaMhI5/BtgFsZALCG+k=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
   <script src="theme.js"></script>
   <style>
-    .legal-doc { font-size: 13px; font-weight: 700; color: var(--text); line-height: 1.8; }
-    .legal-doc h2 { font-size: 15px; font-weight: 900; margin: 24px 0 12px; line-height: 1.4; }
-    .tokusho-table { width: 100%; border-collapse: collapse; font-size: 13px; font-weight: 700; }
-    .tokusho-table th, .tokusho-table td {
-      border: 1px solid var(--line); padding: 12px 10px; text-align: left; vertical-align: top;
-    }
-    .tokusho-table th {
-      width: 32%; background: rgba(255,255,255,0.5); color: var(--muted); font-weight: 900;
-    }
-    .legal-note {
-      font-size: 12px; font-weight: 700; color: var(--muted);
-      background: rgba(255,255,255,0.6); border: 1px dashed var(--line); border-radius: 10px;
-      padding: 14px; margin-bottom: 20px; line-height: 1.7;
-    }
+    .support-page { max-width: 740px; padding-bottom: max(32px, env(safe-area-inset-bottom)); font-size: 1rem; line-height: 1.75; overflow-wrap: anywhere; }
+    .support-page .header { margin-bottom: 16px; }
+    .support-lead { margin: 0 0 20px; }
+    .support-toc, .support-links { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0 0 20px; }
+    .support-toc a, .support-links a { display: inline-flex; align-items: center; min-height: 44px; }
+    .support-page a:not(.back-link) { color: var(--text); text-decoration: underline; text-underline-offset: .18em; }
+    .support-page a:hover { text-decoration-thickness: 2px; }
+    .support-card { margin: 0 0 14px; padding: clamp(14px, 4vw, 24px); border-radius: 16px; border: 1px solid var(--line); background: var(--paper); box-shadow: var(--shadow); scroll-margin-top: 16px; }
+    .support-card h2 { font-size: 1.15rem; line-height: 1.45; margin: 0 0 12px; }
+    .support-card p, .support-card ol, .support-card ul { margin: 0 0 12px; }
+    .support-card :last-child { margin-bottom: 0; }
+    .support-card ol, .support-card ul { padding: 0 0 0 1.5em; }
+    .support-card li + li { margin-top: .65em; }
+    .support-note { padding: 12px; border-inline-start: 3px solid var(--accent); background: var(--bg); border-radius: 5px; }
+    .support-card details { border-top: 1px solid var(--line); }
+    .support-card summary { min-height: 44px; padding: 9px 0; font-weight: 750; cursor: pointer; }
+    .support-card details p { margin: 0 0 12px; }
+    .support-conditions { margin: 0; }
+    .support-conditions div { display: grid; grid-template-columns: minmax(0, 10.5em) minmax(0, 1fr); gap: 4px 14px; padding: 10px 0; border-top: 1px solid var(--line); }
+    .support-conditions dt { font-weight: 750; }
+    .support-conditions dd { margin: 0; }
+    @media (max-width: 520px) { .support-conditions div { grid-template-columns: minmax(0, 1fr); } }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="header">
-      <a href="#" onclick="ringBackFromSupportPage(); return false;" class="back-link">≪戻る</a>
+  <main class="container support-page" id="support-content">
+    <header class="header">
+      <a href="index.html" id="support-back" class="back-link">≪戻る</a>
       <h1 class="title">特定商取引法に基づく表示</h1>
-    </div>
+    </header>
+    <p class="support-lead">表示改定案（運営者確認用）</p>
 
-    <div class="legal-note">
-      以下は、特定商取引法その他関連法令に基づき、本サービス「車のお薬手帳」における取引条件を分かりやすく示すための表です。
-    </div>
+      <section class="support-card" aria-labelledby="trade-conditions">
+        <h2 id="trade-conditions">運営者と利用条件</h2>
+        <dl class="support-conditions">
+          <div><dt>運営名</dt><dd>RinG Auto</dd></div>
+          <div><dt>運営責任者</dt><dd>宜壽次 竜彰</dd></div>
+          <div><dt>連絡先</dt><dd><a href="mailto:info@ring-auto.com">info@ring-auto.com</a></dd></div>
+          <div><dt>所在地・電話番号</dt><dd>有料販売に向け、法令に従った表示方法を確定します。</dd></div>
+          <div><dt>料金・継続課金</dt><dd>本アプリ内で申し込める有料プラン、自動更新による課金、決済手続はありません。</dd></div>
+          <div><dt>追加費用</dt><dd>インターネット接続料・通信料は、利用者が通信事業者との契約に従って負担します。</dd></div>
+          <div><dt>支払方法・支払時期</dt><dd>アプリ内の支払いはありません。有料販売を開始する場合は、申込み前に利用条件を案内します。</dd></div>
+          <div><dt>サービスの提供時期</dt><dd>利用登録・ログイン後に、利用区分と権限に応じて使用できます。承認が必要な事業者機能は、店舗の承認後に利用できます。</dd></div>
+          <div><dt>退会・解約・返金</dt><dd>利用終了・退会は運営窓口へご相談ください。アプリ内課金に対する解約・返金条件は、有料販売を開始する際に案内します。</dd></div>
+          <div><dt>動作環境</dt><dd>インターネットに接続できるスマートフォンやPCのブラウザで利用します。撮影・QR読み取りにはカメラとブラウザの使用許可が必要です。<a href="manual.html#guide-install">ブラウザとホーム画面の使い方</a>をご確認ください。</dd></div>
+        </dl>
+      </section>
 
-    <div class="card legal-doc">
-      <table class="tokusho-table">
-        <tr>
-          <th>販売業者名（運営者）</th>
-          <td>RinG Auto</td>
-        </tr>
-        <tr>
-          <th>運営責任者</th>
-          <td>宜壽次　竜彰</td>
-        </tr>
-        <tr>
-          <th>所在地</th>
-          <td>具体的な住所は、お問い合わせいただいた際にご請求いただければ、遅滞なく開示いたします。</td>
-        </tr>
-        <tr>
-          <th>電話番号</th>
-          <td>具体的な電話番号は、お問い合わせいただいた際にご請求いただければ、遅滞なく開示いたします。</td>
-        </tr>
-        <tr>
-          <th>メールアドレス</th>
-          <td><a href="mailto:info@ring-auto.com">info@ring-auto.com</a>（<a href="contact.html">お問い合わせフォーム</a> も併用）</td>
-        </tr>
-        <tr>
-          <th>サービス対価（料金）</th>
-          <td>
-            事業者向け月額利用料（税別）：工場向け <strong>500 円</strong>／事業者向け <strong>1,000 円</strong>（いずれも月額・税別。月中開始も日割りなし）。<br>
-            一般ユーザー向け機能は無料とする場合があります。<br>
-            有料開始後、当社が定める期間は無料トライアル等となる場合があります。<br>
-            価格変更時は、法令に従い周知します。
-          </td>
-        </tr>
-        <tr>
-          <th>商品代金以外に必要な費用</th>
-          <td>インターネット接続料金、通信料金等は利用者の負担とします。消費税は別途申し受けます（税別表示）。</td>
-        </tr>
-        <tr>
-          <th>支払方法</th>
-          <td>クレジットカード決済（決済代行：Stripe 等を予定）。利用可能な手段は申込画面に表示します。</td>
-        </tr>
-        <tr>
-          <th>支払時期</th>
-          <td>サブスクリプションの内容に従い、毎月の課金サイクルに基づき決済代行業者が処理します（詳細は申込時の画面表示に従います）。</td>
-        </tr>
-        <tr>
-          <th>役務の提供時期</th>
-          <td>利用登録および決済完了後、速やかに本サービスを利用可能とします（メンテナンス等の停止期間を除く）。</td>
-        </tr>
-        <tr>
-          <th>返品・キャンセル・解約</th>
-          <td>
-            デジタルコンテンツ・ソフトウェア利用の性質上、原則として契約成立後の返品・キャンセルはお受けできません。<br>
-            解約・更新停止の手続は本サービス上の案内または <a href="terms.html">利用規約</a> に従います。なお、月の途中で解約手続きを行った場合であっても、当該課金期間の末日まではサービスを利用可能とし、日割り計算による返金は一切行いません。法令により認められる場合はこの限りではありません。
-          </td>
-        </tr>
-        <tr>
-          <th>動作環境</th>
-          <td>対応ブラウザ・端末は <a href="manual.html">操作マニュアル</a> または FAQ に準じます。</td>
-        </tr>
-      </table>
-
-      <h2>関連ページ</h2>
-      <p><a href="terms.html">利用規約</a>　<a href="privacy.html">プライバシーポリシー</a></p>
-    </div>
-  </div>
+    <nav class="support-links" aria-label="関連ページ">
+      <a href="manual.html">使い方ガイド</a>
+      <a href="faq.html">よくある質問</a>
+      <a href="terms.html">利用規約</a>
+      <a href="privacy.html">プライバシーポリシー</a>
+      <a href="contact.html">お問い合わせ</a>
+    </nav>
+  </main>
+  <script>
+    // theme.js reads the local profile for the palette. Help pages do not need application APIs.
+    function safeJsonParse(value, fallback) {
+      try { return JSON.parse(value); } catch (error) { return fallback; }
+    }
+    document.getElementById('support-back').addEventListener('click', function (event) {
+      if (!document.referrer || history.length < 2) return;
+      if (new URL(document.referrer).origin !== location.origin) return;
+      event.preventDefault();
+      history.back();
+    });
+  </script>
 </body>
 </html>

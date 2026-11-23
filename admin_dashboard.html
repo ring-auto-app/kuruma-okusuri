@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#334155" />
     <title>車のお薬手帳</title>
   <link rel="stylesheet" href="common.css?v=20261120-v54" integrity="sha256-yO0OlNXeXZ4584IXby/Gc5wRQVQHSLTSU7Z+QJycOCQ= sha256-HnQmEMCmw/wnKwUmcXXHCcMzFehK3s7aud7AqTiS3WU=">
-  <script src="app.js?v=20261120-v54" integrity="sha256-27vutQEqXAEgijRerLvcM/C4cVx1r2mwuAgvBlLCRo8= sha256-EF/g95rL5E6Gqr1GmEsRFTExXaMhI5/BtgFsZALCG+k=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
+  <script src="app.js?v=20261123-v56" integrity="sha256-5KuwpcsTjdNsr69r1/96u1Br1GKxYtKTEgGOeusgwqA= sha256-ZUitBod+m+ieefqGpCGENXZIGU/0mD+xyrj0Cxpe9Sg=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
   <style>
     /* 管理コンソール専用（ノートUI・theme.js に依存しない） */
     body.ring-admin-app {
@@ -707,6 +707,33 @@
           <ul id="activityStreamList" class="action-activity-list">
             <li class="action-task action-task--muted">読込中…</li>
           </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="withdrawalReviewSection" class="section no-print" aria-label="退会後の個人情報確認">
+      <h2>退会後の個人情報確認</h2>
+      <p class="muted" style="margin-top:0;">退会受付番号（16桁）のみ表示します。氏名・メールは保存しません。整備履歴の行は削除せず、該当フィールドのみ匿名化します。写真は自動処理せず手動確認に残します。</p>
+      <div class="admin-grid" id="withdrawalReviewStats">
+        <div class="stat-card"><div class="stat-val" id="withdrawalOpenCount">—</div><div class="stat-lbl">未処理案件</div></div>
+        <div class="stat-card"><div class="stat-val" id="withdrawalTotalCount">—</div><div class="stat-lbl">退会完了（累計）</div></div>
+      </div>
+      <div class="error-detail-scroll-wrap">
+        <table class="monitor-table" id="withdrawalReviewTable">
+          <thead><tr><th>受付番号</th><th>受付日</th><th>経過日</th><th>状況</th><th>未処理</th><th></th></tr></thead>
+          <tbody id="withdrawalReviewTbody"><tr><td colspan="6" class="muted">読込中…</td></tr></tbody>
+        </table>
+      </div>
+      <div id="withdrawalReviewDetail" class="search-result-card" hidden>
+        <h3 style="margin:0 0 8px;font-size:15px;">案件詳細 <span id="withdrawalDetailCaseId"></span></h3>
+        <p class="muted" id="withdrawalDetailMeta" style="margin:0 0 10px;font-size:12px;"></p>
+        <button type="button" class="btn-sm secondary" id="withdrawalResyncBtn">候補を再同期</button>
+        <div id="withdrawalFindingList"></div>
+        <div class="search-row no-print" style="margin-top:12px;">
+          <input type="text" id="withdrawalReviewNote" placeholder="対応メモ（個人情報を書かない）" autocomplete="off">
+          <button type="button" class="btn-sm" id="withdrawalSaveNoteBtn">メモ保存</button>
+          <button type="button" class="btn-sm" id="withdrawalCompleteBtn">確認完了</button>
+          <button type="button" class="btn-sm secondary" id="withdrawalCloseDetailBtn">一覧に戻る</button>
         </div>
       </div>
     </section>
@@ -1531,6 +1558,211 @@
       }
     }
 
+    var __withdrawalReviewState = { caseId: '', detail: null };
+
+    function withdrawalReviewStatusLabel_(code) {
+      var m = {
+        manual_review: '未着手',
+        in_progress: '対応中',
+        needs_recheck: '要再確認',
+        done: '完了'
+      };
+      return m[code] || code || '—';
+    }
+
+    function renderWithdrawalReviewTable_(payload) {
+      var tbody = document.getElementById('withdrawalReviewTbody');
+      var openEl = document.getElementById('withdrawalOpenCount');
+      var totalEl = document.getElementById('withdrawalTotalCount');
+      if (!tbody) return;
+      var summary = (payload && payload.summary) || {};
+      var cases = (payload && payload.cases) || [];
+      if (openEl) openEl.textContent = String(summary.openCount != null ? summary.openCount : 0);
+      if (totalEl) totalEl.textContent = String(summary.totalComplete != null ? summary.totalComplete : cases.length);
+      if (!cases.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="muted">退会完了案件はありません</td></tr>';
+        return;
+      }
+      tbody.innerHTML = cases.map(function (c) {
+        var days = c.daysElapsed != null ? String(c.daysElapsed) + '日' : '—';
+        var received = c.receivedAt ? String(c.receivedAt).slice(0, 10) : '—';
+        return '<tr><td><code>' + escHtml(c.caseId || '') + '</code></td><td>' + escHtml(received) +
+          '</td><td>' + escHtml(days) + '</td><td>' + escHtml(withdrawalReviewStatusLabel_(c.reviewStatus)) +
+          '</td><td>' + escHtml(String(c.pendingFindingCount != null ? c.pendingFindingCount : 0)) +
+          '</td><td><button type="button" class="btn-sm secondary withdrawal-open-case" data-case="' +
+          escHtml(c.caseId || '') + '">確認</button></td></tr>';
+      }).join('');
+      tbody.querySelectorAll('.withdrawal-open-case').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          openWithdrawalReviewDetail_(btn.getAttribute('data-case'));
+        });
+      });
+    }
+
+    async function loadWithdrawalReviews() {
+      try {
+        var data = await sendToGAS_Safe('get_admin_withdrawal_reviews', {});
+        if (!data || !data.success) throw new Error((data && data.error) || 'withdrawal list failed');
+        renderWithdrawalReviewTable_(data);
+      } catch (e) {
+        console.error('[admin] loadWithdrawalReviews', e);
+        var tbody = document.getElementById('withdrawalReviewTbody');
+        if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="muted" style="color:#dc2626;">取得に失敗しました</td></tr>';
+      }
+    }
+
+    async function openWithdrawalReviewDetail_(caseId) {
+      if (!caseId) return;
+      var detailPanel = document.getElementById('withdrawalReviewDetail');
+      var listPanel = document.getElementById('withdrawalReviewTable');
+      try {
+        if (typeof showLoading === 'function') showLoading('読込中', '');
+        var data = await sendToGAS_Safe('get_admin_withdrawal_review_detail', { caseId: caseId });
+        if (!data || !data.success) throw new Error((data && data.error) || 'detail failed');
+        __withdrawalReviewState = { caseId: caseId, detail: data };
+        await sendToGAS_Safe('admin_withdrawal_review_action', { caseId: caseId, reviewAction: 'start' });
+        if (listPanel) listPanel.closest('.error-detail-scroll-wrap').style.display = 'none';
+        if (detailPanel) detailPanel.hidden = false;
+        document.getElementById('withdrawalDetailCaseId').textContent = caseId;
+        var c = data.case || {};
+        document.getElementById('withdrawalDetailMeta').textContent =
+          '受付日: ' + (c.receivedAt ? String(c.receivedAt).slice(0, 19) : '—') +
+          ' / 経過: ' + (c.daysElapsed != null ? c.daysElapsed + '日' : '—') +
+          ' / 状況: ' + withdrawalReviewStatusLabel_(c.reviewStatus) +
+          ' / 未処理: ' + (c.pendingFindingCount != null ? c.pendingFindingCount : 0);
+        var list = document.getElementById('withdrawalFindingList');
+        var findings = data.findings || [];
+        if (!findings.length) {
+          list.innerHTML = '<p class="muted">スキャン対象の個人情報候補は検出されませんでした。</p>';
+        } else {
+          list.innerHTML = findings.map(function (f) {
+            var actions = '';
+            if (f.status === 'pending' || f.status === 'needs_recheck') {
+              if (f.manualOnly) {
+                actions = '<button type="button" class="btn-sm secondary withdrawal-recheck" data-fid="' + escHtml(f.findingId) +
+                  '">要再確認で残す</button>';
+              } else {
+                actions = '<button type="button" class="btn-sm withdrawal-anonymize" data-fid="' + escHtml(f.findingId) +
+                  '">匿名化</button> <button type="button" class="btn-sm secondary withdrawal-recheck" data-fid="' +
+                  escHtml(f.findingId) + '">要再確認</button>';
+              }
+            }
+            var sample = f.sample ? '<pre class="muted" style="white-space:pre-wrap;font-size:12px;margin:6px 0 0;">' +
+              escHtml(f.sample) + '</pre>' : '';
+            var editArea = '';
+            if (!f.manualOnly && (f.status === 'pending' || f.status === 'needs_recheck')) {
+              var defVal = f.suggestedReplacement ? f.suggestedReplacement : (f.sample || '');
+              editArea = '<label style="display:block;margin-top:8px;font-size:12px;font-weight:700;">匿名化後の文面（編集可）</label>' +
+                '<textarea class="withdrawal-replace-input" data-fid="' + escHtml(f.findingId) + '" rows="3" style="width:100%;box-sizing:border-box;font-size:12px;">' +
+                escHtml(defVal) + '</textarea>';
+            }
+            return '<div class="search-result-card" style="margin-bottom:8px;"><div class="search-result-card__meta">' +
+              escHtml(f.category || '') + ' · ' + escHtml(f.refKey || '') + ' · ' + escHtml(f.previewHint || '') +
+              ' · <strong>' + escHtml(f.status || '') + '</strong>' +
+              (f.autoAnonymize === false ? ' · 手動必須' : '') + '</div>' + sample + editArea + '<div style="margin-top:8px;">' +
+              actions + '</div></div>';
+          }).join('');
+          list.querySelectorAll('.withdrawal-anonymize').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+              var fid = btn.getAttribute('data-fid');
+              var ta = list.querySelector('textarea.withdrawal-replace-input[data-fid="' + fid + '"]');
+              var replacementText = ta ? String(ta.value || '') : '';
+              runWithdrawalFindingAction_(caseId, fid, 'anonymize', replacementText);
+            });
+          });
+          list.querySelectorAll('.withdrawal-recheck').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+              runWithdrawalFindingAction_(caseId, btn.getAttribute('data-fid'), 'mark_recheck');
+            });
+          });
+        }
+      } catch (e) {
+        if (typeof showToast === 'function') showToast('error', '案件詳細を取得できませんでした');
+      } finally {
+        if (typeof hideLoading === 'function') hideLoading();
+      }
+    }
+
+    async function runWithdrawalFindingAction_(caseId, findingId, action, replacementText) {
+      try {
+        var payload = { caseId: caseId, reviewAction: action, findingId: findingId };
+        if (replacementText != null) payload.replacementText = replacementText;
+        var res = await sendToGAS_Safe('admin_withdrawal_review_action', payload);
+        if (!res || !res.success) {
+          var err = (res && res.error) || '';
+          if (typeof showToast === 'function') {
+            var msg = '操作できませんでした';
+            if (err === 'WITHDRAWAL_MANUAL_PHOTO') msg = '写真・請求書種別は手動確認のみです';
+            else if (err === 'WITHDRAWAL_MANUAL_REVIEW_REQUIRED') msg = '文面を編集するか、要再確認にしてください';
+            showToast('error', msg);
+          }
+          return;
+        }
+        await openWithdrawalReviewDetail_(caseId);
+        await loadWithdrawalReviews();
+      } catch (e) {
+        if (typeof showToast === 'function') showToast('error', '操作に失敗しました');
+      }
+    }
+
+    function closeWithdrawalReviewDetail_() {
+      var detailPanel = document.getElementById('withdrawalReviewDetail');
+      var wrap = document.getElementById('withdrawalReviewTable');
+      if (detailPanel) detailPanel.hidden = true;
+      if (wrap) wrap.closest('.error-detail-scroll-wrap').style.display = '';
+      __withdrawalReviewState = { caseId: '', detail: null };
+    }
+
+  function bindWithdrawalReviewUi_() {
+      var noteBtn = document.getElementById('withdrawalSaveNoteBtn');
+      var completeBtn = document.getElementById('withdrawalCompleteBtn');
+      var closeBtn = document.getElementById('withdrawalCloseDetailBtn');
+      if (noteBtn) noteBtn.addEventListener('click', async function () {
+        var caseId = __withdrawalReviewState.caseId;
+        var note = document.getElementById('withdrawalReviewNote');
+        if (!caseId || !note) return;
+        try {
+          await sendToGAS_Safe('admin_withdrawal_review_action', {
+            caseId: caseId, reviewAction: 'note', note: String(note.value || '')
+          });
+          if (typeof showToast === 'function') showToast('success', 'メモを保存しました');
+          note.value = '';
+          await openWithdrawalReviewDetail_(caseId);
+        } catch (e) { if (typeof showToast === 'function') showToast('error', 'メモを保存できませんでした'); }
+      });
+      if (completeBtn) completeBtn.addEventListener('click', async function () {
+        var caseId = __withdrawalReviewState.caseId;
+        if (!caseId) return;
+        try {
+          var res = await sendToGAS_Safe('admin_withdrawal_review_action', { caseId: caseId, reviewAction: 'complete' });
+          if (!res || !res.success) throw new Error('complete failed');
+          if (typeof showToast === 'function') {
+            showToast('success', res.reviewStatus === 'done' ? '確認を完了しました' : '要再確認の項目が残っています');
+          }
+          closeWithdrawalReviewDetail_();
+          await loadWithdrawalReviews();
+          await loadActionDashboardData();
+        } catch (e) {
+          if (typeof showToast === 'function') showToast('error', '完了処理に失敗しました');
+        }
+      });
+      if (closeBtn) closeBtn.addEventListener('click', closeWithdrawalReviewDetail_);
+      var resyncBtn = document.getElementById('withdrawalResyncBtn');
+      if (resyncBtn) resyncBtn.addEventListener('click', async function () {
+        var caseId = __withdrawalReviewState.caseId;
+        if (!caseId) return;
+        try {
+          var res = await sendToGAS_Safe('admin_withdrawal_review_action', { caseId: caseId, reviewAction: 'resync_findings' });
+          if (!res || !res.success) throw new Error((res && res.error) || 'resync failed');
+          if (typeof showToast === 'function') showToast('success', '候補を再同期しました');
+          await openWithdrawalReviewDetail_(caseId);
+          await loadWithdrawalReviews();
+        } catch (e) {
+          if (typeof showToast === 'function') showToast('error', '再同期に失敗しました');
+        }
+      });
+    }
+
     function buildFilterChips_(name, options, selected) {
       selected = selected || [];
       return (options || []).map(function (opt) {
@@ -1954,11 +2186,17 @@
       if (typeof ringLogClientAccess === 'function') ringLogClientAccess('admin_dashboard');
 
       initAdminDashboardExportUi_();
+      bindWithdrawalReviewUi_();
       await loadAdminDashboardData();
       try {
         await loadActionDashboardData();
       } catch (eAct) {
         console.error('[admin] loadActionDashboardData outer', eAct);
+      }
+      try {
+        await loadWithdrawalReviews();
+      } catch (eW) {
+        console.error('[admin] loadWithdrawalReviews outer', eW);
       }
     });
   </script>

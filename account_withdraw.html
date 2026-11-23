@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#4b5563" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="車のお薬手帳" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="manifest" href="manifest.json">
+    <title>アカウントを退会 — 車のお薬手帳</title>
+  <link rel="stylesheet" href="common.css?v=20261120-v54" integrity="sha256-yO0OlNXeXZ4584IXby/Gc5wRQVQHSLTSU7Z+QJycOCQ= sha256-HnQmEMCmw/wnKwUmcXXHCcMzFehK3s7aud7AqTiS3WU=">
+  <script src="app.js?v=20261123-v56" integrity="sha256-5KuwpcsTjdNsr69r1/96u1Br1GKxYtKTEgGOeusgwqA= sha256-ZUitBod+m+ieefqGpCGENXZIGU/0mD+xyrj0Cxpe9Sg=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
+  <script src="theme.js"></script>
+  <style>
+    .withdraw-page { max-width: 620px; padding-bottom: 32px; line-height: 1.7; overflow-wrap: anywhere; }
+    .withdraw-card { padding: clamp(14px, 4vw, 24px); margin-bottom: 14px; border: 1px solid var(--line); background: var(--paper); border-radius: 16px; box-shadow: var(--shadow); }
+    .withdraw-card h2 { font-size: 1.15rem; margin: 0 0 12px; }
+    .withdraw-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+    .withdraw-actions a, .withdraw-page button { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+    .withdraw-card input[type="text"] { display: block; min-height: 44px; width: 100%; padding: 8px; margin-top: 6px; font-size: 1rem; }
+    .withdraw-card label { font-weight: 700; }
+    .withdraw-row { display: flex; gap: 10px; align-items: start; min-height: 44px; padding: 8px 0; border-top: 1px solid var(--line); }
+    .withdraw-danger { background: #991b1b; color: white; border: 1px solid #991b1b; }
+    .withdraw-page button:disabled { opacity: .55; }
+    .withdraw-card[hidden], [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <main class="container withdraw-page">
+    <header class="header">
+      <a class="back-link" href="user_home.html">≪戻る</a>
+      <h1 class="title">アカウントを退会</h1>
+    </header>
+    <p id="withdrawStatus" role="status" aria-live="polite">アカウントと履歴を確認しています。</p>
+    <section class="withdraw-card" id="withdrawIntro" hidden>
+      <h2>退会の確認</h2>
+      <p>退会すると、氏名・メールアドレス・ログイン情報・副オーナー権限などのアカウント情報が削除されます。退会後はログインできなくなります。</p>
+      <p>ただし、これまでに登録された車両の整備履歴は削除されません。</p>
+      <p>整備メモや写真などに含まれる個人情報は、運営窓口で個別に確認します。</p>
+      <p>退会しますか？</p>
+      <p id="withdrawPrivateCount" hidden></p>
+      <div class="withdraw-actions">
+        <a class="btn btn-secondary" href="user_home.html">キャンセル</a>
+        <button class="btn btn-secondary" id="withdrawReview" type="button" hidden>公開できる履歴を確認して公開設定を変更する</button>
+        <button class="btn withdraw-danger" id="withdrawProceed" type="button">退会する</button>
+      </div>
+    </section>
+    <section class="withdraw-card" id="withdrawReviewPanel" hidden>
+      <h2>公開する整備履歴を選ぶ</h2>
+      <p>選んだ履歴を公開すると、ログインした利用者が車台番号で検索して閲覧できます。候補には、あなたが公開設定を変更できる非公開履歴だけを表示しています。写真やメモを公開できるかも確認してください。</p>
+      <div id="withdrawHistoryRows"></div>
+      <div class="withdraw-actions">
+        <button class="btn btn-secondary" id="withdrawReviewBack" type="button">退会確認に戻る</button>
+        <button class="btn btn-primary" id="withdrawPublish" type="button">選んだ履歴の公開を確認</button>
+      </div>
+    </section>
+    <section class="withdraw-card" id="withdrawConfirmPanel" hidden>
+      <h2>最後の確認</h2>
+      <p>ここで確定するとアカウントの利用が停止します。未送信の入力は退会完了後にこの端末から削除されます。整備履歴の現在の公開設定は維持されます。</p>
+      <form id="withdrawForm">
+        <label for="withdrawConfirmation">「退会する」と入力してください。</label>
+        <input id="withdrawConfirmation" type="text" maxlength="10" autocomplete="off" required>
+        <div class="withdraw-actions">
+          <a class="btn btn-secondary" href="user_home.html">キャンセル</a>
+          <button class="btn withdraw-danger" type="submit" id="withdrawSubmit">退会する</button>
+        </div>
+      </form>
+    </section>
+    <section class="withdraw-card" id="withdrawResumePanel" hidden>
+      <h2>中断した退会手続</h2>
+      <p>退会処理を開始した端末で手続を再開できます。完了を確認するまで、このブラウザのデータを消さないでください。</p>
+      <button class="btn btn-primary" type="button" id="withdrawRetry">退会手続を再開</button>
+    </section>
+    <p><a href="mailto:info@ring-auto.com">退会と個人情報に関するお問い合わせ</a></p>
+  </main>
+  <script>
+    (function () {
+      'use strict';
+      var byId = function (id) { return document.getElementById(id); };
+      var status = byId('withdrawStatus');
+      var panels = ['withdrawIntro', 'withdrawReviewPanel', 'withdrawConfirmPanel', 'withdrawResumePanel'];
+      var phrase = '退会する';
+      var context;
+      var profile;
+      var pending;
+      var busy = false;
+      var candidates = [];
+      var previewVersion = 0;
+
+      function showPanel(id) {
+        panels.forEach(function (panel) { byId(panel).hidden = panel !== id; });
+      }
+
+      function currentAccount() {
+        return ringRequestContextIsCurrent_(context) && ringWithdrawalEligibleProfile_(getCurrentProfile());
+      }
+
+      function readPending() {
+        var data = safeJsonParse(localStorage.getItem(ringWithdrawalStorageKey_()), null);
+        return data && data.userId && /^[a-f0-9]{64}$/.test(data.receipt) ? data : null;
+      }
+
+      async function refreshPreview(message) {
+        var version = ++previewVersion;
+        showPanel();
+        status.textContent = 'アカウントと履歴を確認しています。';
+        try {
+          var result = await sendToGAS_Safe('user_withdrawal_preview', {});
+          if (version !== previewVersion || !currentAccount()) return;
+          candidates = result.privateHistory || [];
+          var count = byId('withdrawPrivateCount');
+          count.hidden = !candidates.length;
+          count.textContent = candidates.length
+            ? '公開設定の対象となる非公開履歴は ' + candidates.length + ' 件です。' +
+              (result.canPublish ? '' : ' この環境では現在、公開設定を変更できません。')
+            : '';
+          byId('withdrawProceed').textContent = candidates.length ? '非公開のまま退会する' : phrase;
+          byId('withdrawReview').hidden = !candidates.length || !result.canPublish;
+          status.textContent = message || '';
+          showPanel('withdrawIntro');
+        } catch (error) {
+          if (version !== previewVersion) return;
+          status.textContent = '退会前の確認ができませんでした。接続・ログイン状態を確認し、このページを再読み込みしてください。';
+        }
+      }
+
+      function renderReview() {
+        if (!currentAccount()) return;
+        var list = byId('withdrawHistoryRows');
+        list.replaceChildren();
+        candidates.forEach(function (row, index) {
+          var label = document.createElement('label');
+          label.className = 'withdraw-row';
+          var checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.value = String(index);
+          var info = document.createElement('span');
+          info.textContent = [row.vin, row.date, row.title || '整備履歴', '非公開 → 公開'].filter(Boolean).join(' ／ ');
+          label.append(checkbox, info);
+          list.appendChild(label);
+        });
+        showPanel('withdrawReviewPanel');
+      }
+
+      async function publishSelection() {
+        if (busy || !currentAccount()) return;
+        var selected = Array.from(byId('withdrawHistoryRows').querySelectorAll('input:checked'), function (input) {
+          return candidates[Number(input.value)];
+        });
+        if (!selected.length) {
+          status.textContent = '公開する履歴を選んでください。';
+          return;
+        }
+        var description = selected.map(function (row) { return [row.vin, row.date, row.title].join(' ／ '); }).join('\n');
+        if (!window.confirm('次の ' + selected.length + ' 件を非公開から公開に変更します。\n\n' + description)) return;
+        if (!currentAccount()) return;
+        var groups = new Map();
+        selected.forEach(function (row) {
+          if (!groups.has(row.vin)) groups.set(row.vin, []);
+          groups.get(row.vin).push(row.logId);
+        });
+        busy = true;
+        byId('withdrawPublish').disabled = true;
+        byId('withdrawReviewBack').disabled = true;
+        var updated = 0;
+        try {
+          for (var pair of groups) {
+            if (!currentAccount()) throw new Error('STALE_SESSION');
+            var response = await sendToGAS_Safe('owner_bulk_history_visibility', {
+              vin: pair[0], log_ids: pair[1], visibility: 'public'
+            });
+            updated += Number(response.updated || 0);
+          }
+          await refreshPreview(updated + ' 件を公開に変更しました。退会する場合は確認に進んでください。');
+        } catch (error) {
+          if (currentAccount()) await refreshPreview('公開に変更できた件数は ' + updated + ' 件です。残りの状態を確認してください。');
+        } finally {
+          busy = false;
+          byId('withdrawPublish').disabled = false;
+          byId('withdrawReviewBack').disabled = false;
+        }
+      }
+
+      async function submitWithdrawal() {
+        if (!pending || busy) return;
+        var request = pending;
+        busy = true;
+        showPanel('withdrawResumePanel');
+        byId('withdrawRetry').disabled = true;
+        status.textContent = '退会手続を処理しています。';
+        try {
+          var active = getCurrentProfile();
+          var token = ringWithdrawalEligibleProfile_(active) && String(active.userId) === request.userId
+            ? ringResolveActiveAuthToken() : '';
+          // An established recovery receipt may be retried after the server has revoked the session.
+          var result = await fetchJsonWithTimeout(GAS_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({ action: 'user_withdraw_account', authToken: token, receipt: request.receipt, confirmation: phrase })
+          }, 60000);
+          if (!result || !result.success || result.status !== 'complete') {
+            var authError = result && /^(AUTH_REQUIRED|AUTH_EXPIRED)$/.test(result.error || '');
+            status.textContent = authError
+              ? '開始時の認証を確認できません。対象のアカウントでログインし直し、この画面を開いてください。'
+              : '退会完了を確認できませんでした。接続を確認し、同じ端末で手続を再開してください。';
+            if (result && /^[a-f0-9]{16}$/.test(result.caseId)) status.textContent += ' 運営へのお問い合わせ番号 ' + result.caseId + '。';
+            return;
+          }
+          ringClearWithdrawnAccount_(request.userId);
+          sessionStorage.setItem('ring_withdrawal_completed', /^[a-f0-9]{16}$/.test(result.caseId) ? result.caseId : 'complete');
+          var stored = readPending();
+          if (stored && stored.receipt === request.receipt) localStorage.removeItem(ringWithdrawalStorageKey_());
+          location.replace('login.html?tab=user');
+        } catch (error) {
+          status.textContent = '退会完了を確認できませんでした。接続を確認し、同じ端末で手続を再開してください。';
+        } finally {
+          busy = false;
+          byId('withdrawRetry').disabled = false;
+        }
+      }
+
+      if (window.__ringAppLoadFailed) return;
+      try {
+        pending = readPending();
+      } catch (error) {
+        status.textContent = 'ブラウザに手続の情報を保存できません。退会は開始されていません。';
+        return;
+      }
+      profile = getCurrentProfile();
+      context = ringCaptureRequestContext_();
+      byId('withdrawRetry').onclick = submitWithdrawal;
+      if (pending) {
+        status.textContent = 'この端末で開始した退会手続の完了を確認できます。';
+        showPanel('withdrawResumePanel');
+        return;
+      }
+      if (!ringWithdrawalEligibleProfile_(profile) || !context.token) {
+        status.textContent = '一般ユーザーでログインしてください。店舗・スタッフの退会は運営窓口にご相談ください。';
+        return;
+      }
+      window.addEventListener('ring-auth-context-changed', function () {
+        if (!currentAccount() && !pending) {
+          ++previewVersion;
+          candidates = [];
+          byId('withdrawHistoryRows').replaceChildren();
+          showPanel();
+          status.textContent = 'ログイン状態が変わりました。対象アカウントを確認して開き直してください。';
+        }
+      });
+      byId('withdrawReview').onclick = renderReview;
+      byId('withdrawReviewBack').onclick = function () { showPanel('withdrawIntro'); };
+      byId('withdrawPublish').onclick = publishSelection;
+      byId('withdrawProceed').onclick = function () {
+        if (!currentAccount()) return;
+        showPanel('withdrawConfirmPanel');
+        byId('withdrawConfirmation').focus();
+      };
+      byId('withdrawForm').onsubmit = function (event) {
+        event.preventDefault();
+        if (busy || !currentAccount() || pending) return;
+        if (byId('withdrawConfirmation').value.trim() !== phrase) {
+          status.textContent = '「退会する」と入力してください。';
+          return;
+        }
+        try {
+          if (readPending()) {
+            pending = readPending();
+            status.textContent = 'この端末で開始した退会手続があります。再開して完了を確認してください。';
+            showPanel('withdrawResumePanel');
+            return;
+          }
+          var bytes = window.crypto.getRandomValues(new Uint8Array(32));
+          var receipt = Array.from(bytes, function (byte) { return byte.toString(16).padStart(2, '0'); }).join('');
+          var request = { userId: String(profile.userId), receipt: receipt };
+          localStorage.setItem(ringWithdrawalStorageKey_(), JSON.stringify(request));
+          pending = request;
+        } catch (error) {
+          status.textContent = 'ブラウザに手続の情報を保存できません。退会は開始されていません。';
+          return;
+        }
+        submitWithdrawal();
+      };
+      refreshPreview();
+    })();
+  </script>
+</body>
+</html>
