@@ -25,6 +25,8 @@
   var fleetMonthRefreshTimer = null;
   var fleetVehiclesSyncOk = false;
   var fleetVehiclesLoading = true;
+  /** 初回の loadFleetPage_ 完了まで（キャッシュ表示直後の誤った「前回取得分」表示を抑止） */
+  var fleetBootSyncPending_ = false;
   var wizardState = null;
   var DESK_LIST_PAGE = 25;
   var deskListRendered = 0;
@@ -432,6 +434,7 @@
   function fleetSummaryHintMessage_() {
     var vehiclesOk = fleetVehiclesDisplayable_();
     var bookingsOk = fleetBookingsDisplayable_();
+    if (fleetBootSyncPending_) return '';
     if (vehiclesOk && bookingsOk && fleetVehiclesSyncOk && fleetBookingsSyncOk) return '';
     if (fleetVehiclesLoading && vehiclesOk) return '';
     if (fleetBookingsRefreshing && bookingsOk) return '';
@@ -578,24 +581,30 @@
     if (deskListRendered < deskListVehiclesCache.length) fleetSetupDeskListObserver_();
   }
 
+  function fleetBindSummaryHint_(hintId, slotId, warnText) {
+    var hintEl = document.getElementById(hintId);
+    var slotEl = slotId ? document.getElementById(slotId) : hintEl && hintEl.parentElement;
+    if (!hintEl) return;
+    var loading = fleetBootSyncPending_ && !warnText;
+    var show = !!(warnText || loading);
+    var text = warnText || (loading ? '読み込み中…' : '');
+    hintEl.textContent = text;
+    hintEl.classList.toggle('is-inert', !show);
+    hintEl.classList.toggle('is-loading', !!loading);
+    hintEl.classList.toggle('is-stale', !!warnText && (warnText.indexOf('前回取得') >= 0 || warnText.indexOf('最新確認') >= 0));
+    hintEl.classList.toggle('is-error', !!warnText && warnText.indexOf('取得できません') >= 0);
+    if (slotEl && slotEl.classList) {
+      slotEl.classList.toggle('is-active', show);
+      slotEl.classList.toggle('is-loading', !!loading);
+    }
+  }
+
   function renderFleetSummary_() {
     var all = fleetFleetOnly_(fleetMine_());
     var warnText = fleetSummaryHintMessage_();
     var bookingsUnknown = !fleetBookingsDisplayable_();
-    ['fleetSummaryHint', 'fleetMobSummaryHint'].forEach(function (hid) {
-      var hintEl = document.getElementById(hid);
-      if (!hintEl) return;
-      if (warnText) {
-        hintEl.hidden = false;
-        hintEl.textContent = warnText;
-        hintEl.classList.toggle('is-stale', warnText.indexOf('前回取得') >= 0 || warnText.indexOf('最新確認') >= 0);
-        hintEl.classList.toggle('is-error', warnText.indexOf('取得できません') >= 0);
-      } else {
-        hintEl.hidden = true;
-        hintEl.textContent = '';
-        hintEl.classList.remove('is-stale', 'is-error');
-      }
-    });
+    fleetBindSummaryHint_('fleetSummaryHint', 'fleetSummaryHintSlot', warnText);
+    fleetBindSummaryHint_('fleetMobSummaryHint', 'fleetMobSummaryHintSlot', warnText);
     function setStat(id, val, unknown) {
       var el = document.getElementById(id);
       if (!el) return;
@@ -729,18 +738,20 @@
       return;
     }
     var staleNote = '';
-    if (!fleetBookingsSyncOk && fleetBookingsHaveCache && !fleetBookingsRefreshing) {
+    var staleActive = !fleetBootSyncPending_ && !fleetBookingsSyncOk && fleetBookingsHaveCache && !fleetBookingsRefreshing;
+    if (staleActive) {
       staleNote = '<p class="ring-fleet-mob-agenda-stale">予約は前回取得分です（最新の確認ができません）</p>';
     }
+    var staleSlot = '<div class="ring-fleet-mob-agenda-stale-slot' + (staleActive ? ' is-active' : '') + '">' + staleNote + '</div>';
     var bookings = fleetBookingsForRange_(mobSelectedYmd, mobSelectedYmd);
     if (!bookings.length) {
       host.hidden = false;
-      host.innerHTML = '<h3>' + fleetEscape_(mobSelectedYmd) + '</h3>' + staleNote +
+      host.innerHTML = '<h3>' + fleetEscape_(mobSelectedYmd) + '</h3>' + staleSlot +
         '<p style="margin:0;font-weight:700;color:#64748b;">予定はありません</p>' + newBtn;
       return;
     }
     host.hidden = false;
-    host.innerHTML = '<h3>' + fleetEscape_(mobSelectedYmd) + ' の予定</h3>' + staleNote + bookings.map(function (b) {
+    host.innerHTML = '<h3>' + fleetEscape_(mobSelectedYmd) + ' の予定</h3>' + staleSlot + bookings.map(function (b) {
       var st = String(b.status || 'reserved').toLowerCase();
       return '<button type="button" class="ring-fleet-mob-agenda-item st-' + fleetEscape_(st) + '" data-booking-id="' + fleetEscape_(b.bookingId) + '">' +
         '<strong>' + fleetEscape_(fleetVehicleName_(b.vin)) + '</strong>' +
@@ -2102,11 +2113,15 @@
   }
 
   function fleetRenderCalendarMonth_() {
-    if (!fleetVisibleMonthsFresh_()) fleetBookingsSyncOk = false;
+    var needRefresh = !fleetVisibleMonthsFresh_();
+    if (needRefresh) {
+      fleetBookingsRefreshing = true;
+      fleetBookingsSyncOk = false;
+    }
     renderCalendars_();
     renderMobDayAgenda_();
     renderFleetSummary_();
-    fleetScheduleMonthRefresh_();
+    if (needRefresh) fleetScheduleMonthRefresh_();
   }
 
   /**
@@ -2197,16 +2212,17 @@
     if (!fleetContextCurrent_()) return;
     var loadShop = fleetCurrentShopId_();
     var loadGen = ++fleetLoadGen;
+    if (manual) fleetBootSyncPending_ = false;
     if (manual && typeof showLoading === 'function') showLoading('更新中', '読み込み中…');
     if (!fleetVehiclesDisplayable_() || manual) {
       fleetVehiclesLoading = true;
-      if (!manual) renderFleetSummary_();
+      renderFleetSummary_();
     }
-    // 車両と予約は互いに独立した読み取りなので並行して取得する（表示は手元の情報で先に出ている）
+  try {
     var vehiclesP = typeof syncVehiclesFromServer === 'function'
       ? syncVehiclesFromServer({returnStatus:true}).catch(function () { return {ok:false}; })
       : Promise.resolve({ok:false});
-    var bookingsP = refreshBookings_(loadShop, loadGen);
+    var bookingsP = refreshBookings_(loadShop, loadGen, manual ? null : { quiet: true });
     var vehiclesResult = await vehiclesP;
     if (fleetContextCurrent_() && loadGen === fleetLoadGen && fleetCurrentShopId_() === loadShop) {
       fleetVehiclesLoading = false;
@@ -2218,12 +2234,20 @@
       renderFleetList_(true);
     }
     var ok = await bookingsP;
-    if (!ok || !fleetContextCurrent_() || loadGen !== fleetLoadGen || fleetCurrentShopId_() !== loadShop) {
-      if (manual && fleetContextCurrent_() && typeof hideLoading === 'function') hideLoading();
-      return;
+    if (ok && fleetContextCurrent_() && loadGen === fleetLoadGen && fleetCurrentShopId_() === loadShop &&
+        typeof ringUpdateLastSyncLabel_ === 'function') {
+      ringUpdateLastSyncLabel_('ringFleetLastSync', fleetCacheKey);
     }
-    if (typeof ringUpdateLastSyncLabel_ === 'function') ringUpdateLastSyncLabel_('ringFleetLastSync', fleetCacheKey);
+  } finally {
+    if (!manual && fleetBootSyncPending_ && fleetContextCurrent_() && loadGen === fleetLoadGen) {
+      fleetBootSyncPending_ = false;
+    }
+    if (fleetContextCurrent_() && loadGen === fleetLoadGen && fleetCurrentShopId_() === loadShop) {
+      renderFleetSummary_();
+      renderMobDayAgenda_();
+    }
     if (manual && fleetContextCurrent_() && typeof hideLoading === 'function') hideLoading();
+  }
   }
 
   window.addEventListener('DOMContentLoaded', function () {
@@ -2411,6 +2435,7 @@
       if (viewState.year && viewState.month) { calYear = viewState.year; calMonth = viewState.month; }
     }
     fleetInitVehicleLoadingFlag_();
+    fleetBootSyncPending_ = true;
     fleetRenderFromLocalCache_();
     if (viewState) {
       if (viewState.listOpen && listOpen) listOpen.click();

@@ -779,16 +779,46 @@
     color: #b45309;
   }
 
+  .ring-fleet-sync-status-slot {
+    min-height: 0;
+    margin: 0;
+    transition: min-height 0.12s ease-out;
+  }
+
+  .ring-fleet-sync-status-slot.is-active {
+    min-height: 2.55em;
+    margin: 0 0 10px;
+  }
+
   .ring-fleet-summary-hint {
     font-size: 12px;
     font-weight: 800;
     color: #b45309;
-    margin: 0 0 10px;
+    margin: 0;
     line-height: 1.35;
+  }
+
+  .ring-fleet-summary-hint.is-inert {
+    margin: 0;
+    pointer-events: none;
+  }
+
+  .ring-fleet-summary-hint.is-loading {
+    color: #64748b;
+    font-weight: 700;
   }
 
   .ring-fleet-summary-hint.is-error {
     color: #b91c1c;
+  }
+
+  .ring-fleet-mob-agenda-stale-slot {
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .ring-fleet-mob-agenda-stale-slot.is-active {
+    min-height: 2.35em;
   }
 
   .ring-fleet-mob-history {
@@ -1187,12 +1217,33 @@
     color: #b45309;
   }
 
+  .ring-fleet-sync-status-slot {
+    min-height: 0;
+    margin: 0;
+    transition: min-height 0.12s ease-out;
+  }
+
+  .ring-fleet-sync-status-slot.is-active {
+    min-height: 2.55em;
+    margin: -6px 0 12px;
+  }
+
   .ring-fleet-summary-hint {
     font-size: 12px;
     font-weight: 800;
     color: #b45309;
-    margin: -6px 0 12px;
+    margin: 0;
     line-height: 1.35;
+  }
+
+  .ring-fleet-summary-hint.is-inert {
+    margin: 0;
+    pointer-events: none;
+  }
+
+  .ring-fleet-summary-hint.is-loading {
+    color: #64748b;
+    font-weight: 700;
   }
 
   .ring-fleet-summary-hint.is-error {
