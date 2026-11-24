@@ -1082,6 +1082,41 @@
     return false;
   }
 
+  function fleetRescheduleFmtRange_(startYmd, endYmd) {
+    var fmt = typeof ringFormatVehicleDateJst_ === 'function' ? ringFormatVehicleDateJst_ : function (s) { return s; };
+    return fmt(startYmd) + '〜' + fmt(endYmd);
+  }
+
+  function fleetBookingsExcludingId_(list, excludeBookingId) {
+    var ex = String(excludeBookingId || '').trim();
+    return (list || []).filter(function (b) {
+      return b && String(b.bookingId || '').trim() !== ex;
+    });
+  }
+
+  function fleetVinRangeAvailableExcluding_(vin, startYmd, endYmd, excludeBookingId) {
+    if (!vin || !startYmd || !endYmd) return false;
+    if (ringYmdCompare_(startYmd, endYmd) > 0) return false;
+    var others = fleetBookingsExcludingId_(fleetBookingsForShop_(bookingsCache), excludeBookingId);
+    return ringFleetVinAvailableForRange_(vin, startYmd, endYmd, others);
+  }
+
+  function fleetFindVinRangeBlocker_(vin, startYmd, endYmd, excludeBookingId) {
+    var others = fleetBookingsExcludingId_(fleetBookingsForShop_(bookingsCache), excludeBookingId);
+    for (var i = 0; i < others.length; i++) {
+      if (ringFleetBookingBlocksVinForRange_(others[i], vin, startYmd, endYmd)) return others[i];
+    }
+    return null;
+  }
+
+  function fleetRescheduleBlockedMsg_(blocker) {
+    if (!blocker) return '';
+    if (String(blocker.status || '').toLowerCase() === 'out') {
+      return 'この車両は未返却の貸出があります。別の日付を選んでください。';
+    }
+    return '予約済み期間：' + fleetRescheduleFmtRange_(blocker.startDate, blocker.endDate);
+  }
+
   function bindBookingDetailActions_(host, b) {
     var actions = host.querySelector('.ring-fleet-detail-actions');
     if (!actions) return;
@@ -1106,9 +1141,19 @@
         note.textContent = '予約は完了しています。貸出開始は ' + (canOut.minStartDate || b.startDate) + ' から行えます。';
         actions.appendChild(note);
       }
+      var resBtn = document.createElement('button');
+      resBtn.type = 'button';
+      resBtn.textContent = '日程変更';
+      resBtn.onclick = function () { openFleetReschedule_(b.bookingId); };
+      actions.appendChild(resBtn);
       addBtn('キャンセル', 'cancelled', false);
     }
     if (b.status === 'out') {
+      var resOutBtn = document.createElement('button');
+      resOutBtn.type = 'button';
+      resOutBtn.textContent = '日程変更';
+      resOutBtn.onclick = function () { openFleetReschedule_(b.bookingId); };
+      actions.appendChild(resOutBtn);
       var retBtn = document.createElement('button');
       retBtn.type = 'button';
       retBtn.className = 'primary';
@@ -1264,8 +1309,13 @@
       if (patch.status === 'out' && cur.status !== 'out') okMsg = '貸出を開始しました';
       else if (patch.status === 'cancelled') okMsg = '予約をキャンセルしました';
       else if (patch.status === 'returned') okMsg = '返却を完了しました';
+      else if (!patch.status && (patch.startDate || patch.endDate)) okMsg = '予約の日程を変更しました';
       if (patch.status === 'cancelled') selectedBookingId = '';
       fleetRenderAfterServerWrite_();
+      if (wizardState && wizardState.kind === 'reschedule' && wizardState.step === 'ok' &&
+          !patch.status && (patch.startDate || patch.endDate)) {
+        fleetRescheduleCloseToDetail_();
+      }
       if (typeof showToast === 'function') showToast('success', okMsg);
     } else if (json && typeof showToast === 'function') {
       var err = String(json.error || '');
@@ -1277,6 +1327,10 @@
         if (!fleetContextCurrent_()) return;
       } else if (err === 'BOOKING_PATCH_INVALID') {
         showToast('warning', '開始日の変更と貸出開始は同時にできません。');
+      } else if (err === 'BOOKING_OVERLAP' || err === 'FLEET_VEHICLE_OUTSTANDING') {
+        showToast('warning', 'ご希望の期間は他の予約と重複しています。画面を更新してから再試行してください。');
+        await refreshBookings_();
+        if (!fleetContextCurrent_()) return;
       } else {
         showToast('error', fleetUserBookingErr_(err, '予約情報を更新できませんでした。'));
       }
@@ -1739,12 +1793,256 @@
     }
   }
 
+  function openFleetReschedule_(bookingId) {
+    if (!fleetRequireOnline_()) return;
+    var b = bookingsCache.find(function (x) { return x.bookingId === bookingId; });
+    if (!b) return;
+    var st = String(b.status || '').toLowerCase();
+    if (st === 'returned' || st === 'cancelled') {
+      if (typeof showToast === 'function') showToast('warning', 'この予約は日程変更できません。');
+      return;
+    }
+    if (wizardState && (wizardState.busy || wizardState.readPending)) return;
+    var ps = typeof ringParseYmdParts_ === 'function' ? ringParseYmdParts_(b.startDate) : null;
+    if (ps) { calYear = ps.y; calMonth = ps.m; }
+    closeMobDetailSheet_({ clearSelection: false });
+    wizardState = {
+      kind: 'reschedule',
+      step: 'form',
+      bookingId: bookingId,
+      origStart: b.startDate,
+      origEnd: b.endDate,
+      startDate: b.startDate,
+      endDate: b.endDate,
+      lockStart: st === 'out',
+      busy: false,
+      readPending: false,
+      blocker: null
+    };
+    renderFleetReschedule_();
+  }
+
+  function fleetRescheduleBooking_() {
+    if (!wizardState || wizardState.kind !== 'reschedule') return null;
+    return bookingsCache.find(function (x) { return x.bookingId === wizardState.bookingId; });
+  }
+
+  function renderRescheduleVinCal_(vin, excludeBookingId) {
+    var weeks = ringFleetCalendarWeeksJst_(calYear, calMonth);
+    var vinBookings = fleetBookingsExcludingId_(fleetBookingsForShop_(bookingsCache), excludeBookingId).filter(function (b) {
+      return String(b.vin).toUpperCase() === String(vin).toUpperCase();
+    });
+    var html = '<div class="ring-fleet-vin-cal ring-fleet-cal-grid"><p class="ring-fleet-cal-month-title">' +
+      calYear + '年' + calMonth + '月</p><div class="ring-fleet-cal-dow">' +
+      ['日','月','火','水','木','金','土'].map(function (d) { return '<span>' + d + '</span>'; }).join('') + '</div>';
+    weeks.forEach(function (week) {
+      html += '<div class="ring-fleet-cal-week">';
+      week.forEach(function (cell) {
+        if (!cell) { html += '<div class="ring-fleet-cal-day is-out"></div>'; return; }
+        var blocked = vinBookings.some(function (b) {
+          return ringFleetBookingBlocksVinForRange_(b, vin, cell.ymd, cell.ymd);
+        });
+        html += '<span class="ring-fleet-cal-day' + (blocked ? ' is-booked' : '') + '">' + cell.d + '</span>';
+      });
+      html += '</div>';
+    });
+    html += '</div>';
+    return html;
+  }
+
+  function fleetRescheduleValidateDates_(state) {
+    if (!state) return '入力を確認してください。';
+    if (ringYmdCompare_(state.startDate, state.endDate) > 0) {
+      return '返却予定日は貸出開始日以降にしてください。';
+    }
+    if (state.lockStart && state.startDate !== state.origStart) {
+      return '貸出中の予約は貸出開始日を変更できません。';
+    }
+    if (!state.lockStart && state.startDate === state.origStart && state.endDate === state.origEnd) {
+      return '日程に変更がありません。';
+    }
+    return '';
+  }
+
+  function fleetRescheduleCloseToDetail_() {
+    if (!wizardState || wizardState.kind !== 'reschedule') {
+      closeNewBookingWizard_();
+      return;
+    }
+    var bid = wizardState.bookingId;
+    closeNewBookingWizard_();
+    selectedBookingId = bid;
+    renderDetailPanel_();
+  }
+
+  function fleetRescheduleOpenAltVehicles_() {
+    if (!wizardState || wizardState.kind !== 'reschedule') return;
+    var sd = wizardState.startDate;
+    var ed = wizardState.endDate;
+    var bid = wizardState.bookingId;
+    closeNewBookingWizard_();
+    selectedBookingId = bid;
+    renderDetailPanel_();
+    if (fleetIsDesktop_()) {
+      var s = document.getElementById('fleetDeskAvailStart');
+      var e = document.getElementById('fleetDeskAvailEnd');
+      if (s) s.value = sd;
+      if (e) e.value = ed;
+      runDeskAvailSearch_();
+      return;
+    }
+    openNewBookingWizard_({ mode: 'by_date', step: 'dates', startDate: sd, endDate: ed, keepSelection: true, restoreBookingId: bid });
+  }
+
+  async function fleetRescheduleCheck_() {
+    if (!fleetRequireOnline_() || !wizardState || wizardState.kind !== 'reschedule' || wizardState.busy) return;
+    var state = wizardState;
+    var b = fleetRescheduleBooking_();
+    if (!b) {
+      if (typeof showToast === 'function') showToast('warning', '予約が見つかりません。画面を更新してください。');
+      return;
+    }
+    var startEl = document.getElementById('fleetRescheduleStart');
+    var endEl = document.getElementById('fleetRescheduleEnd');
+    state.startDate = startEl ? startEl.value : state.startDate;
+    state.endDate = endEl ? endEl.value : state.endDate;
+    var vMsg = fleetRescheduleValidateDates_(state);
+    if (vMsg) {
+      if (typeof showToast === 'function') showToast('warning', vMsg);
+      return;
+    }
+    state.busy = true;
+    state.readPending = true;
+    if (typeof showLoading === 'function') showLoading('確認中', '最新の予約状況を確認しています…');
+    var syncRes;
+    try {
+      syncRes = await ringFleetEnsureBookingsSyncedForRange_(profile, state.startDate, state.endDate);
+    } catch (eSync) {
+      syncRes = { ok: false, bookings: bookingsCache };
+    }
+    state.readPending = false;
+    state.busy = false;
+    if (!fleetContextCurrent_() || wizardState !== state) return;
+    if (typeof hideLoading === 'function') hideLoading();
+    if (!syncRes.ok) {
+      if (typeof showToast === 'function') showToast('error', '最新の空き状況を確認できません。接続を確認してから再試行してください。');
+      return;
+    }
+    fleetBookingsSyncOk = true;
+    fleetApplyBookingsCache_(syncRes.bookings || []);
+    b = fleetRescheduleBooking_();
+    if (!b) return;
+    if (fleetVinRangeAvailableExcluding_(b.vin, state.startDate, state.endDate, state.bookingId)) {
+      state.blocker = null;
+      state.step = 'ok';
+    } else {
+      state.blocker = fleetFindVinRangeBlocker_(b.vin, state.startDate, state.endDate, state.bookingId);
+      state.step = 'conflict';
+    }
+    renderFleetReschedule_();
+  }
+
+  async function fleetRescheduleConfirm_() {
+    if (!fleetRequireOnline_() || !wizardState || wizardState.kind !== 'reschedule' || wizardState.step !== 'ok') return;
+    var state = wizardState;
+    if (!fleetRescheduleBooking_()) return;
+    var patch = { endDate: state.endDate };
+    if (!state.lockStart) patch.startDate = state.startDate;
+    await fleetUpdateBooking_(state.bookingId, patch);
+  }
+
+  function renderFleetReschedule_() {
+    var shell = document.getElementById('fleetNewBookingWizard');
+    if (!shell || !wizardState || wizardState.kind !== 'reschedule') return;
+    shell.hidden = false;
+    shell.setAttribute('aria-hidden', 'false');
+    shell.setAttribute('role', 'dialog');
+    shell.setAttribute('aria-modal', 'true');
+    shell.setAttribute('aria-label', '予約の日程変更');
+    var b = fleetRescheduleBooking_();
+    if (!b) {
+      shell.innerHTML = '<div class="ring-fleet-wizard-inner"><p>予約が見つかりません。</p></div>';
+      return;
+    }
+    var lendee = fleetBookingLendee_(b);
+    var plate = fleetPlateSuffixForBooking_(b);
+    var title = { form: '予約の日程変更', ok: '日程変更の確認', conflict: '空き状況' }[wizardState.step] || '予約の日程変更';
+    var inner = '<div class="ring-fleet-wizard-inner"><div class="ring-fleet-wizard-head">' +
+      '<button type="button" class="ring-fleet-wizard-back" id="fleetRescheduleBack">戻る</button>' +
+      '<h2>' + fleetEscape_(title) + '</h2>' +
+      '<button type="button" class="ring-fleet-wizard-close">閉じる</button></div>';
+    if (!fleetBookingsSyncOk && wizardState.step === 'form') {
+      inner += '<div class="ring-fleet-avail-warn ring-fleet-avail-offline">最新の予約情報を取得できていません。接続を確認してください。</div>';
+    }
+    if (wizardState.step === 'form') {
+      inner += '<p style="font-size:14px;font-weight:900;margin:0 0 4px;">' + fleetEscape_(fleetVehicleName_(b.vin)) + '</p>' +
+        '<p style="font-size:12px;font-weight:700;color:#64748b;margin:0 0 8px;">ナンバー下4桁：' + fleetEscape_(plate) +
+        (lendee ? '<br>貸出先：' + fleetEscape_(lendee) : '') + '</p>' +
+        '<p style="font-size:12px;font-weight:700;margin:0 0 12px;">現在の予約期間：<strong>' +
+        fleetEscape_(fleetRescheduleFmtRange_(b.startDate, b.endDate)) + '</strong></p>';
+      inner += renderRescheduleVinCal_(b.vin, wizardState.bookingId);
+      inner += '<p style="font-size:11px;font-weight:700;color:#64748b;margin:8px 0;">赤い日は他の予約・貸出があります</p>';
+      inner += '<div class="ring-fleet-field"><label for="fleetRescheduleStart">新しい貸出開始日</label>' +
+        '<input type="date" id="fleetRescheduleStart" value="' + fleetEscape_(wizardState.startDate) + '"' +
+        (wizardState.lockStart ? ' disabled' : '') + '></div>';
+      inner += '<div class="ring-fleet-field"><label for="fleetRescheduleEnd">新しい返却予定日</label>' +
+        '<input type="date" id="fleetRescheduleEnd" value="' + fleetEscape_(wizardState.endDate) + '"></div>';
+      if (wizardState.lockStart) {
+        inner += '<p class="ring-fleet-checkout-early-hint">貸出中は返却予定日のみ変更できます。</p>';
+      }
+      inner += '<button type="button" class="ring-fleet-confirm-save" id="fleetRescheduleCheck">空き状況を確認</button>';
+    } else if (wizardState.step === 'ok') {
+      inner += '<p class="ring-fleet-reschedule-ok" style="font-weight:800;color:#15803d;margin:0 0 12px;">ご希望の期間は貸出可能です。</p>' +
+        '<p style="font-size:12px;font-weight:700;margin:0 0 6px;">現在の予約：<br><strong>' +
+        fleetEscape_(fleetRescheduleFmtRange_(wizardState.origStart, wizardState.origEnd)) + '</strong></p>' +
+        '<p style="font-size:12px;font-weight:700;margin:0 0 16px;">変更後の予約：<br><strong>' +
+        fleetEscape_(fleetRescheduleFmtRange_(wizardState.startDate, wizardState.endDate)) + '</strong></p>' +
+        '<button type="button" class="ring-fleet-confirm-save primary" id="fleetRescheduleConfirm">日程変更を確定</button>' +
+        '<button type="button" class="ring-fleet-wizard-back" id="fleetRescheduleRepick" style="margin-top:10px;">日付を選び直す</button>';
+    } else if (wizardState.step === 'conflict') {
+      inner += '<p class="ring-fleet-reschedule-ng" style="font-weight:800;color:#b91c1c;margin:0 0 10px;">ご希望の期間は、すでに別のお客様の予約が入っています。</p>';
+      if (wizardState.blocker && String(wizardState.blocker.status || '').toLowerCase() !== 'out') {
+        inner += '<p style="font-size:12px;font-weight:700;margin:0 0 12px;">' + fleetEscape_(fleetRescheduleBlockedMsg_(wizardState.blocker)) + '</p>';
+      } else if (wizardState.blocker) {
+        inner += '<p style="font-size:12px;font-weight:700;margin:0 0 12px;">この車両は未返却のため、この期間は選べません。</p>';
+      }
+      inner += '<button type="button" class="ring-fleet-confirm-save" id="fleetRescheduleRepick">別の日付を選ぶ</button>' +
+        '<button type="button" id="fleetRescheduleAltVeh" style="margin-top:10px;">同じ期間で空いている車両を探す</button>';
+    }
+    inner += '</div>';
+    shell.innerHTML = inner;
+    shell.querySelector('.ring-fleet-wizard-close').onclick = fleetRescheduleCloseToDetail_;
+    var backBtn = shell.querySelector('#fleetRescheduleBack');
+    if (backBtn) {
+      backBtn.onclick = function () {
+        if (wizardState.step === 'form') fleetRescheduleCloseToDetail_();
+        else { wizardState.step = 'form'; renderFleetReschedule_(); }
+      };
+    }
+    var checkBtn = shell.querySelector('#fleetRescheduleCheck');
+    if (checkBtn) checkBtn.onclick = function () { fleetRescheduleCheck_(); };
+    var confirmBtn = shell.querySelector('#fleetRescheduleConfirm');
+    if (confirmBtn) confirmBtn.onclick = function () { fleetRescheduleConfirm_(); };
+    var repick = shell.querySelector('#fleetRescheduleRepick');
+    if (repick) repick.onclick = function () { wizardState.step = 'form'; renderFleetReschedule_(); };
+    var altVeh = shell.querySelector('#fleetRescheduleAltVeh');
+    if (altVeh) altVeh.onclick = function () { fleetRescheduleOpenAltVehicles_(); };
+    var startInput = document.getElementById('fleetRescheduleStart');
+    var endInput = document.getElementById('fleetRescheduleEnd');
+    bindFleetDateField_(startInput);
+    bindFleetDateField_(endInput);
+  }
+
   function openNewBookingWizard_(preset) {
     if (!fleetContextCurrent_() || (wizardState && wizardState.busy)) return;
     closeNewBookingWizard_();
-    closeMobDetailSheet_({ clearSelection: true });
-    selectedBookingId = '';
-    renderDetailPanel_();
+    var pre = preset || {};
+    var restoreId = pre.restoreBookingId || '';
+    if (!pre.keepSelection) {
+      closeMobDetailSheet_({ clearSelection: true });
+      selectedBookingId = '';
+      renderDetailPanel_();
+    }
     var today = ringFormatDateToYmdJst_(new Date());
     wizardState = Object.assign({
       kind: 'booking',
@@ -1757,8 +2055,11 @@
       pickStart: '',
       pickEnd: '',
       lendeeName: ''
-    }, preset || {});
+    }, pre);
     renderNewBookingWizard_();
+    if (pre.keepSelection && restoreId) {
+      selectedBookingId = restoreId;
+    }
   }
 
   function wizardGoBack_() {
@@ -1830,7 +2131,7 @@
 
   function renderNewBookingWizard_() {
     var shell = document.getElementById('fleetNewBookingWizard');
-    if (!shell || !wizardState || wizardState.kind === 'return') return;
+    if (!shell || !wizardState || wizardState.kind === 'return' || wizardState.kind === 'reschedule') return;
     shell.hidden = false;
     shell.setAttribute('aria-hidden', 'false');
     shell.setAttribute('role', 'dialog');
