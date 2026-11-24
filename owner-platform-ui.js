@@ -228,6 +228,41 @@
     return true;
   }
 
+  /** @returns {'public'|'private'} */
+  function ringNormalizeHistoryVisibility_(value) {
+    return String(value == null ? 'public' : value).trim().toLowerCase() === 'private' ? 'private' : 'public';
+  }
+
+  function ringHistoryIsPrivate_(log) {
+    return ringNormalizeHistoryVisibility_(log && log.visibility) === 'private';
+  }
+
+  function ringHistoryVisibilityLabel_(log) {
+    return ringHistoryIsPrivate_(log) ? '非公開' : '公開';
+  }
+
+  /** checked=true は非公開（チェックあり＝非公開） */
+  function ringHistoryVisibilityUiState_(log) {
+    var isPrivate = ringHistoryIsPrivate_(log);
+    return {
+      isPrivate: isPrivate,
+      visibility: isPrivate ? 'private' : 'public',
+      label: isPrivate ? '非公開' : '公開',
+      checked: isPrivate
+    };
+  }
+
+  async function ringRefreshLogVisibilityFromCache_(log, vin) {
+    if (!log || !log.log_id || typeof global.getMaintenanceLogsByVin !== 'function') return log;
+    var fresh = global.getMaintenanceLogsByVin(vin).find(function (l) { return l && l.log_id === log.log_id; });
+    if (fresh) {
+      log.visibility = ringNormalizeHistoryVisibility_(fresh.visibility);
+      return fresh;
+    }
+    log.visibility = ringNormalizeHistoryVisibility_(log.visibility);
+    return log;
+  }
+
   function filterEditableVisibilityLogs_(logs) {
     return (logs || []).filter(function (l) {
       return isMaintenanceVisibilityLog_(l) && l.historyVisibilityEditable;
@@ -237,7 +272,7 @@
   function bulkPrivateCheckboxState_(logs) {
     var editable = filterEditableVisibilityLogs_(logs);
     if (!editable.length) return { show: false };
-    var priv = editable.filter(function (l) { return l.visibility === 'private'; });
+    var priv = editable.filter(function (l) { return ringHistoryIsPrivate_(l); });
     if (!priv.length) return { show: true, checked: false, indeterminate: false, count: editable.length };
     if (priv.length === editable.length) return { show: true, checked: true, indeterminate: false, count: editable.length };
     return { show: true, checked: false, indeterminate: true, count: editable.length };
@@ -324,12 +359,12 @@
 
   function buildDetailVisibilityToggle(log) {
     if (!log || !isMaintenanceVisibilityLog_(log)) return '';
-    var priv = log.visibility === 'private';
+    var state = ringHistoryVisibilityUiState_(log);
     if (!log.historyVisibilityEditable) {
-      return '<span class="ring-vis-compact ring-vis-readonly" aria-live="polite">' + (priv ? '非公開' : '公開') + '</span>';
+      return '<span class="ring-vis-compact ring-vis-readonly" aria-live="polite">' + state.label + '</span>';
     }
     return '<label class="ring-vis-compact ring-vis-detail-slot">' +
-      '<input type="checkbox" id="ring-log-vis-toggle" aria-label="非公開"' + (priv ? ' checked' : '') + '>非公開</label>';
+      '<input type="checkbox" id="ring-log-vis-toggle" aria-label="非公開"' + (state.checked ? ' checked' : '') + '>非公開</label>';
   }
 
   function wireDetailVisibilityToggle(log, vin, onUpdated) {
@@ -342,20 +377,34 @@
       var wantPrivate = el.checked;
       var vis = wantPrivate ? 'private' : 'public';
       el.disabled = true;
+      var saved = false;
       try {
         var result = await OP.setHistoryVisibility(log.log_id, vis);
         if (!result || result.success !== true) throw new Error('SAVE_FAILED');
-        log.visibility = vis;
+        saved = true;
+        log.visibility = ringNormalizeHistoryVisibility_(vis);
         if (typeof global.showToast === 'function') global.showToast('success', '公開設定を保存しました');
       } catch (e) {
-        el.checked = log.visibility === 'private';
         global.showToast('error', '公開設定の保存を確認できません。再取得してください。');
-        if (typeof global.syncMaintenanceHistoryForVin === 'function') await global.syncMaintenanceHistoryForVin(vin);
+        if (typeof global.syncMaintenanceHistoryForVin === 'function') {
+          try { await global.syncMaintenanceHistoryForVin(vin); } catch (eSync) { /* ignore */ }
+        }
+        await ringRefreshLogVisibilityFromCache_(log, vin);
+        var failState = ringHistoryVisibilityUiState_(log);
+        el.checked = failState.checked;
+        if (typeof onUpdated === 'function') onUpdated(log);
         return;
       } finally { el.disabled = false; }
-      if (vis === 'private' && typeof OP.purgeSensitiveCaches === 'function') OP.purgeSensitiveCaches();
-      if (typeof global.syncMaintenanceHistoryForVin === 'function') await global.syncMaintenanceHistoryForVin(vin);
-      if (typeof onUpdated === 'function') onUpdated(log);
+      if (saved && vis === 'private' && typeof OP.purgeSensitiveCaches === 'function') OP.purgeSensitiveCaches();
+      if (saved && typeof global.syncMaintenanceHistoryForVin === 'function') {
+        try { await global.syncMaintenanceHistoryForVin(vin); } catch (eSync2) { /* ignore */ }
+      }
+      if (saved) {
+        await ringRefreshLogVisibilityFromCache_(log, vin);
+        var okState = ringHistoryVisibilityUiState_(log);
+        el.checked = okState.checked;
+        if (typeof onUpdated === 'function') onUpdated(log);
+      }
     });
   }
 
@@ -471,6 +520,20 @@
     promptOwnerOnVehicleAdd: promptOwnerOnVehicleAdd,
     promptFleetOwnerOnVehicleAdd: promptFleetOwnerOnVehicleAdd,
     archiveVehicleWithPreflight: archiveVehicleWithPreflight,
+    filterEditableVisibilityLogs: filterEditableVisibilityLogs_,
+    historyVisibilityUiState: ringHistoryVisibilityUiState_,
+    historyVisibilityLabel: ringHistoryVisibilityLabel_,
+    syncHistoryVisibilityRowDom: function (rowEl, log) {
+      if (!rowEl || !log) return;
+      var state = ringHistoryVisibilityUiState_(log);
+      var meta = rowEl.querySelector('[data-ring-vis-state]');
+      if (meta) meta.textContent = state.label;
+      var cb = rowEl.querySelector('input[type="checkbox"]');
+      if (cb) {
+        cb.checked = state.checked;
+        cb.removeAttribute('aria-invalid');
+      }
+    },
     ownerMarkHtml: function (car) {
       var b = ownerMarkLabel(car);
       if (!b) return '';
