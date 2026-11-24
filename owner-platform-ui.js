@@ -9,6 +9,448 @@
 
   function active() { return OP.active && OP.active(); }
 
+  var RING_VISIBILITY_QUEUE_KEY = 'ring_visibility_pending_v1';
+  var VIS_DEBOUNCE_MS = 400;
+  var ringVisQueue_ = { byLog: {}, bulk: null };
+  var ringVisDebounceTimer_ = null;
+  var ringVisFlushBusy_ = false;
+  var ringVisFlushPassScheduled_ = false;
+  var RING_VISIBILITY_FLUSH_LOCK_KEY = 'ring_visibility_flush_lock_v1';
+  var ringVisTabId_ = 'vis-' + String(Date.now()) + '-' + Math.random().toString(36).slice(2, 9);
+
+  function ringVisReleaseFlushLock_() {
+    try {
+      var raw = global.localStorage.getItem(RING_VISIBILITY_FLUSH_LOCK_KEY);
+      if (!raw) return;
+      var lock = ringVisSafeJsonParse_(raw, null);
+      if (lock && lock.tabId === ringVisTabId_) global.localStorage.removeItem(RING_VISIBILITY_FLUSH_LOCK_KEY);
+    } catch (eRel) { /* ignore */ }
+  }
+
+  function ringVisTryAcquireFlushLock_() {
+    try {
+      var now = Date.now();
+      var raw = global.localStorage.getItem(RING_VISIBILITY_FLUSH_LOCK_KEY);
+      if (raw) {
+        var lock = ringVisSafeJsonParse_(raw, null);
+        if (lock && lock.until > now && lock.tabId !== ringVisTabId_) return false;
+      }
+      global.localStorage.setItem(RING_VISIBILITY_FLUSH_LOCK_KEY, JSON.stringify({
+        tabId: ringVisTabId_,
+        until: now + 90000
+      }));
+      return true;
+    } catch (eLock) {
+      return true;
+    }
+  }
+
+  function ringVisSafeJsonParse_(raw, fallback) {
+    try { return JSON.parse(raw); } catch (e) { return fallback; }
+  }
+
+  function ringVisOwnerScope_() {
+  if (typeof global.ringRetryQueueResolveOwner_ === 'function') {
+      var profile = typeof global.getCurrentProfile === 'function' ? global.getCurrentProfile() : null;
+      return global.ringRetryQueueResolveOwner_(profile);
+    }
+    return null;
+  }
+
+  function ringVisOwnerMayFlush_(owner) {
+    if (!owner) return false;
+    var profile = typeof global.getCurrentProfile === 'function' ? global.getCurrentProfile() : null;
+    if (!profile || typeof global.ringRetryQueueItemMayFlush_ !== 'function') return false;
+    return global.ringRetryQueueItemMayFlush_(owner, profile);
+  }
+
+  function ringVisPickSlot_(a, b) {
+    if (!a) return b;
+    if (!b) return a;
+    if ((b.intentSeq || 0) > (a.intentSeq || 0)) return b;
+    if ((b.intentSeq || 0) < (a.intentSeq || 0)) return a;
+    if ((b.updatedAt || 0) > (a.updatedAt || 0)) return b;
+    return a;
+  }
+
+  function ringVisHydrateFromStorage_() {
+    try {
+      var raw = global.localStorage.getItem(RING_VISIBILITY_QUEUE_KEY);
+      if (!raw) return;
+      var data = ringVisSafeJsonParse_(raw, null);
+      if (!data || typeof data !== 'object') return;
+      var remoteBy = data.byLog && typeof data.byLog === 'object' ? data.byLog : {};
+      Object.keys(remoteBy).forEach(function (id) {
+        ringVisQueue_.byLog[id] = ringVisPickSlot_(ringVisQueue_.byLog[id], remoteBy[id]);
+      });
+      if (data.bulk && typeof data.bulk === 'object') {
+        if (!ringVisQueue_.bulk || (data.bulk.generation || 0) >= (ringVisQueue_.bulk.generation || 0)) {
+          ringVisQueue_.bulk = data.bulk;
+        }
+      }
+    } catch (eHydrate) { /* ignore */ }
+  }
+
+  function ringVisLoadQueue_() {
+    try { ringVisHydrateFromStorage_(); } catch (eLoad) { /* ignore */ }
+  }
+
+  function ringVisReleaseInflight_(slot) {
+    if (!slot) return;
+    slot.inflight = false;
+    delete slot.inflightSeq;
+    slot.status = ringVisIsPendingSlot_(slot) ? 'pending' : 'idle';
+  }
+
+  function ringVisSaveQueue_() {
+    try {
+      global.localStorage.setItem(RING_VISIBILITY_QUEUE_KEY, JSON.stringify({
+        v: 1,
+        byLog: ringVisQueue_.byLog,
+        bulk: ringVisQueue_.bulk
+      }));
+    } catch (eSave) {
+      if (typeof global.showToast === 'function') {
+        global.showToast('error', '公開設定の未保存状態を端末に記録できませんでした。ページを閉じる前に再度操作してください。');
+      }
+    }
+  }
+
+  function ringVisSlot_(logId) {
+    return ringVisQueue_.byLog[String(logId || '').trim()] || null;
+  }
+
+  function ringVisIsPendingSlot_(slot) {
+    if (!slot) return false;
+    return ringNormalizeHistoryVisibility_(slot.targetVisibility) !== ringNormalizeHistoryVisibility_(slot.confirmedVisibility);
+  }
+
+  function ringVisDisplayVisibility_(logId, fallback) {
+    var slot = ringVisSlot_(logId);
+    if (!slot) return ringNormalizeHistoryVisibility_(fallback);
+    if (ringVisIsPendingSlot_(slot) || slot.status === 'failed') return ringNormalizeHistoryVisibility_(slot.targetVisibility);
+    return ringNormalizeHistoryVisibility_(slot.confirmedVisibility || fallback);
+  }
+
+  function ringVisPatchLogLocal_(logId, vin, visibility) {
+    if (typeof ringHistoryView_ === 'undefined') return;
+    var row = ringHistoryView_.get(logId);
+    if (row) row.visibility = ringNormalizeHistoryVisibility_(visibility);
+    else if (vin) {
+      row = { log_id: logId, vin: vin, visibility: ringNormalizeHistoryVisibility_(visibility) };
+      ringHistoryView_.set(logId, row);
+    }
+  }
+
+  function ringVisApplyIntent_(logId, vin, visibility, opts) {
+    opts = opts || {};
+    ringVisHydrateFromStorage_();
+    var id = String(logId || '').trim();
+    if (!id) return;
+    var vis = ringNormalizeHistoryVisibility_(visibility);
+    var slot = ringVisSlot_(id) || {
+      logId: id,
+      vin: String(vin || '').trim(),
+      intentSeq: 0,
+      confirmedVisibility: vis,
+      owner: null
+    };
+    if (opts.confirmedFrom != null) {
+      slot.confirmedVisibility = ringNormalizeHistoryVisibility_(opts.confirmedFrom);
+    } else if (!slot.confirmedVisibility || opts.resetConfirmed) {
+      var cur = null;
+      if (typeof global.getMaintenanceLogsByVin === 'function' && vin) {
+        cur = global.getMaintenanceLogsByVin(vin).find(function (l) { return l && l.log_id === id; });
+      }
+      if (cur) slot.confirmedVisibility = ringNormalizeHistoryVisibility_(cur.visibility);
+      else if (!slot.confirmedVisibility) slot.confirmedVisibility = slot.targetVisibility;
+    }
+    slot.vin = String(vin || slot.vin || '').trim();
+    slot.intentSeq = (slot.intentSeq || 0) + 1;
+    slot.targetVisibility = vis;
+    slot.status = 'pending';
+    slot.owner = ringVisOwnerScope_();
+    slot.updatedAt = Date.now();
+  ringVisQueue_.byLog[id] = slot;
+    if (opts.removeFromBulk) ringVisRemoveFromBulk_(id);
+    ringVisPatchLogLocal_(id, slot.vin, vis);
+    ringVisSaveQueue_();
+    ringVisScheduleFlush_();
+    ringVisUpdateBadgesForLog_(id);
+  }
+
+  function ringVisRemoveFromBulk_(logId) {
+    if (!ringVisQueue_.bulk || !Array.isArray(ringVisQueue_.bulk.logIds)) return;
+    ringVisQueue_.bulk.logIds = ringVisQueue_.bulk.logIds.filter(function (x) { return x !== logId; });
+    if (!ringVisQueue_.bulk.logIds.length) ringVisQueue_.bulk = null;
+  }
+
+  function ringVisEnqueueBulk_(vin, logIds, visibility) {
+    var vis = ringNormalizeHistoryVisibility_(visibility);
+    var ids = (logIds || []).map(function (x) { return String(x || '').trim(); }).filter(Boolean);
+    ringVisQueue_.bulk = {
+      vin: String(vin || '').trim(),
+      visibility: vis,
+      logIds: ids.slice(),
+      generation: Date.now()
+    };
+    ids.forEach(function (id) {
+      var confirmedFrom = vis === 'private' ? 'public' : 'private';
+      if (typeof global.getMaintenanceLogsByVin === 'function') {
+        var found = global.getMaintenanceLogsByVin(vin).find(function (l) { return l && l.log_id === id; });
+        if (found) confirmedFrom = ringNormalizeHistoryVisibility_(found.visibility);
+      }
+      ringVisApplyIntent_(id, vin, vis, { confirmedFrom: confirmedFrom });
+    });
+    ringVisSaveQueue_();
+  }
+
+  function ringVisScheduleFlush_() {
+    if (ringVisDebounceTimer_) clearTimeout(ringVisDebounceTimer_);
+    ringVisDebounceTimer_ = setTimeout(function () { ringVisFlushAll_(); }, VIS_DEBOUNCE_MS);
+  }
+
+  function ringVisHasPendingWork_() {
+    var keys = Object.keys(ringVisQueue_.byLog);
+    for (var i = 0; i < keys.length; i++) {
+      var s = ringVisQueue_.byLog[keys[i]];
+      if (!ringVisIsPendingSlot_(s) || s.status === 'inflight') continue;
+      if (s.status === 'failed') {
+        if (global.navigator && global.navigator.onLine === false) continue;
+        s.status = 'pending';
+      }
+      return true;
+    }
+    return false;
+  }
+
+  async function ringVisSendSingle_(slot) {
+    if (!slot || slot.inflight) return;
+    if (!ringVisIsPendingSlot_(slot)) {
+      slot.status = 'idle';
+      ringVisSaveQueue_();
+      return;
+    }
+    if (!ringVisOwnerMayFlush_(slot.owner)) {
+      slot.status = 'failed';
+      ringVisSaveQueue_();
+      ringVisUpdateBadgesForLog_(slot.logId);
+      return;
+    }
+    var sendSeq = slot.intentSeq;
+    var sendVis = slot.targetVisibility;
+    slot.status = 'inflight';
+    slot.inflight = true;
+    slot.inflightSeq = sendSeq;
+    ringVisSaveQueue_();
+    ringVisUpdateBadgesForLog_(slot.logId);
+    try {
+      var result = await OP.setHistoryVisibility(slot.logId, sendVis);
+      if (!result || result.success !== true) throw new Error((result && result.error) || 'SAVE_FAILED');
+      var ack = ringNormalizeHistoryVisibility_(result.visibility || sendVis);
+      if (sendSeq !== slot.intentSeq || sendVis !== slot.targetVisibility) {
+        slot.confirmedVisibility = ack;
+        ringVisPatchLogLocal_(slot.logId, slot.vin, ringVisIsPendingSlot_(slot) ? slot.targetVisibility : ack);
+        ringVisReleaseInflight_(slot);
+        ringVisSaveQueue_();
+        ringVisUpdateBadgesForLog_(slot.logId);
+        if (ringVisIsPendingSlot_(slot)) ringVisScheduleFlush_();
+        return;
+      }
+      slot.confirmedVisibility = ack;
+      slot.status = ringVisIsPendingSlot_(slot) ? 'pending' : 'idle';
+      slot.inflight = false;
+      delete slot.inflightSeq;
+      ringVisPatchLogLocal_(slot.logId, slot.vin, ack);
+      if (ack === 'private' && typeof OP.purgeSensitiveCaches === 'function') OP.purgeSensitiveCaches();
+      if (!ringVisIsPendingSlot_(slot)) delete ringVisQueue_.byLog[slot.logId];
+      ringVisSaveQueue_();
+      ringVisUpdateBadgesForLog_(slot.logId);
+    } catch (eSend) {
+      slot.inflight = false;
+      delete slot.inflightSeq;
+      if (sendSeq === slot.intentSeq) {
+        slot.status = 'failed';
+        ringVisSaveQueue_();
+        ringVisUpdateBadgesForLog_(slot.logId);
+        if (typeof global.showToast === 'function') {
+          global.showToast('error', '公開設定を保存できませんでした。未保存のままです。');
+        }
+      }
+    }
+  }
+
+  function ringVisCollectBulkIds_() {
+    var bulk = ringVisQueue_.bulk;
+    if (!bulk || !bulk.vin || !Array.isArray(bulk.logIds)) return null;
+    var vis = ringNormalizeHistoryVisibility_(bulk.visibility);
+    var ids = bulk.logIds.filter(function (id) {
+      var s = ringVisSlot_(id);
+      return s && ringVisIsPendingSlot_(s) && s.targetVisibility === vis && s.status !== 'inflight';
+    });
+    if (ids.length < 2) return null;
+    return { vin: bulk.vin, visibility: vis, logIds: ids };
+  }
+
+  async function ringVisSendBulk_(bundle) {
+    if (!bundle || bundle.logIds.length < 2) return;
+    var owner = ringVisOwnerScope_();
+    if (!ringVisOwnerMayFlush_(owner)) {
+      bundle.logIds.forEach(function (id) {
+        var s = ringVisSlot_(id);
+        if (s) { s.status = 'failed'; ringVisUpdateBadgesForLog_(id); }
+      });
+      ringVisSaveQueue_();
+      return;
+    }
+    bundle.logIds.forEach(function (id) {
+      var s = ringVisSlot_(id);
+      if (s) { s.status = 'inflight'; s.inflight = true; ringVisUpdateBadgesForLog_(id); }
+    });
+    ringVisSaveQueue_();
+    try {
+      var res = await OP.bulkHistoryVisibility(bundle.vin, bundle.logIds, bundle.visibility);
+      if (!res || res.success !== true || res.updated !== bundle.logIds.length) throw new Error('PARTIAL');
+      bundle.logIds.forEach(function (id) {
+        var s = ringVisSlot_(id);
+        if (!s) return;
+        if (s.intentSeq && s.targetVisibility === bundle.visibility) {
+          s.confirmedVisibility = bundle.visibility;
+          s.inflight = false;
+          s.status = ringVisIsPendingSlot_(s) ? 'pending' : 'idle';
+          ringVisPatchLogLocal_(id, bundle.vin, bundle.visibility);
+          if (!ringVisIsPendingSlot_(s)) delete ringVisQueue_.byLog[id];
+          ringVisUpdateBadgesForLog_(id);
+        } else {
+          s.inflight = false;
+          s.status = 'pending';
+        }
+      });
+      if (bundle.visibility === 'private' && typeof OP.purgeSensitiveCaches === 'function') OP.purgeSensitiveCaches();
+      ringVisQueue_.bulk = null;
+      ringVisSaveQueue_();
+    } catch (eBulk) {
+      bundle.logIds.forEach(function (id) {
+        var s = ringVisSlot_(id);
+        if (!s) return;
+        s.inflight = false;
+        if (s.targetVisibility === bundle.visibility) s.status = 'failed';
+        ringVisUpdateBadgesForLog_(id);
+      });
+      ringVisSaveQueue_();
+      if (typeof global.showToast === 'function') {
+        global.showToast('error', '一括変更を保存できませんでした。未保存の履歴があります。');
+      }
+    }
+  }
+
+  async function ringVisFlushPass_() {
+    var bulk = ringVisCollectBulkIds_();
+    if (bulk) {
+      await ringVisSendBulk_(bulk);
+    }
+    var ids = Object.keys(ringVisQueue_.byLog);
+    for (var i = 0; i < ids.length; i++) {
+      var slot = ringVisQueue_.byLog[ids[i]];
+      if (!slot || slot.inflight || !ringVisIsPendingSlot_(slot)) continue;
+      if (bulk && bulk.logIds.indexOf(slot.logId) >= 0) continue;
+      await ringVisSendSingle_(slot);
+    }
+  }
+
+  async function ringVisFlushAll_() {
+    if (ringVisFlushBusy_) {
+      ringVisFlushPassScheduled_ = true;
+      return;
+    }
+    if (!ringVisTryAcquireFlushLock_()) {
+      ringVisScheduleFlush_();
+      return;
+    }
+    ringVisFlushBusy_ = true;
+    try {
+      ringVisLoadQueue_();
+      var passGuard = 0;
+      do {
+        ringVisFlushPassScheduled_ = false;
+        await ringVisFlushPass_();
+        passGuard++;
+      } while ((ringVisHasPendingWork_() || ringVisFlushPassScheduled_) && passGuard < 64);
+    } finally {
+      ringVisFlushBusy_ = false;
+      ringVisReleaseFlushLock_();
+    }
+    if (ringVisHasPendingWork_()) ringVisScheduleFlush_();
+  }
+
+  function ringVisUpdateBadgesForLog_(logId) {
+    var slot = ringVisSlot_(logId);
+    var nodes = document.querySelectorAll('[data-ring-vis-status="' + logId + '"]');
+    nodes.forEach(function (el) {
+      if (!slot || !ringVisIsPendingSlot_(slot)) {
+        if (slot && slot.status === 'failed') {
+          el.hidden = false;
+          el.textContent = '未保存';
+          el.className = 'ring-vis-save-status ring-vis-save-status--error';
+        } else {
+          el.hidden = true;
+          el.textContent = '';
+          el.className = 'ring-vis-save-status';
+        }
+        return;
+      }
+      if (slot.inflight || slot.status === 'inflight') {
+        el.hidden = false;
+        el.textContent = '保存中';
+        el.className = 'ring-vis-save-status ring-vis-save-status--pending';
+      } else if (slot.status === 'failed') {
+        el.hidden = false;
+        el.textContent = '未保存';
+        el.className = 'ring-vis-save-status ring-vis-save-status--error';
+      } else if (global.navigator && global.navigator.onLine === false) {
+        el.hidden = false;
+        el.textContent = '未保存';
+        el.className = 'ring-vis-save-status ring-vis-save-status--error';
+      } else {
+        el.hidden = false;
+        el.textContent = '保存中';
+        el.className = 'ring-vis-save-status ring-vis-save-status--pending';
+      }
+    });
+  }
+
+  function ringVisReconcileRow_(row) {
+    if (!row || !row.log_id) return row;
+    var slot = ringVisSlot_(row.log_id);
+    if (slot && (ringVisIsPendingSlot_(slot) || slot.status === 'failed')) {
+      row.visibility = ringNormalizeHistoryVisibility_(slot.targetVisibility);
+    }
+    return row;
+  }
+
+  function ringVisibilityApplyPendingToRows_(row) {
+    return ringVisReconcileRow_(row);
+  }
+
+  function ringVisibilityWireCheckbox_(checkbox, log, vin, onAfter) {
+    if (!checkbox || !log || !log.log_id || checkbox._ringVisQWired) return;
+    checkbox._ringVisQWired = true;
+    checkbox.addEventListener('change', function () {
+      var vis = checkbox.checked ? 'private' : 'public';
+      var slot0 = ringVisSlot_(log.log_id);
+      var confirmedFrom = (slot0 && slot0.confirmedVisibility != null)
+        ? slot0.confirmedVisibility
+        : ringNormalizeHistoryVisibility_(log.visibility);
+      log.visibility = vis;
+      ringVisApplyIntent_(log.log_id, vin || log.vin, vis, {
+        removeFromBulk: true,
+        confirmedFrom: confirmedFrom
+      });
+      if (typeof onAfter === 'function') onAfter(log);
+    });
+    ringVisUpdateBadgesForLog_(log.log_id);
+  }
+
   function ownerDialog(title, message, choices, extra) {
     var dialog = document.createElement('dialog');
     dialog.className = 'owner-dialog';
@@ -243,10 +685,13 @@
 
   /** checked=true は非公開（チェックあり＝非公開） */
   function ringHistoryVisibilityUiState_(log) {
-    var isPrivate = ringHistoryIsPrivate_(log);
+    var vis = log && log.log_id
+      ? ringVisDisplayVisibility_(log.log_id, log.visibility)
+      : ringNormalizeHistoryVisibility_(log && log.visibility);
+    var isPrivate = vis === 'private';
     return {
       isPrivate: isPrivate,
-      visibility: isPrivate ? 'private' : 'public',
+      visibility: vis,
       label: isPrivate ? '非公開' : '公開',
       checked: isPrivate
     };
@@ -272,7 +717,9 @@
   function bulkPrivateCheckboxState_(logs) {
     var editable = filterEditableVisibilityLogs_(logs);
     if (!editable.length) return { show: false };
-    var priv = editable.filter(function (l) { return ringHistoryIsPrivate_(l); });
+    var priv = editable.filter(function (l) {
+      return ringVisDisplayVisibility_(l.log_id, l.visibility) === 'private';
+    });
     if (!priv.length) return { show: true, checked: false, indeterminate: false, count: editable.length };
     if (priv.length === editable.length) return { show: true, checked: true, indeterminate: false, count: editable.length };
     return { show: true, checked: false, indeterminate: true, count: editable.length };
@@ -285,7 +732,7 @@
     el.disabled = !active();
   }
 
-  async function applyBulkVisibilityChange_(vin, logs, makePrivate) {
+  function applyBulkVisibilityChange_(vin, logs, makePrivate) {
     var editable = filterEditableVisibilityLogs_(logs);
     if (!editable.length) {
       global.showToast('error', '変更できる履歴がありません');
@@ -295,18 +742,10 @@
     var vis = makePrivate ? 'private' : 'public';
     var verb = makePrivate ? '非公開' : '公開';
     if (!confirm('表示中の変更可能な整備履歴 ' + ids.length + ' 件を一括で' + verb + 'にしますか？')) return false;
-    try {
-      var res = await OP.bulkHistoryVisibility(vin, ids, vis);
-      if (!res || res.success !== true || res.updated !== ids.length) throw new Error('PARTIAL');
-      if (vis === 'private' && typeof OP.purgeSensitiveCaches === 'function') OP.purgeSensitiveCaches();
-      if (typeof global.syncMaintenanceHistoryForVin === 'function') await global.syncMaintenanceHistoryForVin(vin);
-      editable.forEach(function (l) { l.visibility = vis; });
-      return true;
-    } catch (eBulk) {
-      global.showToast('error', '変更結果を確認できません。履歴を再取得してください。');
-      if (typeof global.syncMaintenanceHistoryForVin === 'function') await global.syncMaintenanceHistoryForVin(vin);
-      return false;
-    }
+    editable.forEach(function (l) { l.visibility = vis; });
+    ringVisEnqueueBulk_(vin, ids, vis);
+    ids.forEach(ringVisUpdateBadgesForLog_);
+    return true;
   }
 
   /** @param {HTMLElement} host */
@@ -326,18 +765,17 @@
       host.innerHTML = '<label class="ring-vis-compact" title="表示中の変更可能な整備履歴のみ">' +
         '<input type="checkbox" id="ring-bulk-private-toggle" aria-label="一括非公開">一括非公開</label>';
       var toggle = host.querySelector('#ring-bulk-private-toggle');
-      toggle.addEventListener('change', async function () {
-        if (toggle.disabled) return;
+      toggle.addEventListener('change', function () {
         var wantPrivate = toggle.checked;
         var prevIndet = toggle.indeterminate;
-        toggle.disabled = true;
-        var ok = await applyBulkVisibilityChange_(vin, host._ringVisGetLogs(), wantPrivate);
+        var ok = applyBulkVisibilityChange_(vin, host._ringVisGetLogs(), wantPrivate);
         if (!ok) {
           var st = bulkPrivateCheckboxState_(host._ringVisGetLogs());
           syncBulkPrivateCheckboxUi_(toggle, st);
-        } else if (typeof host._ringVisOnAfter === 'function') host._ringVisOnAfter();
-        else syncBulkPrivateCheckboxUi_(toggle, bulkPrivateCheckboxState_(host._ringVisGetLogs()));
-        toggle.disabled = !active();
+        } else {
+          if (typeof host._ringVisOnAfter === 'function') host._ringVisOnAfter();
+          else syncBulkPrivateCheckboxUi_(toggle, bulkPrivateCheckboxState_(host._ringVisGetLogs()));
+        }
         if (prevIndet && !ok) toggle.indeterminate = true;
       });
       host._ringVisWired = true;
@@ -364,48 +802,24 @@
       return '<span class="ring-vis-compact ring-vis-readonly" aria-live="polite">' + state.label + '</span>';
     }
     return '<label class="ring-vis-compact ring-vis-detail-slot">' +
-      '<input type="checkbox" id="ring-log-vis-toggle" aria-label="非公開"' + (state.checked ? ' checked' : '') + '>非公開</label>';
+      '<input type="checkbox" id="ring-log-vis-toggle" aria-label="非公開" data-ring-vis-log-id="' + global.escapeHtml(log.log_id) + '"' + (state.checked ? ' checked' : '') + '>非公開' +
+      '<span class="ring-vis-save-status" data-ring-vis-status="' + global.escapeHtml(log.log_id) + '" hidden></span></label>';
   }
 
   function wireDetailVisibilityToggle(log, vin, onUpdated) {
     if (!log || !log.log_id) return;
     var el = document.getElementById('ring-log-vis-toggle');
     if (!el) return;
-    if (el._ringVisWired) return;
-    el._ringVisWired = true;
-    el.addEventListener('change', async function () {
-      var wantPrivate = el.checked;
-      var vis = wantPrivate ? 'private' : 'public';
-      el.disabled = true;
-      var saved = false;
-      try {
-        var result = await OP.setHistoryVisibility(log.log_id, vis);
-        if (!result || result.success !== true) throw new Error('SAVE_FAILED');
-        saved = true;
-        log.visibility = ringNormalizeHistoryVisibility_(vis);
-        if (typeof global.showToast === 'function') global.showToast('success', '公開設定を保存しました');
-      } catch (e) {
-        global.showToast('error', '公開設定の保存を確認できません。再取得してください。');
-        if (typeof global.syncMaintenanceHistoryForVin === 'function') {
-          try { await global.syncMaintenanceHistoryForVin(vin); } catch (eSync) { /* ignore */ }
-        }
-        await ringRefreshLogVisibilityFromCache_(log, vin);
-        var failState = ringHistoryVisibilityUiState_(log);
-        el.checked = failState.checked;
-        if (typeof onUpdated === 'function') onUpdated(log);
-        return;
-      } finally { el.disabled = false; }
-      if (saved && vis === 'private' && typeof OP.purgeSensitiveCaches === 'function') OP.purgeSensitiveCaches();
-      if (saved && typeof global.syncMaintenanceHistoryForVin === 'function') {
-        try { await global.syncMaintenanceHistoryForVin(vin); } catch (eSync2) { /* ignore */ }
-      }
-      if (saved) {
-        await ringRefreshLogVisibilityFromCache_(log, vin);
-        var okState = ringHistoryVisibilityUiState_(log);
-        el.checked = okState.checked;
-        if (typeof onUpdated === 'function') onUpdated(log);
-      }
-    });
+    function after_(entry) {
+      var st = ringHistoryVisibilityUiState_(entry);
+      if (el) el.checked = st.checked;
+      if (typeof onUpdated === 'function') onUpdated(entry);
+    }
+    if (el._ringVisQWired) {
+      ringVisUpdateBadgesForLog_(log.log_id);
+      return;
+    }
+    ringVisibilityWireCheckbox_(el, log, vin, after_);
   }
 
   async function loadHistoryPhotoIfNeeded(log, vin, img) {
@@ -497,6 +911,21 @@
     finally { button.disabled = false; }
   });
 
+  ringVisLoadQueue_();
+  if (ringVisHasPendingWork_()) ringVisScheduleFlush_();
+  global.addEventListener('online', function () { ringVisScheduleFlush_(); });
+  global.addEventListener('storage', function (e) {
+    if (e && e.key === RING_VISIBILITY_QUEUE_KEY) {
+      ringVisLoadQueue_();
+      ringVisScheduleFlush_();
+    }
+  });
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') ringVisScheduleFlush_();
+  });
+
+  global.ringVisibilityApplyPendingToRows_ = ringVisibilityApplyPendingToRows_;
+
   global.addEventListener('ring-gas-features-updated', function () {
     document.querySelectorAll('[data-ring-vis-list]').forEach(function (host) {
       if (!host._ringVisGetLogs) return;
@@ -525,6 +954,7 @@
     historyVisibilityLabel: ringHistoryVisibilityLabel_,
     syncHistoryVisibilityRowDom: function (rowEl, log) {
       if (!rowEl || !log) return;
+      ringVisReconcileRow_(log);
       var state = ringHistoryVisibilityUiState_(log);
       var meta = rowEl.querySelector('[data-ring-vis-state]');
       if (meta) meta.textContent = state.label;
@@ -533,7 +963,11 @@
         cb.checked = state.checked;
         cb.removeAttribute('aria-invalid');
       }
+      ringVisUpdateBadgesForLog_(log.log_id);
     },
+    wireVisibilityCheckbox: ringVisibilityWireCheckbox_,
+    visibilityApplyPendingToRow: ringVisibilityApplyPendingToRows_,
+    flushVisibilityQueue: ringVisFlushAll_,
     ownerMarkHtml: function (car) {
       var b = ownerMarkLabel(car);
       if (!b) return '';

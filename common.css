@@ -1427,6 +1427,16 @@ textarea.ring-auto-grow {
 .ring-vis-readonly {
   font-size: 12px; font-weight: 800; color: var(--muted);
 }
+.ring-vis-save-status {
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--muted);
+  margin-left: 4px;
+  white-space: nowrap;
+}
+.ring-vis-save-status--pending { color: #b45309; }
+.ring-vis-save-status--error { color: #9b2525; }
+.ring-vis-compact { flex-wrap: wrap; max-width: 100%; }
 .ring-detail-header { position: relative; min-height: 34px; }
 .owner-dialog button, [data-owner-claim], #ring-history-vis-bar button { min-height:44px; }
 label:has(#ring-log-vis-toggle), label:has(#ring-bulk-private-toggle), .back-link { display:inline-flex; align-items:center; min-height:44px; min-width:44px; }

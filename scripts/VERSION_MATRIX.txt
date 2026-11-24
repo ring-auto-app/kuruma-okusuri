@@ -1,0 +1,25 @@
+# PWA / GAS 対応表（Git 管理用・秘密情報なし）
+更新: 2026-11-25
+
+## PWA
+
+| ラベル | Git コミット | SW CACHE_NAME | asset ?v= | 本番 |
+|--------|--------------|---------------|-----------|------|
+| v63 | 0d6a32d408578ae71196d22987fa0b6592b0b18c | car-nappy-v63 | 20261124-v63 | 公開済（origin/main） |
+| v64 | develop/v64 コミット（作業後記載） | car-nappy-v64 | 20261124-v64 | 未公開 |
+
+## GAS（ローカル正本 ads/gas-complete-Code.gs — .gitignore のため Git 非追跡）
+
+| ラベル | ローカルバックアップ | 本番デプロイ版番号 |
+|--------|----------------------|-------------------|
+| v63 対応 | ads/deploy-prep/gas-complete-Code_v63_pwa-0d6a32d_20261125.gs | 未確認（要エディタ確認） |
+| v64 候補 | ads/deploy-prep/gas-complete-Code_v64_candidate_20261125.gs | 未変更・未デプロイ |
+
+本番 Web アプリ URL: INTEGRATED_RELEASE_HANDOFF.txt 参照（デプロイ ID は手動記録）
+
+## ブランチ方針
+
+- release/v63 → 0d6a32d（復旧用）
+- tag v63 → 0d6a32d
+- develop/v64 → v64 開発
+- main → v63 固定（v64 マージ前）

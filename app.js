@@ -2500,7 +2500,12 @@ async function syncMaintenanceHistoryForVin(vin) {
         ringHistoryContext_ = context;
         ringHistoryView_.forEach(function (row, id) { if (_normalize(row.vin) === key) ringHistoryView_.delete(id); });
         var logs = fetched.ok ? mapGasMaintenanceLogsToLocal_(fetched.logs) : [];
-        logs.forEach(function (row) { ringHistoryView_.set(row.log_id, row); });
+        logs.forEach(function (row) {
+            if (typeof ringVisibilityApplyPendingToRows_ === "function") {
+                ringVisibilityApplyPendingToRows_(row);
+            }
+            ringHistoryView_.set(row.log_id, row);
+        });
         return {
             ok: !!fetched.ok,
             logs: logs,
