@@ -12,11 +12,11 @@
   <link rel="manifest" href="manifest.json">
     <title>車のお薬手帳</title>
   
-  <link rel="stylesheet" href="common.css?v=20261120-v54" integrity="sha256-yO0OlNXeXZ4584IXby/Gc5wRQVQHSLTSU7Z+QJycOCQ= sha256-HnQmEMCmw/wnKwUmcXXHCcMzFehK3s7aud7AqTiS3WU=">
-  <script src="app.js?v=20261123-v56" integrity="sha256-N0+T2BkWdnMA+QU9cdUUnBhJD+/idZnwXiBobni6E+Y=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
-  <script src="owner-platform.js?v=20261120-v54" integrity="sha256-9NMxbN/nLqDtbnU61091juoQouSv3egfSKXP+W/svSk= sha256-mcbxkbvK1YuwqASWD5iBdNV39empv7e0QH4E3FLqWXk="></script>
+  <link rel="stylesheet" href="common.css?v=20261124-v62" integrity="sha256-bbFZCWUdIQhQmLXeR8lQeUS5X1E2wuxEMQELZxKK6X4= sha256-AJ9hWh9BuJEENjmr4w3LgUE54Yhvf/f0pOW3U5fjAXQ=">
+  <script src="app.js?v=20261124-v62" integrity="sha256-645vPH4MTgjeU6LL/7P8zH4puZsFIZ7Eb6v1qkerz0U= sha256-DrLryngbE0hXO0PbjL3Wf8gZA3tWX2/w50QS/ApI68U=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
+  <script src="owner-platform.js?v=20261124-v62" integrity="sha256-9NMxbN/nLqDtbnU61091juoQouSv3egfSKXP+W/svSk= sha256-mcbxkbvK1YuwqASWD5iBdNV39empv7e0QH4E3FLqWXk="></script>
   <script src="vendor/qr/qrcode.js?v=20261120-v54" integrity="sha256-GK45n4EYK8nekW6cd7GV3yDMWNby1VpisIWimfG/F4A= sha256-S2Ezy7WhPs3CbPqJfQ2ve7mwgjIDLN04HoLyuvNlO18="></script>
-  <script src="owner-platform-ui.js?v=20261120-v54" integrity="sha256-aUZ4ia02+OAe64Vumo6YhCAEHo3qFioEAu/iRTggdCE= sha256-xe4z75QYBNWdg9pczMi45oE6bDwjfBbE6Hxo4JLcx3E="></script>
+  <script src="owner-platform-ui.js?v=20261124-v62" integrity="sha256-cDOLNAhGSy0LbIcIkXSl0sRXp7IGrkDprp6Lt8nhrtU= sha256-FnTq2CuQrSGsnmVyNYguemSFwl7JlLzgLbs3wvzaDts="></script>
   <script src="theme.js"></script>
   
   <style>
@@ -149,9 +149,10 @@
 </head>
 <body>
   <div class="container">
-    <header class="header">
+    <header class="header header-with-vis">
       <a id="historyBackLink" class="back-link" href="javascript:void(0)">≪戻る</a>
       <h1 class="title">整備履歴</h1>
+      <div id="ring-history-vis-host" class="ring-vis-header-slot"></div>
     </header>
 
     <div class="car-info">
@@ -162,7 +163,6 @@
       </div>
     </div>
     
-    <div id="ring-history-vis-host"></div>
     <div class="filter-row">
       <select id="filterSelect" class="filter-select" onchange="renderHistory()">
         <option value="all">新しい順（整備のみ）</option>
@@ -272,6 +272,9 @@
       showLoading("読込中", "履歴を確認しています…");
       syncMaintenanceHistoryForVin(vin).then(function (result) {
         init();
+        if (window.ringOwnerPlatform && typeof window.ringOwnerPlatform.ready === 'function') {
+          window.ringOwnerPlatform.ready().then(function () { ringRefreshHistoryVisibilityUi_(); });
+        }
         if (!result.ok) {
           var histMsg = (typeof ringMaintenanceSyncUserMessage_ === 'function')
             ? ringMaintenanceSyncUserMessage_(result)
@@ -339,13 +342,42 @@
       }
 
       renderHistory();
-      if (window.ringOwnerPlatformUi && window.ringOwnerPlatformUi.active()) {
-        var vhost = document.getElementById('ring-history-vis-host');
-        if (vhost) vhost.innerHTML = window.ringOwnerPlatformUi.buildHistoryVisibilityBar(vin);
-        window.ringOwnerPlatformUi.wireHistoryVisibilityBar(vin, function () {
-          return baseLogsCache.filter(function (l) { return l.historyVisibilityEditable; }).map(function (l) { return l.log_id; });
+    }
+
+    function ringHistoryDisplayedLogs_() {
+      const filterKey   = document.getElementById('filterSelect')?.value || 'all';
+      const allBaseLogs = (typeof getMaintenanceLogsByVin === 'function')
+        ? getMaintenanceLogsByVin(vin)
+        : getLogsByVin(vin).filter(log => {
+            const t = log.type;
+            return t !== 'inspection' && t !== 'inspection_user';
+          });
+      let logs = allBaseLogs;
+      if (filterKey === 'factory') logs = logs.filter(log => log.shopType === 'factory');
+      else if (filterKey === 'dealer') logs = logs.filter(log => log.shopType === 'dealer');
+      const selectedYear = document.getElementById('yearSelect')?.value || 'all';
+      if (selectedYear !== 'all') {
+        logs = logs.filter(log => {
+          const d = new Date(log.date);
+          return !isNaN(d) && d.getFullYear().toString() === selectedYear;
         });
       }
+      if (currentSearchQuery) {
+        logs = logs.filter(log => {
+          const text = (log.parts || '') + ' ' + (log.title || '') + ' ' + (log.memo || '');
+          return fuzzyScore(currentSearchQuery, text) > 0;
+        });
+      }
+      return logs;
+    }
+
+    function ringRefreshHistoryVisibilityUi_() {
+      if (!window.ringOwnerPlatformUi || typeof window.ringOwnerPlatformUi.mountHistoryListVisibility !== 'function') return;
+      var host = document.getElementById('ring-history-vis-host');
+      if (!host) return;
+      window.ringOwnerPlatformUi.mountHistoryListVisibility(host, vin, ringHistoryDisplayedLogs_, function () {
+        renderHistory();
+      });
     }
 
     // 日常点検の項目ID→名前マップ
@@ -418,6 +450,8 @@
       } else {
         banner.style.display = 'none';
       }
+
+      ringRefreshHistoryVisibilityUi_();
 
       if (logs.length === 0) {
         listEl.innerHTML = `

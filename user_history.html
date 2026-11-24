@@ -12,8 +12,8 @@
   <link rel="manifest" href="manifest.json">
     <title>車のお薬手帳</title>
   
-  <link rel="stylesheet" href="common.css?v=20261120-v54" integrity="sha256-yO0OlNXeXZ4584IXby/Gc5wRQVQHSLTSU7Z+QJycOCQ= sha256-HnQmEMCmw/wnKwUmcXXHCcMzFehK3s7aud7AqTiS3WU=">
-  <script src="app.js?v=20261123-v56" integrity="sha256-N0+T2BkWdnMA+QU9cdUUnBhJD+/idZnwXiBobni6E+Y=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
+  <link rel="stylesheet" href="common.css?v=20261124-v62" integrity="sha256-bbFZCWUdIQhQmLXeR8lQeUS5X1E2wuxEMQELZxKK6X4= sha256-AJ9hWh9BuJEENjmr4w3LgUE54Yhvf/f0pOW3U5fjAXQ=">
+  <script src="app.js?v=20261124-v62" integrity="sha256-645vPH4MTgjeU6LL/7P8zH4puZsFIZ7Eb6v1qkerz0U= sha256-DrLryngbE0hXO0PbjL3Wf8gZA3tWX2/w50QS/ApI68U=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
   <script src="theme.js"></script>
   
   <style>
@@ -142,8 +142,8 @@
       border-radius: 6px; display: none;
     }
   </style>
-<script src="owner-platform.js?v=20261120-v54" integrity="sha256-9NMxbN/nLqDtbnU61091juoQouSv3egfSKXP+W/svSk= sha256-mcbxkbvK1YuwqASWD5iBdNV39empv7e0QH4E3FLqWXk="></script>
-<script src="owner-platform-ui.js?v=20261120-v54" integrity="sha256-aUZ4ia02+OAe64Vumo6YhCAEHo3qFioEAu/iRTggdCE= sha256-xe4z75QYBNWdg9pczMi45oE6bDwjfBbE6Hxo4JLcx3E="></script>
+<script src="owner-platform.js?v=20261124-v62" integrity="sha256-9NMxbN/nLqDtbnU61091juoQouSv3egfSKXP+W/svSk= sha256-mcbxkbvK1YuwqASWD5iBdNV39empv7e0QH4E3FLqWXk="></script>
+<script src="owner-platform-ui.js?v=20261124-v62" integrity="sha256-cDOLNAhGSy0LbIcIkXSl0sRXp7IGrkDprp6Lt8nhrtU= sha256-FnTq2CuQrSGsnmVyNYguemSFwl7JlLzgLbs3wvzaDts="></script>
 </head>
 <body>
   <div class="container">
@@ -394,8 +394,17 @@
         baseLogsCache = baseLogs;
         var host = document.getElementById('ownerBulkBar');
         if (!host) { host=document.createElement('div'); host.id='ownerBulkBar'; document.querySelector('h1').after(host); }
-        host.innerHTML = baseLogs.some(r=>r.historyVisibilityEditable) ? ringOwnerPlatformUi.buildHistoryVisibilityBar(targetVin) : '';
-        ringOwnerPlatformUi.wireHistoryVisibilityBar(targetVin, () => baseLogs.filter(r=>r.historyVisibilityEditable).map(r=>r.log_id));
+        if (!host) { host = document.createElement('div'); host.id = 'ownerBulkBar'; host.className = 'ring-vis-header-slot'; document.querySelector('h1.title').parentElement.appendChild(host); }
+        ringOwnerPlatformUi.mountHistoryListVisibility(host, targetVin, () => {
+          const filterKey = document.getElementById('filterSelect')?.value || 'all';
+          let logs = baseLogsCache.slice();
+          if (filterKey === 'factory') logs = logs.filter(r => r.shopType === 'factory');
+          else if (filterKey === 'dealer') logs = logs.filter(r => r.shopType === 'dealer');
+          const y = document.getElementById('yearSelect')?.value;
+          if (y && y !== 'all') logs = logs.filter(r => !isNaN(new Date(r.date)) && new Date(r.date).getFullYear().toString() === y);
+          if (currentSearchQuery) logs = logs.filter(r => fuzzyScore(currentSearchQuery, (r.parts||'')+' '+(r.title||'')+' '+(r.memo||'')) > 0);
+          return logs;
+        }, () => { /* re-run outer render via timeout parent */ });
 
         // 年セレクタを構築（データのある年を自動収集）
         const allYears = [...new Set(baseLogs.map(log => {

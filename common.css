@@ -1359,8 +1359,26 @@ textarea.ring-auto-grow {
 .owner-dialog::backdrop { background:rgba(0,0,0,.45); }
 .owner-dialog .btn { width:100%; margin-top:8px; }
 .owner-dialog input { box-sizing:border-box; width:100%; min-height:44px; font-size:16px; }
+.header-with-vis { position: relative; padding-top: 4px; }
+.ring-vis-header-slot {
+  position: absolute; top: 0; right: 0; max-width: 52%;
+  display: flex; justify-content: flex-end; align-items: flex-start;
+  pointer-events: auto; z-index: 2;
+}
+.ring-vis-compact {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 800; color: var(--muted);
+  white-space: nowrap; margin: 0; line-height: 1.2;
+}
+.ring-vis-compact input[type="checkbox"] {
+  width: 18px; height: 18px; margin: 0; flex-shrink: 0;
+}
+.ring-vis-readonly {
+  font-size: 12px; font-weight: 800; color: var(--muted);
+}
+.ring-detail-header { position: relative; min-height: 34px; }
 .owner-dialog button, [data-owner-claim], #ring-history-vis-bar button { min-height:44px; }
-label:has(#ring-log-vis-toggle), .back-link { display:inline-flex; align-items:center; min-height:44px; min-width:44px; }
+label:has(#ring-log-vis-toggle), label:has(#ring-bulk-private-toggle), .back-link { display:inline-flex; align-items:center; min-height:44px; min-width:44px; }
 
 .owner-dialog { overflow-wrap:anywhere; color:var(--text); }
 .owner-dialog button, [data-owner-claim], #ring-sub-invite-link, #ring-history-vis-bar button { min-width:44px; min-height:44px; }

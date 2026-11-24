@@ -3321,6 +3321,12 @@ function ringBuildVehicleGasPayload_(merged, profile) {
     delete payload.plateSuffixPendingCloud;
     delete payload.plateSuffixServerKeyPresent;
     delete payload.plateSuffixSaveRev;
+    if (typeof merged.fleetOwnerConfirmed === 'boolean') {
+        payload.fleetOwnerConfirmed = merged.fleetOwnerConfirmed;
+    }
+    if (typeof merged.ownerConfirmed === 'boolean') {
+        payload.ownerConfirmed = merged.ownerConfirmed;
+    }
     if (Object.prototype.hasOwnProperty.call(merged, 'nickname')) {
         payload.nickname = ringNormalizeVehicleNicknameValue_(merged.nickname);
     }
@@ -4014,6 +4020,11 @@ function ringRememberGasServerFeatures_(gasJson, request) {
         typeof window !== 'undefined' && window.ringOwnerPlatformUi && ringGasOwnerPlatformOperational_()) {
         var menu = document.querySelector('#nappy-settings-panel [data-owner-settings]');
         if (menu) window.ringOwnerPlatformUi.appendOwnerSettings(menu);
+    }
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+        try {
+            window.dispatchEvent(new CustomEvent('ring-gas-features-updated'));
+        } catch (eFeatEv) { /* ignore */ }
     }
 }
 
@@ -7217,7 +7228,8 @@ async function sendToGAS_Safe(actionType, data, opts) {
         (authToken !== ringResolveActiveAuthToken() || !ringGasSupportsPlateSuffixDedicated_())) {
         throw new Error('PLATE_GAS_UNSUPPORTED');
     }
-    var featureRequest = actionType === 'get_vehicles' ? ringBeginGasFeaturesRead_(authToken) : null;
+    var featureRequest = (actionType === 'get_vehicles' || actionType === 'get_maintenance_history')
+        ? ringBeginGasFeaturesRead_(authToken) : null;
     const timeoutMs = opts && opts.timeoutMs != null ? opts.timeoutMs : 60000;
     const json = await fetchJsonWithTimeout(GAS_URL, {
         method: 'POST',

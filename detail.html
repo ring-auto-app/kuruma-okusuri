@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
   <link rel="manifest" href="manifest.json">
     <title>車のお薬手帳</title>
-  <link rel="stylesheet" href="common.css?v=20261120-v54" integrity="sha256-yO0OlNXeXZ4584IXby/Gc5wRQVQHSLTSU7Z+QJycOCQ= sha256-HnQmEMCmw/wnKwUmcXXHCcMzFehK3s7aud7AqTiS3WU=">
-  <script src="app.js?v=20261123-v56" integrity="sha256-N0+T2BkWdnMA+QU9cdUUnBhJD+/idZnwXiBobni6E+Y=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
+  <link rel="stylesheet" href="common.css?v=20261124-v62" integrity="sha256-bbFZCWUdIQhQmLXeR8lQeUS5X1E2wuxEMQELZxKK6X4= sha256-AJ9hWh9BuJEENjmr4w3LgUE54Yhvf/f0pOW3U5fjAXQ=">
+  <script src="app.js?v=20261124-v62" integrity="sha256-645vPH4MTgjeU6LL/7P8zH4puZsFIZ7Eb6v1qkerz0U= sha256-DrLryngbE0hXO0PbjL3Wf8gZA3tWX2/w50QS/ApI68U=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
   <script src="theme.js"></script>
   <style>
     body {
@@ -77,15 +77,16 @@
       }
     }
   </style>
-  <script src="owner-platform.js?v=20261120-v54" integrity="sha256-9NMxbN/nLqDtbnU61091juoQouSv3egfSKXP+W/svSk= sha256-mcbxkbvK1YuwqASWD5iBdNV39empv7e0QH4E3FLqWXk="></script>
+  <script src="owner-platform.js?v=20261124-v62" integrity="sha256-9NMxbN/nLqDtbnU61091juoQouSv3egfSKXP+W/svSk= sha256-mcbxkbvK1YuwqASWD5iBdNV39empv7e0QH4E3FLqWXk="></script>
   <script src="vendor/qr/qrcode.js?v=20261120-v54" integrity="sha256-GK45n4EYK8nekW6cd7GV3yDMWNby1VpisIWimfG/F4A= sha256-S2Ezy7WhPs3CbPqJfQ2ve7mwgjIDLN04HoLyuvNlO18="></script>
-  <script src="owner-platform-ui.js?v=20261120-v54" integrity="sha256-aUZ4ia02+OAe64Vumo6YhCAEHo3qFioEAu/iRTggdCE= sha256-xe4z75QYBNWdg9pczMi45oE6bDwjfBbE6Hxo4JLcx3E="></script>
+  <script src="owner-platform-ui.js?v=20261124-v62" integrity="sha256-cDOLNAhGSy0LbIcIkXSl0sRXp7IGrkDprp6Lt8nhrtU= sha256-FnTq2CuQrSGsnmVyNYguemSFwl7JlLzgLbs3wvzaDts="></script>
 </head>
 <body>
   <div class="app">
-    <div class="header no-print">
+    <div class="header no-print ring-detail-header header-with-vis">
       <a id="backBtn" class="back-link">≪戻る</a>
       <h1 class="title">整備詳細</h1>
+      <div id="ring-detail-vis-host" class="ring-vis-header-slot"></div>
     </div>
     <div class="record-head">
       <div class="record-title" id="logTitle">---</div>
@@ -202,11 +203,13 @@
           return;
         }
 
-        const controls = document.createElement('div');
-        controls.className = 'no-print';
-        controls.innerHTML = ringOwnerPlatformUi.buildDetailVisibilityToggle(log);
-        document.getElementById('logTitle').before(controls);
-        ringOwnerPlatformUi.wireDetailVisibilityToggle(log, vin);
+        function paintDetailVisibility_(entry) {
+          var host = document.getElementById('ring-detail-vis-host');
+          if (!host || !window.ringOwnerPlatformUi) return;
+          host.innerHTML = ringOwnerPlatformUi.buildDetailVisibilityToggle(entry);
+          ringOwnerPlatformUi.wireDetailVisibilityToggle(entry, vin, paintDetailVisibility_);
+        }
+        paintDetailVisibility_(log);
         const isInspection = (log.type && log.type.startsWith('inspection')) || log.title === '日常点検';
         const normalizedTitle = isInspection ? '日常点検' : ((log.title === 'クイック整備') ? '一般整備' : (log.title || '整備記録'));
 
