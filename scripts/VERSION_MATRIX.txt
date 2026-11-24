@@ -6,7 +6,7 @@
 | ラベル | Git コミット | SW CACHE_NAME | asset ?v= | 本番 |
 |--------|--------------|---------------|-----------|------|
 | v63 | 0d6a32d408578ae71196d22987fa0b6592b0b18c | car-nappy-v63 | 20261124-v63 | 公開済（origin/main） |
-| v64 | develop/v64 コミット（作業後記載） | car-nappy-v64 | 20261124-v64 | 未公開 |
+| v64 | a26da13（develop/v64） | car-nappy-v64 | 20261124-v64 | 未公開 |
 
 ## GAS（ローカル正本 ads/gas-complete-Code.gs — .gitignore のため Git 非追跡）
 
