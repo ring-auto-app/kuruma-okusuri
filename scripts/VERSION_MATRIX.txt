@@ -6,10 +6,10 @@
 | v63 | main | 0d6a32d | — | car-nappy-v63 | ads/gas-complete-Code.gs | 本番タグ v63 固定 |
 | v64 | develop/v64 | (参照のみ・未マージ) | main 0d6a32d | — | ads/deploy-prep/gas-complete-Code_v64_candidate_20261125.gs | visibility pending キュー |
 | v65-2a | develop/v65 | a3769ec | main 0d6a32d | car-nappy-v65 / 20261125-v65 | 変更なし（GAS 未着手） | ring-sync IDB meta_only; backup AgentStores/.../v65-2a_backup_20261125 |
-| v65-2b | develop/v65 | 7600309 | a3769ec 上 | （PWA 変更なし） | 変更なし | Node 隔離試作: history-sync-prototype + 54/54 selftest; backup ads/deploy-prep/local-backups/v65-2b_prototype_20261125 |
+| v65-2b | develop/v65 | fa29227 | a3769ec 上 | （PWA 変更なし） | 変更なし | ACL/pullDelta/bootstrap 修正; selftest 40; backup local-backups/v65-2b_fix_20261125 |
 
-# v65-2b 保存（2026-11-25 JST） origin/develop/v65 @ 7600309
-# 試作: scripts/lib/history-sync-prototype.mjs, scripts/v65-2b-delta-selftest.mjs（GAS 正本未改変）
+# v65-2b 修正保存（2026-11-25 PM JST） origin/develop/v65 @ fa29227（初回試作 7600309 は履歴に残存）
+# 初回試作: 7600309（54 tests）。今回: bootstrapFullSync + GAS ACL 試作
 
 # v65-2a 保存（2026-11-25 JST）
 # GitHub: origin/develop/v65 @ a3769ec
