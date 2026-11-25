@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ring-sync v65 検証（非本番・precache 除外）</title>
+  <script src="ring-sync-store.js"></script>
+  <script src="ring-sync-engine.js"></script>
+</head>
+<body>
+  <h1>ring-sync 検証（非本番）</h1>
+  <pre id="log">running…</pre>
+  <script>
+    window.ringSyncInternalTestPage = true;
+    (async function () {
+      var logEl = document.getElementById('log');
+      var lines = [];
+      function log(s) { lines.push(s); logEl.textContent = lines.join('\n'); }
+      var report = { ok: false, tests: [], timings: [] };
+      window.__ringSyncTestDone = report;
+
+      if (!window.ringSyncStore || !window.ringSyncEngine) {
+        log('FAIL: layer missing'); report.ok = false; return;
+      }
+      await ringSyncStore.wipeAllPartitions();
+      ringSyncEngine.enableHistoryBodyPersistOnTestPage(true);
+
+      var TOKEN = 'SECRET_TOKEN_MUST_NOT_APPEAR_IN_IDB';
+      var ctx = {
+        scope: JSON.stringify(['https://script.google.com', 'user', TOKEN, 'UB', '', '']),
+        epoch: 1, mode: 'user', token: TOKEN
+      };
+      window.GAS_URL = 'https://script.google.com/macros/s/AKfycbzDEPLOY_A/exec';
+      window.getCurrentProfile = function () { return { userId: 'UB', shopId: '', shopType: '' }; };
+      window.ringCaptureRequestContext_ = function () { return ctx; };
+      window.ringRequestContextIsCurrent_ = function (c) { return c && c.epoch === ctx.epoch; };
+      window._normalize = function (v) {
+        return String(v || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+      };
+
+      var part = ringSyncEngine.persistentPartitionFromContext(ctx);
+      var vinNorm = 'VINIDBTEST';
+      var domain = ringSyncEngine.DOMAINS.history;
+
+      function ents(n, prefix) {
+        prefix = prefix || 'E';
+        var out = [];
+        for (var i = 0; i < n; i++) {
+          var id = prefix + String(i).padStart(4, '0');
+          out.push({ entityId: id, vinNorm: vinNorm, payload: { id: id, n: n }, payloadClass: 'mock' });
+        }
+        return out;
+      }
+
+      async function t(name, fn) {
+        try {
+          await fn();
+          report.tests.push({ name: name, ok: true });
+          log('PASS: ' + name);
+        } catch (e) {
+          report.tests.push({ name: name, ok: false, err: String(e) });
+          log('FAIL: ' + name + ' ' + e);
+          throw e;
+        }
+      }
+
+      try {
+        if (part.partitionId.indexOf(TOKEN) >= 0) throw new Error('token in partition');
+        if (part.partitionId.indexOf('d:AKfycbzDEPLOY_A') < 0) throw new Error('deploy key missing');
+        log('partitionId=' + part.partitionId);
+
+        await t('deploy_b_separate', async function () {
+          window.GAS_URL = 'https://script.google.com/macros/s/AKfycbzDEPLOY_B/exec';
+          var partB = ringSyncEngine.persistentPartitionFromContext(ctx);
+          if (partB.partitionId === part.partitionId) throw new Error('deploy collision');
+          window.GAS_URL = 'https://script.google.com/macros/s/AKfycbzDEPLOY_A/exec';
+        });
+
+        var t0 = performance.now();
+        await t('save_1000', async function () {
+          var ep = ringSyncEngine.captureWriteEpoch();
+          var r = await ringSyncEngine.applyFullSnapshot(domain, vinNorm, ents(1000), {
+            partition: part, context: ctx, persistBody: true, writeEpoch: ep
+          });
+          if (!r.ok || r.kept !== 1000) throw new Error(JSON.stringify(r));
+        });
+        report.timings.push({ op: 'idb_1000_write', ms: Math.round(performance.now() - t0) });
+
+        var t1 = performance.now();
+        await t('read_1000', async function () {
+          var rows = await ringSyncStore.listRecordsForScope(part.partitionId, domain, vinNorm);
+          if (rows.length !== 1000) throw new Error('count ' + rows.length);
+        });
+        report.timings.push({ op: 'idb_1000_read', ms: Math.round(performance.now() - t1) });
+
+        var dump0 = await ringSyncStore.dumpAllForTests();
+        var sec0 = ringSyncEngine.scanStoredDataForSecrets(dump0);
+        if (!sec0.ok) throw new Error('secrets ' + sec0.hit);
+
+        await t('reload_recovery', async function () {
+          var pk = ringSyncStore.makeMetaPk(part.partitionId, domain, vinNorm);
+          var meta = await ringSyncStore.getSyncMeta(pk);
+          if (!meta || meta.entityCount !== 1000) throw new Error('meta missing');
+        });
+
+        await t('upsert_no_dup', async function () {
+          var ep = ringSyncEngine.captureWriteEpoch();
+          await ringSyncEngine.applyFullSnapshot(domain, vinNorm, [
+            { entityId: 'E0001', vinNorm: vinNorm, payload: { v: 2 }, payloadClass: 'mock' }
+          ], { partition: part, context: ctx, persistBody: true, writeEpoch: ep });
+          var one = await ringSyncStore.listRecordsForScope(part.partitionId, domain, vinNorm);
+          var e1 = one.filter(function (r) { return r.entityId === 'E0001'; });
+          if (e1.length !== 1 || e1[0].payload.v !== 2) throw new Error('upsert');
+        });
+
+        await t('snapshot_delete', async function () {
+          var ep = ringSyncEngine.captureWriteEpoch();
+          await ringSyncEngine.applyFullSnapshot(domain, vinNorm, ents(2, 'K'), {
+            partition: part, context: ctx, persistBody: true, writeEpoch: ep
+          });
+          var rows = await ringSyncStore.listRecordsForScope(part.partitionId, domain, vinNorm);
+          if (rows.length !== 2) throw new Error('delete count ' + rows.length);
+        });
+
+        await t('tx_abort_rollback', async function () {
+          var ep = ringSyncEngine.captureWriteEpoch();
+          var before = (await ringSyncStore.listRecordsForScope(part.partitionId, domain, vinNorm)).length;
+          var badRows = ents(3, 'BAD');
+          badRows[1].scopeKey = 'WRONG_SCOPE';
+          badRows[1].partitionId = part.partitionId;
+          badRows[1].domain = domain;
+          badRows[1].pk = ringSyncStore.makeRecordPk(part.partitionId, domain, badRows[1].entityId);
+          var failed = false;
+          try {
+            await ringSyncStore.applyScopeSnapshotAtomic(
+              part.partitionId, domain, vinNorm, badRows, [], null);
+          } catch (e) { failed = true; }
+          if (!failed) throw new Error('expected abort');
+          var after = (await ringSyncStore.listRecordsForScope(part.partitionId, domain, vinNorm)).length;
+          if (after !== before) throw new Error('partial write ' + before + '->' + after);
+        });
+
+        await t('invalidate_blocks_late_write', async function () {
+          var epOld = ringSyncEngine.captureWriteEpoch();
+          ringSyncEngine.invalidateWriteEpoch();
+          var r = await ringSyncEngine.applyFullSnapshot(domain, vinNorm, ents(1, 'L'), {
+            partition: part, context: ctx, persistBody: true, writeEpoch: epOld
+          });
+          if (r.ok !== false) throw new Error('should reject');
+        });
+
+        await t('superseded_snapshot', async function () {
+          await ringSyncStore.wipeAllPartitions();
+          var ep1 = ringSyncEngine.captureWriteEpoch();
+          await ringSyncEngine.applyFullSnapshot(domain, vinNorm, ents(5, 'S'), {
+            partition: part, context: ctx, persistBody: true, writeEpoch: ep1
+          });
+          ringSyncEngine.invalidateWriteEpoch();
+          var ep2 = ringSyncEngine.captureWriteEpoch();
+          await ringSyncEngine.applyFullSnapshot(domain, vinNorm, ents(9, 'NEW'), {
+            partition: part, context: ctx, persistBody: true, writeEpoch: ep2
+          });
+          var rOld = await ringSyncEngine.applyFullSnapshot(domain, vinNorm, ents(99, 'OLD'), {
+            partition: part, context: ctx, persistBody: true, writeEpoch: ep1
+          });
+          if (rOld.ok !== false) throw new Error('old overwrite allowed');
+          var rows = await ringSyncStore.listRecordsForScope(part.partitionId, domain, vinNorm);
+          if (rows.length !== 9) throw new Error('count after supersede ' + rows.length);
+        });
+
+        await t('idb_fallback_flag', async function () {
+          if (!ringSyncStore.isIndexedDbAvailable()) {
+            report.tests.push({ name: 'idb_fallback_note', ok: true, note: 'no idb' });
+          }
+        });
+
+        report.ok = report.tests.every(function (x) { return x.ok; });
+        log(report.ok ? 'ALL PASS' : 'SOME FAILED');
+        window.__ringSyncTestDone = report;
+      } catch (e) {
+        report.ok = false;
+        log('ABORT ' + e);
+        window.__ringSyncTestDone = report;
+      }
+    })();
+  </script>
+</body>
+</html>

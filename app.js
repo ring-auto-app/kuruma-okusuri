@@ -125,7 +125,10 @@ const DB_VEHICLES = "nappy_vehicles_v1";
 const DB_FLEET_BOOKINGS_LEGACY = "nappy_fleet_bookings_v1";
 const DB_FLEET_BOOKINGS_BY_SHOP = "nappy_fleet_bookings_by_shop_v1";
 const DB_LOGS = "nappy_logs_v1";
-const DB_INSPECTIONS = "inspections_v1"; 
+const DB_INSPECTIONS = "inspections_v1";
+
+/** v65: ring-sync-store.js / ring-sync-engine.js は script タグで読込（未読込時フックは no-op） */
+
 const DB_CURRENT_USER = "nappy_current_user";  
 const DB_LEGACY_PROFILE = "nappy_profile_v1";
 const RING_TOKEN_USER = 'ring_user_token';
@@ -2501,6 +2504,12 @@ async function syncMaintenanceHistoryForVin(vin) {
         ringHistoryView_.forEach(function (row, id) { if (_normalize(row.vin) === key) ringHistoryView_.delete(id); });
         var logs = fetched.ok ? mapGasMaintenanceLogsToLocal_(fetched.logs) : [];
         logs.forEach(function (row) { ringHistoryView_.set(row.log_id, row); });
+        if (fetched.ok && typeof ringSyncEngine !== 'undefined' &&
+            typeof ringSyncEngine.onMaintenanceFullFetch === 'function') {
+            try {
+                await ringSyncEngine.onMaintenanceFullFetch(vin, fetched, context, logs);
+            } catch (eSyncStore) { /* v65-2a: 永続層失敗でも履歴表示は既存経路 */ }
+        }
         return {
             ok: !!fetched.ok,
             logs: logs,

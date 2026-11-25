@@ -34,6 +34,10 @@
 
   function purgeSensitiveCaches() {
     if (typeof ringHistoryView_ !== 'undefined') ringHistoryView_.clear();
+    if (typeof global.ringSyncEngine !== 'undefined' &&
+        typeof global.ringSyncEngine.invalidateAllLocalPartitions === 'function') {
+      global.ringSyncEngine.invalidateAllLocalPartitions().catch(function () { /* ignore */ });
+    }
     try {
       global.sessionStorage.removeItem('ring_factory_vin_search_flash_v1');
     } catch (e2) { /* ignore */ }

@@ -1,0 +1,13 @@
+﻿# VERSION_MATRIX — PWA / GAS 保存地点（Git 追跡）
+# ads/deploy-prep/VERSION_MATRIX.txt はローカル複製（ads/ は .gitignore）
+
+| phase | branch | commit | base | cache/SW | GAS 正本（ローカルのみ） | notes |
+|-------|--------|--------|------|----------|---------------------------|-------|
+| v63 | main | 0d6a32d | — | car-nappy-v63 | ads/gas-complete-Code.gs | 本番タグ v63 固定 |
+| v64 | develop/v64 | (参照のみ・未マージ) | main 0d6a32d | — | ads/deploy-prep/gas-complete-Code_v64_candidate_20261125.gs | visibility pending キュー |
+| v65-2a | develop/v65 | b621542 | main 0d6a32d | car-nappy-v65 / 20261125-v65 | 変更なし（GAS 未着手） | ring-sync IDB meta_only; backup AgentStores/.../v65-2a_backup_20261125 |
+
+# v65-2a 保存（2026-11-25 JST）
+# GitHub: origin/develop/v65 @ b621542
+# テスト: v65-sync-store-selftest 13/13 memory; check-owner-release PASS (61 HTML, 100 precache)
+# 本番分離: ring-sync-test.html は precache 除外・prod HTML 未リンク（Pages 直URL は運用で遮断推
