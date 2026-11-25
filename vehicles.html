@@ -12,11 +12,13 @@
   <link rel="manifest" href="manifest.json">
     <title>車のお薬手帳</title>
   <link rel="stylesheet" href="common.css?v=20261125-v65" integrity="sha256-EXwjSgVGXvhNpoJgmEIbhsR2XpjKmoJ14gGGvvD8mMU= sha256-LQfH4hnXSXXlwqRSARoFKqMnfVhyc8j6A3AlhcI/GHw=">
-  <script src="app.js?v=20261125-v65" integrity="sha256-lzSJn9miINV7MpUmu9ie+gWt8Q7FZWWWe//FKliqzoE= sha256-5fxuh5fNIEmdXb06LEo18blhE2+KBrX8bO2FR4sA/gk=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
+  <script src="app.js?v=20261125-v65" integrity="sha256-GtnmU9yMlEb0DG16PQCb3UJuk76VwfiDhZIDmXDuvTE= sha256-LJclkan7QWtYfbRTSHDf3+Aj4p7dfJvS8giPhrm+3pY=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
   <script src="theme.js"></script>
+  <script src="ring-browse-coordinator.js?v=20261125-v65" integrity="sha256-LK0KihDiraF2M9uU9sUCOMB2Wkw7J1+DTwNoTSpwDcw= sha256-y1p5UFI4z6BzFyw+WumXuxDEhVt36gCAYFcWqzDznFs="></script>
   <script src="owner-platform.js?v=20261125-v65" integrity="sha256-jkPEEL6P/TTdGlk1IYAtlA+fQ2ze9b2YI42KTekOpxw= sha256-FmuxpE+0WJ20pjGGo2DDoq14/UVNvRF1UzDgnrR9m7w="></script>
   <script src="vendor/qr/qrcode.js?v=20261125-v65" integrity="sha256-GK45n4EYK8nekW6cd7GV3yDMWNby1VpisIWimfG/F4A= sha256-S2Ezy7WhPs3CbPqJfQ2ve7mwgjIDLN04HoLyuvNlO18="></script>
-  <script src="owner-platform-ui.js?v=20261125-v65" integrity="sha256-2OO4HdBz23SzrkOtQJ2X9EZvncQBzU4c2ar0jaPU0Fs= sha256-TvDuQK/f1ZV9Nc9FUM8gfo5FBI3bfh70a/123/S34zI="></script>
+  <script src="ring-history-list.js?v=20261125-v65" integrity="sha256-izsCtR3DFM3bnd7iRUmmWC6Y7xjfFMOQlOfzasxfKwE= sha256-Fmv07CoK4BX6fcWXyATN2HfPHx6C50chrrJhwZtY0Bg="></script>
+  <script src="owner-platform-ui.js?v=20261125-v65" integrity="sha256-YyJfZNKrVtNKTciBarXaskIY57ypFBrD93ztIiS4mfI= sha256-8sxNEjWRwx0AZZzeOOpIqNRZ46QlD7w7DKpNB4a1Vok="></script>
   <style>
     /* 掟：34pxグリッドと付箋デザインを完全維持 */
     :root { --sticky-odd: #fef9c3; --sticky-even: #fffbeb; }
@@ -530,6 +532,61 @@
       el.style.display = '';
     }
 
+    var ringVehiclesListCtrl_ = null;
+    var ringVehiclesFilterKey_ = function () {
+      return (document.getElementById('sortSelect')?.value || 'default') + '|' +
+        (document.getElementById('vehicleSearchInput')?.value || '').trim();
+    };
+    var ringVehiclesFilterPrev_ = '';
+
+    function ringBuildVehicleCardHtml_(car) {
+      const nextInspectDate = car._nextInspect;
+      const days = typeof ringDaysUntilDate_ === 'function'
+        ? ringDaysUntilDate_(nextInspectDate)
+        : Infinity;
+      let inspectStr = fmtInspectListDate(nextInspectDate);
+      let inspectStyle = '';
+      let urgentBadge  = '';
+      if (nextInspectDate) {
+        if (days <= 0)  { inspectStyle = 'color:#ef4444;font-weight:900;'; urgentBadge = ' <span style="font-size:10px;background:#ef4444;color:#fff;padding:1px 5px;border-radius:99px;font-weight:900;">超過</span>'; }
+        else if (days <= 14) { inspectStyle = 'color:#ef4444;font-weight:900;'; urgentBadge = ' <span style="font-size:10px;background:#ef4444;color:#fff;padding:1px 5px;border-radius:99px;font-weight:900;">あと' + days + '日</span>'; }
+        else if (days <= 30) { inspectStyle = 'color:#f59e0b;font-weight:900;'; urgentBadge = ' <span style="font-size:10px;background:#f59e0b;color:#fff;padding:1px 5px;border-radius:99px;font-weight:900;">あと' + days + '日</span>'; }
+      }
+      const historyLink = (userRole === 'user') ? 'user_history.html' : 'history.html';
+      const inspectHistoryLink = (userRole === 'user') ? 'user_inspection_history.html' : 'daily_history.html';
+      const inspectLink = (userRole === 'user') ? 'inspection_user.html' : 'inspection_biz.html';
+      const maintInputBase = (userRole === 'factory' || userRole === 'dealer') ? 'maintenance_input.html' : '';
+      var displayName = typeof ringVehicleDisplayName_ === 'function'
+        ? ringVehicleDisplayName_(car) : (car.nickname || car.model || '未設定');
+      var unsyncBadge = (typeof ringVehicleCloudUnsyncPending_ === 'function' &&
+        ringVehicleCloudUnsyncPending_(car, profile))
+        ? '<span class="ring-cloud-unsync-badge" title="クラウド未同期">☁️未同期</span>' : '';
+      var ownerBadge = (typeof ringOwnerPlatformUi !== 'undefined' && ringOwnerPlatformUi.ownerMarkHtml)
+        ? ringOwnerPlatformUi.ownerMarkHtml(car) : '';
+      return `<div class="car-card">
+            <div class="car-header">
+              <h2 class="car-model">${escapeHtml(displayName)}${ownerBadge}${unsyncBadge}</h2>
+              <a href="vehicle_info.html?vin=${encodeURIComponent(car.vin)}" class="car-info-btn">📋 車両情報</a>
+            </div>
+            <div class="car-info-grid">
+              <div class="info-box">
+                <span class="info-label">次回点検:</span>
+                <span class="info-value" style="${inspectStyle}">${inspectStr}${urgentBadge}</span>
+              </div>
+              <div class="info-box">
+                <span class="info-label">車検:</span>
+                <span class="info-value">${typeof ringFormatVehicleDateJst_ === 'function' ? ringFormatVehicleDateJst_(car.nextShaken) : (car.nextShaken || '---')}</span>
+              </div>
+            </div>
+            <div class="btn-group">
+              <a href="${historyLink}?vin=${encodeURIComponent(car.vin)}" class="vc-btn">📖 整備履歴</a>
+              ${isBizMode && maintInputBase ? `<a href="${maintInputBase}?vin=${encodeURIComponent(car.vin)}" class="vc-btn">🛠️ 整備入力</a>` : ''}
+              ${!isBizMode ? `<a href="${inspectHistoryLink}?vin=${encodeURIComponent(car.vin)}" class="vc-btn">🔍 日常点検記録</a>` : ''}
+              ${!isBizMode ? `<a href="${inspectLink}?vin=${encodeURIComponent(car.vin)}" class="vc-btn">📋 日常点検入力</a>` : ''}
+            </div>
+          </div>`;
+    }
+
     function renderCars(showLoadOverlay, scrollYToRestore) {
       const sortType = document.getElementById('sortSelect').value;
       if (showLoadOverlay !== false && typeof showLoading === "function") {
@@ -577,61 +634,30 @@
           vehicles = ringSortVehicleList_(vehicles, sortType);
         }
 
-        const historyLink      = (userRole === 'user') ? 'user_history.html'            : 'history.html';
-        const inspectHistoryLink = (userRole === 'user') ? 'user_inspection_history.html' : 'daily_history.html';
-        const inspectLink      = (userRole === 'user') ? 'inspection_user.html'          : 'inspection_biz.html';
-        const maintInputBase   = (userRole === 'factory' || userRole === 'dealer') ? 'maintenance_input.html' : '';
-
-        let html = "";
-        vehicles.forEach(car => {
-          const nextInspectDate = car._nextInspect;
-          const days = typeof ringDaysUntilDate_ === 'function'
-            ? ringDaysUntilDate_(nextInspectDate)
-            : Infinity;
-          let inspectStr = fmtInspectListDate(nextInspectDate);
-
-          // 期限が近い場合に警告色
-          let inspectStyle = '';
-          let urgentBadge  = '';
-          if (nextInspectDate) {
-            if (days <= 0)  { inspectStyle = 'color:#ef4444;font-weight:900;'; urgentBadge = ' <span style="font-size:10px;background:#ef4444;color:#fff;padding:1px 5px;border-radius:99px;font-weight:900;">超過</span>'; }
-            else if (days <= 14) { inspectStyle = 'color:#ef4444;font-weight:900;'; urgentBadge = ' <span style="font-size:10px;background:#ef4444;color:#fff;padding:1px 5px;border-radius:99px;font-weight:900;">あと' + days + '日</span>'; }
-            else if (days <= 30) { inspectStyle = 'color:#f59e0b;font-weight:900;'; urgentBadge = ' <span style="font-size:10px;background:#f59e0b;color:#fff;padding:1px 5px;border-radius:99px;font-weight:900;">あと' + days + '日</span>'; }
+        var usePaged = vehicles.length > 10 && (window.RingPagedList || window.RingHistoryList);
+        var ListApi = window.RingPagedList || window.RingHistoryList;
+        if (usePaged && ListApi) {
+          if (!ringVehiclesListCtrl_) {
+            ringVehiclesListCtrl_ = ListApi.create({
+              container: container,
+              pageSize: 10,
+              preserveItemOrder: true,
+              stripVolatileFields: false,
+              getId: function (c) { return c.vin; },
+              getItems: function () { return ringVehiclesListCtrl_._cache || []; },
+              filterKey: ringVehiclesFilterKey_,
+              renderItem: function (car) { return ringBuildVehicleCardHtml_(car); },
+              emptyHtml: ''
+            });
           }
-
-          var displayName = typeof ringVehicleDisplayName_ === 'function'
-            ? ringVehicleDisplayName_(car) : (car.nickname || car.model || '未設定');
-          var unsyncBadge = (typeof ringVehicleCloudUnsyncPending_ === 'function' &&
-            ringVehicleCloudUnsyncPending_(car, profile))
-            ? '<span class="ring-cloud-unsync-badge" title="クラウド未同期">☁️未同期</span>' : '';
-          var ownerBadge = (typeof ringOwnerPlatformUi !== 'undefined' && ringOwnerPlatformUi.ownerMarkHtml)
-            ? ringOwnerPlatformUi.ownerMarkHtml(car) : '';
-
-          html += `
-            <div class="car-card">
-              <div class="car-header">
-                <h2 class="car-model">${escapeHtml(displayName)}${ownerBadge}${unsyncBadge}</h2>
-                <a href="vehicle_info.html?vin=${encodeURIComponent(car.vin)}" class="car-info-btn">📋 車両情報</a>
-              </div>
-              <div class="car-info-grid">
-                <div class="info-box">
-                  <span class="info-label">次回点検:</span>
-                  <span class="info-value" style="${inspectStyle}">${inspectStr}${urgentBadge}</span>
-                </div>
-                <div class="info-box">
-                  <span class="info-label">車検:</span>
-                  <span class="info-value">${typeof ringFormatVehicleDateJst_ === 'function' ? ringFormatVehicleDateJst_(car.nextShaken) : (car.nextShaken || '---')}</span>
-                </div>
-              </div>
-              <div class="btn-group">
-                <a href="${historyLink}?vin=${encodeURIComponent(car.vin)}" class="vc-btn">📖 整備履歴</a>
-                ${isBizMode && maintInputBase ? `<a href="${maintInputBase}?vin=${encodeURIComponent(car.vin)}" class="vc-btn">🛠️ 整備入力</a>` : ''}
-                ${!isBizMode ? `<a href="${inspectHistoryLink}?vin=${encodeURIComponent(car.vin)}" class="vc-btn">🔍 日常点検記録</a>` : ''}
-                ${!isBizMode ? `<a href="${inspectLink}?vin=${encodeURIComponent(car.vin)}" class="vc-btn">📋 日常点検入力</a>` : ''}
-              </div>
-            </div>`;
-        });
-        container.innerHTML = html;
+          ringVehiclesListCtrl_._cache = vehicles;
+          var fk = ringVehiclesFilterKey_();
+          var resetV = fk !== ringVehiclesFilterPrev_;
+          ringVehiclesFilterPrev_ = fk;
+          ringVehiclesListCtrl_.refresh({ preserveScroll: true, resetWindow: resetV, dataOnly: !resetV });
+        } else {
+          container.innerHTML = vehicles.map(function (car) { return ringBuildVehicleCardHtml_(car); }).join('');
+        }
         updateUserVehicleCountLabel();
         if (showLoadOverlay !== false && typeof hideLoading === "function") hideLoading();
         if (scrollYToRestore != null && typeof ringRestoreScrollY_ === 'function') ringRestoreScrollY_(scrollYToRestore);

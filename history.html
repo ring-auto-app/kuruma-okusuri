@@ -13,10 +13,12 @@
     <title>車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css?v=20261125-v65" integrity="sha256-EXwjSgVGXvhNpoJgmEIbhsR2XpjKmoJ14gGGvvD8mMU= sha256-LQfH4hnXSXXlwqRSARoFKqMnfVhyc8j6A3AlhcI/GHw=">
-  <script src="app.js?v=20261125-v65" integrity="sha256-lzSJn9miINV7MpUmu9ie+gWt8Q7FZWWWe//FKliqzoE= sha256-5fxuh5fNIEmdXb06LEo18blhE2+KBrX8bO2FR4sA/gk=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
+  <script src="app.js?v=20261125-v65" integrity="sha256-GtnmU9yMlEb0DG16PQCb3UJuk76VwfiDhZIDmXDuvTE= sha256-LJclkan7QWtYfbRTSHDf3+Aj4p7dfJvS8giPhrm+3pY=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
+  <script src="ring-browse-coordinator.js?v=20261125-v65" integrity="sha256-LK0KihDiraF2M9uU9sUCOMB2Wkw7J1+DTwNoTSpwDcw= sha256-y1p5UFI4z6BzFyw+WumXuxDEhVt36gCAYFcWqzDznFs="></script>
   <script src="owner-platform.js?v=20261125-v65" integrity="sha256-jkPEEL6P/TTdGlk1IYAtlA+fQ2ze9b2YI42KTekOpxw= sha256-FmuxpE+0WJ20pjGGo2DDoq14/UVNvRF1UzDgnrR9m7w="></script>
   <script src="vendor/qr/qrcode.js?v=20261125-v65" integrity="sha256-GK45n4EYK8nekW6cd7GV3yDMWNby1VpisIWimfG/F4A= sha256-S2Ezy7WhPs3CbPqJfQ2ve7mwgjIDLN04HoLyuvNlO18="></script>
-  <script src="owner-platform-ui.js?v=20261125-v65" integrity="sha256-2OO4HdBz23SzrkOtQJ2X9EZvncQBzU4c2ar0jaPU0Fs= sha256-TvDuQK/f1ZV9Nc9FUM8gfo5FBI3bfh70a/123/S34zI="></script>
+  <script src="owner-platform-ui.js?v=20261125-v65" integrity="sha256-YyJfZNKrVtNKTciBarXaskIY57ypFBrD93ztIiS4mfI= sha256-8sxNEjWRwx0AZZzeOOpIqNRZ46QlD7w7DKpNB4a1Vok="></script>
+  <script src="ring-history-list.js?v=20261125-v65" integrity="sha256-izsCtR3DFM3bnd7iRUmmWC6Y7xjfFMOQlOfzasxfKwE= sha256-Fmv07CoK4BX6fcWXyATN2HfPHx6C50chrrJhwZtY0Bg="></script>
   <script src="theme.js"></script>
   
   <style>
@@ -273,19 +275,30 @@
       }
 
       if (!vin) { init(); return; }
-      showLoading("読込中", "履歴を確認しています…");
+      if (typeof ringBrowseRecordVin_ === 'function') ringBrowseRecordVin_(vin);
+      if (typeof ringHistoryHandoffTryHydrateVin_ === 'function') ringHistoryHandoffTryHydrateVin_(vin);
+      var hasCache = (typeof ringMaintenanceVinHasAuthorizedCache_ === 'function')
+        ? ringMaintenanceVinHasAuthorizedCache_(vin)
+        : ((typeof getMaintenanceLogsByVin === 'function') && getMaintenanceLogsByVin(vin).length > 0);
+      if (!hasCache && typeof showLoading === 'function') {
+        showLoading('読込中', '履歴を確認しています…');
+      } else {
+        init();
+      }
       syncMaintenanceHistoryForVin(vin).then(function (result) {
         init();
         if (window.ringOwnerPlatform && typeof window.ringOwnerPlatform.ready === 'function') {
           window.ringOwnerPlatform.ready().then(function () { ringRefreshHistoryVisibilityUi_(); });
         }
-        if (!result.ok) {
+        if (!result.ok && !hasCache) {
           var histMsg = (typeof ringMaintenanceSyncUserMessage_ === 'function')
             ? ringMaintenanceSyncUserMessage_(result)
             : '履歴を取得できませんでした。再読み込みしてください。';
           showToast('error', histMsg || '履歴を取得できませんでした。再読み込みしてください。');
         }
-      }).finally(hideLoading);
+      }).finally(function () {
+        if (typeof hideLoading === 'function') hideLoading();
+      });
     });
 
     function ringHistoryBizBackgroundSync_() {
@@ -396,6 +409,44 @@
       o1:'エアタンク', o2:'異臭確認', o3:'その他異常'
     };
 
+    var ringHistoryListCtrl_ = null;
+    var ringHistoryListFilterPrev_ = '';
+    function ringHistoryListFilterKey_() {
+      return (document.getElementById('filterSelect')?.value || 'all') + '|' +
+        (document.getElementById('yearSelect')?.value || 'all') + '|' + (currentSearchQuery || '');
+    }
+    function ringHistoryListRenderItem_(log, i) {
+      const now = new Date();
+      const lockDate = log.lock_at ? new Date(log.lock_at) : null;
+      const isEditable = lockDate && lockDate > now;
+      const editableHtml = isEditable ? '<span class="editable-mark">✏️ 修正可</span>' : '';
+      const kmStr = log.mileage ? `${Number(log.mileage).toLocaleString()} km` : '';
+      const colorClass = 'note-' + (i % 4);
+      let metaHtml = '';
+      if (log.type === 'inspection_user') {
+        metaHtml = '<div class="log-meta">日常点検（ユーザー）</div>';
+      } else if (log.type === 'inspection' && log.checks && typeof log.checks === 'object') {
+        const ngItems = Object.entries(log.checks)
+          .filter(([, v]) => v !== '良' && v !== '無')
+          .map(([k, v]) => `${INSPECT_ITEM_NAMES[k] || k}：${v}`);
+        metaHtml = ngItems.length > 0
+          ? `<div class="log-meta meta-ng">⚠ ${escapeHtml(ngItems.join(' / '))}</div>`
+          : '<div class="log-meta meta-ok">✅ 全項目良好</div>';
+      } else {
+        const typeLabel = log.shopType === 'factory' ? '工場入力' : log.shopType === 'dealer' ? '事業者入力' : '';
+        metaHtml = typeLabel ? `<div class="log-meta">${typeLabel}</div>` : '';
+      }
+      const href = 'detail.html?' + new URLSearchParams({ vin: vin, log_id: log.log_id }).toString();
+      return `<a class="history-item ${colorClass}" style="display:block;color:inherit;text-decoration:none" href="${escapeHtml(href)}">
+        <div class="card-header">
+          <div class="log-date">${escapeHtml(log.date)}</div>
+          <div style="display:flex;align-items:center;gap:6px;">${editableHtml}<span class="log-km">${kmStr}</span></div>
+        </div>
+        <div class="log-title">${escapeHtml(log.title || '整備記録')}</div>
+        ${metaHtml}
+      </a>`;
+    }
+
     /**
      * 履歴リストの描画処理（フィルター・西暦対応）
      */
@@ -457,58 +508,29 @@
 
       ringRefreshHistoryVisibilityUi_();
 
-      if (logs.length === 0) {
-        listEl.innerHTML = `
-          <div class="empty-history">
-            ${currentSearchQuery ? `「${escapeHtml(currentSearchQuery)}」の記録が見つかりません。` : '該当する記録がありません。'}
-          </div>
-        `;
+      const emptyHtml = currentSearchQuery
+        ? `<div class="empty-history">「${escapeHtml(currentSearchQuery)}」の記録が見つかりません。</div>`
+        : '<div class="empty-history">該当する記録がありません。</div>';
+      if (!window.RingHistoryList) {
+        listEl.innerHTML = emptyHtml;
         return;
       }
-
-      const now = new Date();
-
-      listEl.innerHTML = logs.map((log, i) => {
-        const lockDate = log.lock_at ? new Date(log.lock_at) : null;
-        const isEditable = lockDate && lockDate > now;
-        const editableHtml = isEditable ? `<span class="editable-mark">✏️ 修正可</span>` : '';
-        const kmStr = log.mileage ? `${Number(log.mileage).toLocaleString()} km` : '';
-        const colorClass = `note-${i % 4}`;
-
-        // 日常点検ログは指摘項目をmeta欄に表示。工場名・スタッフ名は一覧では非表示
-        let metaHtml = '';
-        if (log.type === 'inspection_user') {
-          // ユーザー日常点検：入力者は表示しない
-          metaHtml = `<div class="log-meta">日常点検（ユーザー）</div>`;
-        } else if (log.type === 'inspection' && log.checks && typeof log.checks === 'object') {
-          const ngItems = Object.entries(log.checks)
-            .filter(([, v]) => v !== '良' && v !== '無')
-            .map(([k, v]) => `${INSPECT_ITEM_NAMES[k] || k}：${v}`);
-          if (ngItems.length > 0) {
-            metaHtml = `<div class="log-meta meta-ng">⚠ ${escapeHtml(ngItems.join(' / '))}</div>`;
-          } else {
-            metaHtml = `<div class="log-meta meta-ok">✅ 全項目良好</div>`;
-          }
-        } else {
-          // 通常整備：工場名は表示しない（詳細ページで確認）
-          const typeLabel = log.shopType === 'factory' ? '工場入力' : log.shopType === 'dealer' ? '事業者入力' : '';
-          metaHtml = typeLabel ? `<div class="log-meta">${typeLabel}</div>` : '';
-        }
-
-        return `
-          <a class="history-item ${colorClass}" style="display:block;color:inherit;text-decoration:none" href="detail.html?${escapeHtml(new URLSearchParams({vin:vin,log_id:log.log_id}).toString())}">
-            <div class="card-header">
-              <div class="log-date">${escapeHtml(log.date)}</div>
-              <div style="display:flex;align-items:center;gap:6px;">
-                ${editableHtml}
-                <span class="log-km">${kmStr}</span>
-              </div>
-            </div>
-            <div class="log-title">${escapeHtml(log.title || '整備記録')}</div>
-            ${metaHtml}
-          </a>
-        `;
-      }).join("");
+      if (!ringHistoryListCtrl_) {
+        ringHistoryListCtrl_ = RingHistoryList.create({
+          container: listEl,
+          pageSize: 10,
+          getItems: function () { return ringHistoryListCtrl_._cache || []; },
+          filterKey: ringHistoryListFilterKey_,
+          renderItem: ringHistoryListRenderItem_,
+          emptyHtml: emptyHtml
+        });
+      }
+      ringHistoryListCtrl_.emptyHtml = emptyHtml;
+      ringHistoryListCtrl_._cache = logs;
+      var fk = ringHistoryListFilterKey_();
+      var resetWin = fk !== ringHistoryListFilterPrev_;
+      ringHistoryListFilterPrev_ = fk;
+      ringHistoryListCtrl_.refresh({ preserveScroll: true, resetWindow: resetWin, dataOnly: !resetWin });
     }
   </script>
 </body>

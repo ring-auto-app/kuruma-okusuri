@@ -13,7 +13,8 @@
     <title>車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css?v=20261125-v65" integrity="sha256-EXwjSgVGXvhNpoJgmEIbhsR2XpjKmoJ14gGGvvD8mMU= sha256-LQfH4hnXSXXlwqRSARoFKqMnfVhyc8j6A3AlhcI/GHw=">
-  <script src="app.js?v=20261125-v65" integrity="sha256-lzSJn9miINV7MpUmu9ie+gWt8Q7FZWWWe//FKliqzoE= sha256-5fxuh5fNIEmdXb06LEo18blhE2+KBrX8bO2FR4sA/gk=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
+  <script src="app.js?v=20261125-v65" integrity="sha256-GtnmU9yMlEb0DG16PQCb3UJuk76VwfiDhZIDmXDuvTE= sha256-LJclkan7QWtYfbRTSHDf3+Aj4p7dfJvS8giPhrm+3pY=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
+  <script src="ring-browse-coordinator.js?v=20261125-v65" integrity="sha256-LK0KihDiraF2M9uU9sUCOMB2Wkw7J1+DTwNoTSpwDcw= sha256-y1p5UFI4z6BzFyw+WumXuxDEhVt36gCAYFcWqzDznFs="></script>
   <script src="theme.js"></script>
   
   <style>
@@ -257,7 +258,7 @@
     function renderHistoryList(logs) {
       const container = document.getElementById("historyArea");
       if (!logs.length) {
-        container.innerHTML = `<div class="empty-state">まだ整備履歴がありません。</div>`;
+        container.innerHTML = '<div class="empty-state">まだ整備履歴がありません。</div>';
         return;
       }
 
@@ -266,9 +267,9 @@
         let badgeHtml = "";
         if (log.shopType === "factory") {
           const factoryType = log.factoryType || "指定";
-          badgeHtml = factoryType === "指定" 
-            ? `<span class="badge badge-blue">🟦 指定工場</span>` 
-            : `<span class="badge badge-yellow">🟨 認証工場</span>`;
+          badgeHtml = factoryType === "指定"
+            ? '<span class="badge badge-blue">🟦 指定工場</span>'
+            : '<span class="badge badge-yellow">🟨 認証工場</span>';
         }
 
         let previewText = (log.parts ? `【内容】${log.parts.replace(/\n/g, ' ')} ` : "") + (log.memo ? `【メモ】${log.memo}` : "");
@@ -277,7 +278,7 @@
         const detailPage = (profile?.shopType) ? 'detail.html' : 'user_detail.html';
 
         html += `
-          <a href="${detailPage}?vin=${encodeURIComponent(targetVin)}&log_id=${log.log_id}" class="log-card">
+          <a href="${detailPage}?vin=${encodeURIComponent(targetVin)}&log_id=${encodeURIComponent(log.log_id)}" class="log-card">
             <div class="log-header">
               <div class="log-header-left">${badgeHtml}<span class="log-date">${escapeHtml(log.date)}</span></div>
               <span class="log-mileage">${log.mileage ? escapeHtml(log.mileage) + ' km' : ''}</span>

@@ -294,7 +294,7 @@
     var ids = editable.map(function (l) { return l.log_id; });
     var vis = makePrivate ? 'private' : 'public';
     var verb = makePrivate ? '非公開' : '公開';
-    if (!confirm('表示中の変更可能な整備履歴 ' + ids.length + ' 件を一括で' + verb + 'にしますか？')) return false;
+    if (!confirm('現在の検索・年度条件で対象となる変更可能な整備履歴 ' + ids.length + ' 件を一括で' + verb + 'にしますか？')) return false;
     try {
       var res = await OP.bulkHistoryVisibility(vin, ids, vis);
       if (!res || res.success !== true || res.updated !== ids.length) throw new Error('PARTIAL');
@@ -323,7 +323,7 @@
       return;
     }
     if (!host._ringVisWired) {
-      host.innerHTML = '<label class="ring-vis-compact" title="表示中の変更可能な整備履歴のみ">' +
+      host.innerHTML = '<label class="ring-vis-compact" title="検索・年度条件内で変更可能な整備履歴が対象">' +
         '<input type="checkbox" id="ring-bulk-private-toggle" aria-label="一括非公開">一括非公開</label>';
       var toggle = host.querySelector('#ring-bulk-private-toggle');
       toggle.addEventListener('change', async function () {

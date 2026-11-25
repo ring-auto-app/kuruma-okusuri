@@ -29,6 +29,10 @@
   var fleetBootSyncPending_ = false;
   var wizardState = null;
   var DESK_LIST_PAGE = 25;
+  var MOB_LIST_PAGE = 10;
+  var mobListVehiclesCache = [];
+  var mobListRendered = 0;
+  var mobListObs = null;
   var deskListRendered = 0;
   var deskListVehiclesCache = [];
   var deskListObs = null;
@@ -484,6 +488,71 @@
     return vehicles.map(fleetSingleVehicleCardHtml_).join('');
   }
 
+  function fleetDisconnectMobListObserver_() {
+    if (mobListObs) {
+      mobListObs.disconnect();
+      mobListObs = null;
+    }
+    var sentinel = document.getElementById('fleetMobListSentinel');
+    if (sentinel) sentinel.hidden = true;
+  }
+
+  function fleetLoadMoreMobList_() {
+    if (mobListRendered >= mobListVehiclesCache.length) return;
+    var listArea = document.getElementById('fleetListArea');
+    if (!listArea) return;
+    var slice = mobListVehiclesCache.slice(mobListRendered, mobListRendered + MOB_LIST_PAGE);
+    var html = slice.map(fleetSingleVehicleCardHtml_).join('');
+    if (mobListRendered === 0) listArea.innerHTML = html;
+    else listArea.insertAdjacentHTML('beforeend', html);
+    mobListRendered += slice.length;
+    if (mobListRendered >= mobListVehiclesCache.length) fleetDisconnectMobListObserver_();
+    else fleetSetupMobListObserver_();
+  }
+
+  function fleetSetupMobListObserver_() {
+    if (fleetIsDesktop_()) return;
+    fleetDisconnectMobListObserver_();
+    var listArea = document.getElementById('fleetListArea');
+    if (!listArea || mobListRendered >= mobListVehiclesCache.length) return;
+    var sentinel = document.getElementById('fleetMobListSentinel');
+    if (!sentinel) {
+      sentinel = document.createElement('div');
+      sentinel.id = 'fleetMobListSentinel';
+      sentinel.className = 'ring-fleet-mob-list-sentinel';
+      sentinel.style.cssText = 'height:1px;width:100%;';
+      listArea.appendChild(sentinel);
+    }
+    sentinel.hidden = false;
+    if (typeof IntersectionObserver !== 'function') {
+      fleetLoadMoreMobList_();
+      return;
+    }
+    mobListObs = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (en.isIntersecting) fleetLoadMoreMobList_();
+      });
+    }, { root: null, rootMargin: '120px 0px', threshold: 0 });
+    mobListObs.observe(sentinel);
+  }
+
+  function renderMobVehicleList_(vehicles) {
+    mobListVehiclesCache = vehicles || [];
+    mobListRendered = 0;
+    fleetDisconnectMobListObserver_();
+    var listArea = document.getElementById('fleetListArea');
+    if (!listArea) return;
+    var emptyMsg = fleetDeskListEmptyMessage_(mobListVehiclesCache.length, fleetFleetOnly_(fleetMine_()).length);
+    if (emptyMsg) {
+      listArea.innerHTML = '<div class="empty-msg">' + fleetEscape_(emptyMsg) + '</div>';
+      return;
+    }
+    var first = mobListVehiclesCache.slice(0, MOB_LIST_PAGE);
+    listArea.innerHTML = first.map(fleetSingleVehicleCardHtml_).join('');
+    mobListRendered = first.length;
+    if (mobListRendered < mobListVehiclesCache.length) fleetSetupMobListObserver_();
+  }
+
   function fleetDisconnectDeskListObserver_() {
     if (deskListObs) {
       deskListObs.disconnect();
@@ -811,9 +880,12 @@
     });
     syncFleetSearchClear_();
     var vehicles = pack.vehicles;
-    var listHtml = fleetListCardHtml_(vehicles);
-    var listArea = document.getElementById('fleetListArea');
-    if (listArea) listArea.innerHTML = listHtml;
+    if (fleetIsDesktop_()) {
+      var listArea = document.getElementById('fleetListArea');
+      if (listArea) listArea.innerHTML = fleetListCardHtml_(vehicles);
+    } else {
+      renderMobVehicleList_(vehicles);
+    }
     renderDeskVehicleList_(vehicles);
     renderDesktopVehicleTable_(pack.vehicles);
     renderCalendars_();
@@ -859,6 +931,7 @@
   function renderCalendarInto_(hostId, classWeek, year, month) {
     var host = document.getElementById(hostId);
     if (!host) return;
+    var renderGen = fleetLoadGen;
     var y = year != null ? year : calYear;
     var m = month != null ? month : calMonth;
     var weeks = ringFleetCalendarWeeksJst_(y, m);
@@ -911,6 +984,7 @@
     });
     html += '</div>';
     if (hostId === 'fleetCalDesk') return html;
+    if (renderGen !== fleetLoadGen) return html;
     host.innerHTML = html;
     return html;
   }

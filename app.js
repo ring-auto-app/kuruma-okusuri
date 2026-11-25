@@ -1101,6 +1101,8 @@ function ringClearWithdrawnAccount_(userId) {
     }
     if (matches(legacy, ['userId'])) localStorage.removeItem(DB_LEGACY_PROFILE);
     if (typeof ringHistoryView_ !== 'undefined') ringHistoryView_.clear();
+    if (typeof ringHistoryHandoffClear_ === 'function') ringHistoryHandoffClear_();
+    if (typeof ringBrowseClearRecentVins_ === 'function') ringBrowseClearRecentVins_();
     if (window.ringOwnerPlatform) window.ringOwnerPlatform.purgeSensitiveCaches();
     ringNotifyRequestContextChanged_();
 }
@@ -1130,6 +1132,9 @@ function logout() {
     try {
         sessionStorage.removeItem(RING_OCR_DEMO_SESSION_KEY);
     } catch (e) { /* ignore */ }
+    try { if (typeof ringHistoryHandoffClear_ === 'function') ringHistoryHandoffClear_(); } catch (eH) { /* ignore */ }
+    try { if (typeof ringBrowseClearRecentVins_ === 'function') ringBrowseClearRecentVins_(); } catch (eR) { /* ignore */ }
+    if (typeof ringHistoryView_ !== 'undefined') ringHistoryView_.clear();
     try { ringClearPendingSyncUi_(); } catch (ePendLogout) { /* ignore */ }
 }
 
@@ -1831,6 +1836,9 @@ var RING_PAGE_TTL_MS = {
 var RING_SYNC_META_KEY = "ring_page_sync_meta_v1";
 var ringPageSyncInFlight_ = new Map();
 var ringPageSyncFailures_ = new Map();
+/** ユーザー操作優先でスキップしたバックグラウンド同期の再試行（最大回数・TTL未更新） */
+var ringPageSyncUserSkipRetries_ = new Map();
+var RING_PAGE_SYNC_USER_SKIP_MAX = 3;
 
 function ringPageTtlMs_(pageId) {
     var id = String(pageId || "");
@@ -1984,6 +1992,20 @@ async function ringRunPageSync_(opts) {
     var task = (async function () {
         var prevSig = typeof opts.getSignatureFn === "function" ? opts.getSignatureFn() : "";
         var showProgress = opts.showProgress === true;
+        if (!showProgress && typeof window !== 'undefined' && window.ringBrowseCoordinator &&
+            typeof window.ringBrowseCoordinator.isUserPriority === 'function' &&
+            window.ringBrowseCoordinator.isUserPriority()) {
+            var skipKey = syncKey;
+            var skipN = ringPageSyncUserSkipRetries_.get(skipKey) || 0;
+            if (skipN < RING_PAGE_SYNC_USER_SKIP_MAX) {
+                ringPageSyncUserSkipRetries_.set(skipKey, skipN + 1);
+                setTimeout(function () {
+                    if (!ringRequestContextIsCurrent_(context)) return;
+                    ringRunPageSync_(opts);
+                }, 1500);
+            }
+            return { ok: false, rendered: false, skippedUserPriority: true };
+        }
         if (showProgress) {
             ringSetRefreshButtonBusy_(opts.refreshBtn, true, opts.refreshLabel || "🔄 更新");
             ringShowSyncStatus_(opts.statusElId, opts.statusMessage || "読み込み中…", false);
@@ -1994,6 +2016,7 @@ async function ringRunPageSync_(opts) {
             if (!ringRequestContextIsCurrent_(context)) return { ok: false, rendered: false };
             if (!r || r.ok === false) throw new Error(r && r.error || "SYNC_FAILED");
             ringPageSyncFailures_.delete(cacheKey);
+            ringPageSyncUserSkipRetries_.delete(syncKey);
             ringSetPageSyncMeta_(cacheKey);
             if (opts.lastSyncElId) ringUpdateLastSyncLabel_(opts.lastSyncElId, cacheKey);
             ringShowSyncStatus_(opts.statusElId, "", false);
@@ -2447,6 +2470,71 @@ var ringHistoryView_ = new Map();
 var ringHistoryReads_ = new Map();
 var ringHistorySyncInflight_ = new Map();
 var ringHistoryContext_ = null;
+/** v65-5: 履歴本文の sessionStorage handoff 無効（認可再確認なしの復元・漏えい防止）。legacy は削除のみ */
+var RING_HISTORY_TAB_HANDOFF_KEY = 'ring_history_tab_handoff_v1';
+var RING_BROWSE_RECENT_VINS_KEY = 'ring_browse_recent_vins_v1';
+
+function ringHistoryHandoffClear_() {
+    try { sessionStorage.removeItem(RING_HISTORY_TAB_HANDOFF_KEY); } catch (e) { /* ignore */ }
+}
+
+/** ページ跨ぎで認可済み履歴を再利用可能か（差分同期+共通保存接続まで false） */
+function ringBrowseCrossPageReuseAllowed_() {
+    return false;
+}
+
+function ringHistoryHandoffEnabled_() {
+    return false;
+}
+
+function ringHistoryHandoffSaveForVin_(vin, logs) {
+    ringHistoryHandoffClear_();
+}
+
+function ringHistoryHandoffTryHydrateVin_(vin) {
+    ringHistoryHandoffClear_();
+    return false;
+}
+
+function ringMaintenanceVinHasAuthorizedCache_(vin) {
+    if (!vin) return false;
+    if (!ringRequestContextIsCurrent_(ringHistoryContext_)) return false;
+    var key = _normalize(vin);
+    var found = false;
+    ringHistoryView_.forEach(function (row) {
+        if (_normalize(row.vin) === key && isMaintenanceLogType(row)) found = true;
+    });
+    return found;
+}
+
+function ringBrowseRecordVin_(vin) {
+    var n = _normalize(vin);
+    if (!n) return;
+    try {
+        var list = safeJsonParse(sessionStorage.getItem(RING_BROWSE_RECENT_VINS_KEY), []);
+        if (!Array.isArray(list)) list = [];
+        list = list.filter(function (v) { return v !== n; });
+        list.unshift(n);
+        sessionStorage.setItem(RING_BROWSE_RECENT_VINS_KEY, JSON.stringify(list.slice(0, 8)));
+    } catch (e) { /* ignore */ }
+}
+
+function ringBrowseRecentVins_() {
+    try {
+        var list = safeJsonParse(sessionStorage.getItem(RING_BROWSE_RECENT_VINS_KEY), []);
+        return Array.isArray(list) ? list.slice(0, 8) : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+function ringBrowseClearRecentVins_() {
+    try { sessionStorage.removeItem(RING_BROWSE_RECENT_VINS_KEY); } catch (e) { /* ignore */ }
+}
+
+(function ringPurgeLegacyHistoryHandoff_() {
+    if (typeof ringHistoryHandoffClear_ === 'function') ringHistoryHandoffClear_();
+})();
 
 // Remove displayed history immediately on context change, including another tab's login.
 if (typeof window !== 'undefined' && window.addEventListener) {
@@ -2510,6 +2598,7 @@ async function syncMaintenanceHistoryForVin(vin) {
                 await ringSyncEngine.onMaintenanceFullFetch(vin, fetched, context, logs);
             } catch (eSyncStore) { /* v65-2a: 永続層失敗でも履歴表示は既存経路 */ }
         }
+        ringHistoryHandoffClear_();
         return {
             ok: !!fetched.ok,
             logs: logs,
@@ -10920,6 +11009,12 @@ window.ringVehicleOwnerHasPendingVehicleQueue_ = ringVehicleOwnerHasPendingVehic
 window.ringAbandonRetryQueueForVehicleOwner_ = ringAbandonRetryQueueForVehicleOwner_;
 window.ringTryRemoveLocalVehicleAfterDeleteNotFound_ = ringTryRemoveLocalVehicleAfterDeleteNotFound_;
 window.syncMaintenanceHistoryForVin = syncMaintenanceHistoryForVin;
+window.ringHistoryHandoffTryHydrateVin_ = ringHistoryHandoffTryHydrateVin_;
+window.ringMaintenanceVinHasAuthorizedCache_ = ringMaintenanceVinHasAuthorizedCache_;
+window.ringHistoryHandoffEnabled_ = ringHistoryHandoffEnabled_;
+window.ringBrowseRecordVin_ = ringBrowseRecordVin_;
+window.ringBrowseRecentVins_ = ringBrowseRecentVins_;
+window.ringBrowseCrossPageReuseAllowed_ = ringBrowseCrossPageReuseAllowed_;
 window.ringRunPageSync_ = ringRunPageSync_;
 window.ringSetPageSyncMeta_ = ringSetPageSyncMeta_;
 window.ringGetPageSyncMeta_ = ringGetPageSyncMeta_;

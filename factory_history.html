@@ -13,10 +13,12 @@
     <title>車のお薬手帳</title>
   
   <link rel="stylesheet" href="common.css?v=20261125-v65" integrity="sha256-EXwjSgVGXvhNpoJgmEIbhsR2XpjKmoJ14gGGvvD8mMU= sha256-LQfH4hnXSXXlwqRSARoFKqMnfVhyc8j6A3AlhcI/GHw=">
-  <script src="app.js?v=20261125-v65" integrity="sha256-lzSJn9miINV7MpUmu9ie+gWt8Q7FZWWWe//FKliqzoE= sha256-5fxuh5fNIEmdXb06LEo18blhE2+KBrX8bO2FR4sA/gk=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
+  <script src="app.js?v=20261125-v65" integrity="sha256-GtnmU9yMlEb0DG16PQCb3UJuk76VwfiDhZIDmXDuvTE= sha256-LJclkan7QWtYfbRTSHDf3+Aj4p7dfJvS8giPhrm+3pY=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
+  <script src="ring-browse-coordinator.js?v=20261125-v65" integrity="sha256-LK0KihDiraF2M9uU9sUCOMB2Wkw7J1+DTwNoTSpwDcw= sha256-y1p5UFI4z6BzFyw+WumXuxDEhVt36gCAYFcWqzDznFs="></script>
   <script src="theme.js"></script>
   <script src="owner-platform.js?v=20261125-v65" integrity="sha256-jkPEEL6P/TTdGlk1IYAtlA+fQ2ze9b2YI42KTekOpxw= sha256-FmuxpE+0WJ20pjGGo2DDoq14/UVNvRF1UzDgnrR9m7w="></script>
-  <script src="owner-platform-ui.js?v=20261125-v65" integrity="sha256-2OO4HdBz23SzrkOtQJ2X9EZvncQBzU4c2ar0jaPU0Fs= sha256-TvDuQK/f1ZV9Nc9FUM8gfo5FBI3bfh70a/123/S34zI="></script>
+  <script src="owner-platform-ui.js?v=20261125-v65" integrity="sha256-YyJfZNKrVtNKTciBarXaskIY57ypFBrD93ztIiS4mfI= sha256-8sxNEjWRwx0AZZzeOOpIqNRZ46QlD7w7DKpNB4a1Vok="></script>
+  <script src="ring-history-list.js?v=20261125-v65" integrity="sha256-izsCtR3DFM3bnd7iRUmmWC6Y7xjfFMOQlOfzasxfKwE= sha256-Fmv07CoK4BX6fcWXyATN2HfPHx6C50chrrJhwZtY0Bg="></script>
   
   <style>
     /* ページ固有のスタイル設定（34pxグリッドと付箋デザインを完全維持） */
@@ -523,70 +525,67 @@
       return '<div class="ring-maint-work">全項目良好</div>';
     }
 
+    var ringFactoryHistoryListCtrl_ = null;
+    var ringFactoryFilterPrev_ = '';
+    function ringFactoryFilterKey_() {
+      return (document.getElementById('yearSelect')?.value || 'all') + '|' + (currentSearchQuery || '');
+    }
+    function ringFactoryRenderItem_(log, index) {
+      const colorClass = 'note-' + (index % 4);
+      let bClass = 'badge-other', bLabel = '一般';
+      if (log.factoryType === '指定') { bClass = 'badge-shitei'; bLabel = '指定'; }
+      else if (log.factoryType === '認証') { bClass = 'badge-ninsyo'; bLabel = '認証'; }
+      else if (log.shopType === 'dealer') { bLabel = '販売'; }
+      const mileageStr = log.mileage ? `${Number(log.mileage).toLocaleString()}km` : '';
+      const isSameShop = myShopId && log.shopId && log.shopId === myShopId;
+      const createdAt = log.createdAt || log.date;
+      const diffDays = (new Date() - new Date(createdAt)) / (1000 * 60 * 60 * 24);
+      let editStatusHtml = '';
+      if (isSameShop && diffDays < 7) {
+        editStatusHtml = `<span class="edit-status editable">✏️ 修正可（残り${Math.floor(7 - diffDays)}日）</span>`;
+      } else if (isSameShop) {
+        editStatusHtml = '<span class="edit-status locked">🔒 自社記録</span>';
+      } else if (log.shopId) {
+        editStatusHtml = '<span class="edit-status other-shop">🏢 他社記録</span>';
+      }
+      let bodyHtml = '';
+      if (log.type === 'inspection' && log.checks && typeof log.checks === 'object') {
+        bodyHtml = renderFactoryInspectionBodyHtml_(log);
+      } else if (typeof ringFormatFactoryHistoryCardBodyHtml_ === 'function') {
+        bodyHtml = ringFormatFactoryHistoryCardBodyHtml_(log);
+      } else {
+        bodyHtml = '<div class="ring-maint-work">' + escapeHtml(log.title || '一般整備') + '</div>';
+      }
+      return `<a href="factory_detail.html?vin=${encodeURIComponent(targetVin)}&log_id=${encodeURIComponent(log.log_id)}" class="history-card ${colorClass}">
+        <div class="card-header">
+          <div class="header-left">${typeof ringFormatDateLocal_ === 'function' ? ringFormatDateLocal_(log.date, false) : log.date} / ${mileageStr}</div>
+          <div class="header-right">${editStatusHtml}<span class="badge ${bClass}">${bLabel}</span></div>
+        </div>${bodyHtml}
+      </a>`;
+    }
+
     function renderList(logs) {
       const listContainer = document.getElementById('historyList');
-      if (logs.length === 0) {
-        listContainer.innerHTML = `<div class="empty-msg">該当する履歴がありません。</div>`;
+      const emptyHtml = '<div class="empty-msg">該当する履歴がありません。</div>';
+      if (!window.RingHistoryList) {
+        listContainer.innerHTML = emptyHtml;
         return;
       }
-
-        let html = "";
-        logs.forEach((log, index) => {
-          const colorClass = `note-${index % 4}`;
-
-          // 認証・指定バッジ
-          let bClass = "badge-other", bLabel = "一般";
-          if (log.factoryType === "指定") { bClass = "badge-shitei"; bLabel = "指定"; }
-          else if (log.factoryType === "認証") { bClass = "badge-ninsyo"; bLabel = "認証"; }
-          else if (log.shopType === 'dealer') { bLabel = "販売"; }
-
-          const mileageStr = log.mileage ? `${Number(log.mileage).toLocaleString()}km` : "";
-
-          // ===== 工場別・7日ロック判定 =====
-          const isSameShop = myShopId && log.shopId && log.shopId === myShopId;
-          const createdAt = log.createdAt || log.date;
-          const diffDays = (new Date() - new Date(createdAt)) / (1000 * 60 * 60 * 24);
-
-          let editStatusHtml = "";
-          // 一覧では工場名・スタッフ名は表示しない（詳細ページで確認）
-          if (isSameShop && diffDays < 7) {
-            const daysLeft = Math.floor(7 - diffDays);
-            editStatusHtml = `<span class="edit-status editable">✏️ 修正可（残り${daysLeft}日）</span>`;
-          } else if (isSameShop) {
-            editStatusHtml = `<span class="edit-status locked">🔒 自社記録</span>`;
-          } else if (log.shopId) {
-            editStatusHtml = `<span class="edit-status other-shop">🏢 他社記録</span>`;
-          }
-
-          let bodyHtml = '';
-          if (log.type === 'inspection' && log.checks && typeof log.checks === 'object') {
-            bodyHtml = renderFactoryInspectionBodyHtml_(log);
-          } else if (typeof ringFormatFactoryHistoryCardBodyHtml_ === 'function') {
-            bodyHtml = ringFormatFactoryHistoryCardBodyHtml_(log);
-          } else if (typeof renderMaintenanceItems === 'function') {
-            bodyHtml = renderMaintenanceItems(log);
-          } else {
-            bodyHtml = '<div class="ring-maint-work">' + escapeHtml(log.title || '一般整備') + '</div>'
-              + (log.parts ? '<div class="ring-maint-part">' + escapeHtml('・' + log.parts) + '</div>' : '');
-          }
-
-          html += `
-            <a href="factory_detail.html?vin=${encodeURIComponent(targetVin)}&log_id=${encodeURIComponent(log.log_id)}" class="history-card ${colorClass}">
-              <div class="card-header">
-                <div class="header-left">
-                  ${typeof ringFormatDateLocal_ === 'function' ? ringFormatDateLocal_(log.date, false) : log.date} / ${mileageStr}
-                </div>
-                <div class="header-right">
-                  ${editStatusHtml}
-                  <span class="badge ${bClass}">${bLabel}</span>
-                </div>
-              </div>
-              ${bodyHtml}
-            </a>
-          `;
+      if (!ringFactoryHistoryListCtrl_) {
+        ringFactoryHistoryListCtrl_ = RingHistoryList.create({
+          container: listContainer,
+          pageSize: 10,
+          getItems: function () { return ringFactoryHistoryListCtrl_._cache || []; },
+          filterKey: ringFactoryFilterKey_,
+          renderItem: ringFactoryRenderItem_,
+          emptyHtml: emptyHtml
         });
-
-      listContainer.innerHTML = html;
+      }
+      ringFactoryHistoryListCtrl_._cache = logs;
+      var fkF = ringFactoryFilterKey_();
+      var resetF = fkF !== ringFactoryFilterPrev_;
+      ringFactoryFilterPrev_ = fkF;
+      ringFactoryHistoryListCtrl_.refresh({ preserveScroll: true, resetWindow: resetF, dataOnly: !resetF });
     }
   </script>
 </body>

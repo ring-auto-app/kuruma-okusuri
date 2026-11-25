@@ -7,6 +7,19 @@
 | v64 | develop/v64 | (参照のみ・未マージ) | main 0d6a32d | — | ads/deploy-prep/gas-complete-Code_v64_candidate_20261125.gs | visibility pending キュー |
 | v65-2a | develop/v65 | a3769ec | main 0d6a32d | car-nappy-v65 / 20261125-v65 | 変更なし（GAS 未着手） | ring-sync IDB meta_only; backup AgentStores/.../v65-2a_backup_20261125 |
 | v65-2b | develop/v65 | 5759bff | a3769ec 上 | （PWA 変更なし） | 変更なし | ACL/pullDelta/bootstrap 修正; selftest 40; backup local-backups/v65-2b_fix_20261125 |
+| v66-dev | develop/v65 | (本コミット) | 5759bff 上 | car-nappy-v65 / 20261125-v65 | 変更なし | **レビュー候補・本番リリース不可** |
+
+# v66 開発保存（2026-11-25 JST）— v65-3〜v66 独立レビュー用（本番デプロイ禁止）
+# 範囲 v65-3: ring-history-list.js 整備履歴10件段階表示・history/factory/user/visibility 各HTML
+# 範囲 v65-4/5: クロスページ handoff 無効化（セキュリティ）・sessionStorage 本文保存なし
+# 範囲 v66: ring-browse-coordinator（機密一覧DOM除去）・RingPagedList・vehicles/factory_edit_list 段階表示
+# 範囲 v66: rental-fleet.v61.js スマホ10件段階・カレンダー古い世代DOM書込抑止・PC DESK 25維持
+# 範囲 v66: app ringRunPageSync_ ユーザー優先スキップ時は TTL 未更新＋最大3回遅延再試行
+# backup: ads/deploy-prep/local-backups/v65-v66_20261125, v66_full_2026-11-25T10-25-21（削除・上書き禁止）
+# テスト（ローカル）: check-owner-release 相当 PASS (213 SRI, SW hash); v66-vehicles-list-selftest（Node要）
+# 未検証: Node未導入環境のため selftest.mjs 実実行未了・本番GAS無しE2E・1000台実ブラウザ
+# レビュー候補: 一括非公開対象スコープ（filtered vs VIN全件）・handoff再設計・warmup本番方針
+# ChatGPT相談: bulk visibility 仕様・安全な先読み（handoff無し）・rental-fleet.js vs .v61 運用命名
 
 # v65-2b 修正保存（2026-11-25 PM JST） origin/develop/v65 @ 5759bff（初回試作 7600309 は履歴に残存）
 # 初回試作: 7600309（54 tests）。今回: bootstrapFullSync + GAS ACL 試作

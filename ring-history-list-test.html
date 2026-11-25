@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ring-history-list v65-3 browser smoke（非本番）</title>
+  <script src="ring-history-list.js"></script>
+</head>
+<body style="margin:0;padding:12px;font-family:sans-serif;max-width:390px">
+  <h1 style="font-size:16px">v65-3 smoke</h1>
+  <div id="list"></div>
+  <pre id="metrics" style="font-size:11px"></pre>
+  <script>
+    (function () {
+      var n = 25;
+      var logs = Array.from({ length: n }, function (_, i) {
+        return { log_id: 'T' + (n - i), date: '2026-01-' + String((i % 28) + 1).padStart(2, '0'), title: 'item ' + i };
+      });
+      var ctrl = RingHistoryList.create({
+        container: document.getElementById('list'),
+        pageSize: 10,
+        getItems: function () { return logs; },
+        renderItem: function (log) {
+          return '<a href="#" data-id="' + log.log_id + '" style="display:block;padding:12px;border-bottom:1px solid #ddd">' + log.title + '</a>';
+        },
+        emptyHtml: 'empty'
+      });
+      ctrl.refresh({ resetWindow: true });
+      var m = ctrl.metrics;
+      document.getElementById('metrics').textContent = JSON.stringify({
+        dom: m.lastDomNodes,
+        visible: m.lastVisible,
+        total: m.lastTotal
+      });
+      window.__ringHistSmoke = { ctrl: ctrl, pass: m.lastDomNodes === 10 && m.lastVisible === 10 };
+    })();
+  </script>
+</body>
+</html>

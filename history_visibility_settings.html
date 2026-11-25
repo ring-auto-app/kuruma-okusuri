@@ -5,9 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>整備履歴の公開設定｜車のお薬手帳</title>
   <link rel="stylesheet" href="common.css?v=20261125-v65" integrity="sha256-EXwjSgVGXvhNpoJgmEIbhsR2XpjKmoJ14gGGvvD8mMU= sha256-LQfH4hnXSXXlwqRSARoFKqMnfVhyc8j6A3AlhcI/GHw=">
-  <script src="app.js?v=20261125-v65" integrity="sha256-lzSJn9miINV7MpUmu9ie+gWt8Q7FZWWWe//FKliqzoE= sha256-5fxuh5fNIEmdXb06LEo18blhE2+KBrX8bO2FR4sA/gk="></script>
+  <script src="app.js?v=20261125-v65" integrity="sha256-GtnmU9yMlEb0DG16PQCb3UJuk76VwfiDhZIDmXDuvTE= sha256-LJclkan7QWtYfbRTSHDf3+Aj4p7dfJvS8giPhrm+3pY="></script>
+  <script src="ring-browse-coordinator.js?v=20261125-v65" integrity="sha256-LK0KihDiraF2M9uU9sUCOMB2Wkw7J1+DTwNoTSpwDcw= sha256-y1p5UFI4z6BzFyw+WumXuxDEhVt36gCAYFcWqzDznFs="></script>
   <script src="owner-platform.js?v=20261125-v65" integrity="sha256-jkPEEL6P/TTdGlk1IYAtlA+fQ2ze9b2YI42KTekOpxw= sha256-FmuxpE+0WJ20pjGGo2DDoq14/UVNvRF1UzDgnrR9m7w="></script>
-  <script src="owner-platform-ui.js?v=20261125-v65" integrity="sha256-2OO4HdBz23SzrkOtQJ2X9EZvncQBzU4c2ar0jaPU0Fs= sha256-TvDuQK/f1ZV9Nc9FUM8gfo5FBI3bfh70a/123/S34zI="></script>
+  <script src="owner-platform-ui.js?v=20261125-v65" integrity="sha256-YyJfZNKrVtNKTciBarXaskIY57ypFBrD93ztIiS4mfI= sha256-8sxNEjWRwx0AZZzeOOpIqNRZ46QlD7w7DKpNB4a1Vok="></script>
+  <script src="ring-history-list.js?v=20261125-v65" integrity="sha256-izsCtR3DFM3bnd7iRUmmWC6Y7xjfFMOQlOfzasxfKwE= sha256-Fmv07CoK4BX6fcWXyATN2HfPHx6C50chrrJhwZtY0Bg="></script>
   <style>
     .hvs-section { margin-bottom: 20px; }
     .hvs-section h2 { font-size: 15px; margin: 0 0 8px; font-weight: 900; }
@@ -205,8 +207,31 @@
           return;
         }
         rows.sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
-        listEl.innerHTML = rows.map(hvsRowHtml_).join('');
-        listEl.querySelectorAll('input[type=checkbox][data-log-id]').forEach(wireHvsToggle_);
+        listEl.className = '';
+        listEl.innerHTML = '';
+        if (!window.RingHistoryList) {
+          listEl.innerHTML = rows.map(hvsRowHtml_).join('');
+          listEl.querySelectorAll('input[type=checkbox][data-log-id]').forEach(wireHvsToggle_);
+        } else {
+          if (!window.__hvsRingListCtrl) {
+            window.__hvsRingListCtrl = RingHistoryList.create({
+              container: listEl,
+              pageSize: 10,
+              getItems: function () { return window.__hvsRingListCtrl_._cache || []; },
+              filterKey: function () { return 'hvs|all'; },
+              renderItem: function (log) {
+                var wrap = document.createElement('div');
+                wrap.innerHTML = hvsRowHtml_(log);
+                var node = wrap.firstElementChild;
+                wireHvsToggle_(node && node.querySelector('input[type=checkbox][data-log-id]'));
+                return node;
+              },
+              emptyHtml: '<div class="card">公開設定を変更できる整備履歴はありません。</div>'
+            });
+          }
+          window.__hvsRingListCtrl_._cache = rows;
+          window.__hvsRingListCtrl_.refresh({ resetWindow: true });
+        }
         if (syncFailCount > 0) {
           listEl.insertAdjacentHTML('beforeend',
             '<p class="hvs-note hvs-status-error" role="status">一部の車両の履歴は取得できませんでした。表示は変更可能な履歴のみです。</p>');
