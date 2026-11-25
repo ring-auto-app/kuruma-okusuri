@@ -7,9 +7,9 @@
 | v64 | develop/v64 | (参照のみ・未マージ) | main 0d6a32d | — | ads/deploy-prep/gas-complete-Code_v64_candidate_20261125.gs | visibility pending キュー |
 | v65-2a | develop/v65 | a3769ec | main 0d6a32d | car-nappy-v65 / 20261125-v65 | 変更なし（GAS 未着手） | ring-sync IDB meta_only; backup AgentStores/.../v65-2a_backup_20261125 |
 | v65-2b | develop/v65 | 5759bff | a3769ec 上 | （PWA 変更なし） | 変更なし | ACL/pullDelta/bootstrap 修正; selftest 40; backup local-backups/v65-2b_fix_20261125 |
-| v66-dev | develop/v65 | (本コミット) | 5759bff 上 | car-nappy-v65 / 20261125-v65 | 変更なし | **レビュー候補・本番リリース不可** |
+| v66-dev | develop/v65 | 19769a5 | 5759bff 上 | car-nappy-v65 / 20261125-v65 | 変更なし | **レビュー候補・本番リリース不可** |
 
-# v66 開発保存（2026-11-25 JST）— v65-3〜v66 独立レビュー用（本番デプロイ禁止）
+# v66 開発保存（2026-11-25 JST） origin/develop/v65 @ 19769a5 — v65-3〜v66 独立レビュー用（本番デプロイ禁止）
 # 範囲 v65-3: ring-history-list.js 整備履歴10件段階表示・history/factory/user/visibility 各HTML
 # 範囲 v65-4/5: クロスページ handoff 無効化（セキュリティ）・sessionStorage 本文保存なし
 # 範囲 v66: ring-browse-coordinator（機密一覧DOM除去）・RingPagedList・vehicles/factory_edit_list 段階表示
