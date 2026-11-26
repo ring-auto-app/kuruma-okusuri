@@ -11,6 +11,7 @@ const RING_PALETTES = {
         '--bg': '#f7f3ea',
         '--line': '#bfdbfe',
         '--accent': '#2563eb',
+        '--accent-on': '#ffffff',
         '--muted': '#6b8ab8',
         '--highlighter': 'rgba(37, 99, 235, 0.25)'
     },
@@ -20,6 +21,7 @@ const RING_PALETTES = {
         '--bg': '#f7f3ea',
         '--line': '#fecaca',
         '--accent': '#dc2626',
+        '--accent-on': '#ffffff',
         '--muted': '#b87070',
         '--highlighter': 'rgba(220, 38, 38, 0.22)'
     },
@@ -29,6 +31,7 @@ const RING_PALETTES = {
         '--bg': '#f7f3ea',
         '--line': '#fde047',
         '--accent': '#eab308',
+        '--accent-on': '#1c1917',
         '--muted': '#a16207',
         '--highlighter': 'rgba(234, 179, 8, 0.35)'
     }

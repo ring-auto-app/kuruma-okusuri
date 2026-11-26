@@ -8,7 +8,15 @@
 | v65-2a | develop/v65 | a3769ec | main 0d6a32d | car-nappy-v65 / 20261125-v65 | 変更なし（GAS 未着手） | ring-sync IDB meta_only; backup AgentStores/.../v65-2a_backup_20261125 |
 | v65-2b | develop/v65 | 5759bff | a3769ec 上 | （PWA 変更なし） | 変更なし | ACL/pullDelta/bootstrap 修正; selftest 40; backup local-backups/v65-2b_fix_20261125 |
 | v66-dev | develop/v65 | 19769a5 | 5759bff 上 | car-nappy-v65 / 20261125-v65 | 変更なし | **レビュー候補・本番リリース不可** |
+| v67-dev | develop/v67 | 1f178ac | 5787c16 上 | car-nappy-v67 / 20261126-v67 | 変更なし | **主要UI修正済み・独立レビュー候補** |
 
+# v67 開発保存（2026-11-26 JST） origin/develop/v67 @ 1f178ac — ChatGPT UI監査反映・本番リリース不可
+# 状態: 主要UI修正済み。正常画面・実機・統合テスト未完了。全ページデザイン確認完了ではない。
+# 範囲: 車両カードコンパクト化、ホーム日付/アイコン、login accent-on、OCR5列、SW/SRI v67 bump
+# テスト（保存前）: check-owner-release PASS; SRI drift 0; history 35/35; vehicles 22/22; handoff 4/4
+# backup（ローカルのみ）: dev/backups/v67-2-final-2026-11-26T13-13-28
+# 残課題: scripts/INDEPENDENT_REVIEW_v67.md
+# stash 注意: stash@{0} develop/v65 v67-stash-sw-wip — 本保存では未適用
 # v66 開発保存（2026-11-25 JST） origin/develop/v65 @ 19769a5 — v65-3〜v66 独立レビュー用（本番デプロイ禁止）
 # 範囲 v65-3: ring-history-list.js 整備履歴10件段階表示・history/factory/user/visibility 各HTML
 # 範囲 v65-4/5: クロスページ handoff 無効化（セキュリティ）・sessionStorage 本文保存なし

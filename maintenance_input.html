@@ -12,13 +12,13 @@
   <link rel="manifest" href="manifest.json">
   <title>車のお薬手帳</title>
 
-  <link rel="stylesheet" href="common.css?v=20261125-v65" integrity="sha256-EXwjSgVGXvhNpoJgmEIbhsR2XpjKmoJ14gGGvvD8mMU= sha256-LQfH4hnXSXXlwqRSARoFKqMnfVhyc8j6A3AlhcI/GHw=">
-  <script src="app.js?v=20261125-v65" integrity="sha256-GtnmU9yMlEb0DG16PQCb3UJuk76VwfiDhZIDmXDuvTE= sha256-LJclkan7QWtYfbRTSHDf3+Aj4p7dfJvS8giPhrm+3pY=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
-  <script src="ring-browse-coordinator.js?v=20261125-v65" integrity="sha256-LK0KihDiraF2M9uU9sUCOMB2Wkw7J1+DTwNoTSpwDcw= sha256-y1p5UFI4z6BzFyw+WumXuxDEhVt36gCAYFcWqzDznFs="></script>
-  <script src="theme.js"></script>
-  <script src="gemini-ocr.js?v=20261125-v65" integrity="sha256-vfQ/T9J2Rz3GmxBqfaZxAxZ7TDFf8hMX6QZXShCcsRM= sha256-n/1Y19LcMRQM+T8mKFwa9k9vPdyffEtL2bByF/dl53Y="></script>
-  <script src="ring-media-import.js?v=20261114-v39"></script>
-  <script src="gemini-invoice-ocr.js?v=20261114-v39"></script>
+  <link rel="stylesheet" href="common.css?v=20261126-v67" integrity="sha256-urUbZlU7GPwDkd2DWP7qX12L9MdXGCfPsYEh5O7M17k= sha256-jzVvci++r0tpT1VuWcJ3zY7jed40bN/DaRnD3NFPnUA=">
+  <script src="app.js?v=20261126-v67" integrity="sha256-LC2kKJE8S4ybFw6/Y9R7gZalAYyWiGW0HullHUBVmdc= sha256-jXAFBO25jZm/CKR8LYFTRnQ2to6HviM3WnDHDDFZDJc=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
+  <script src="ring-browse-coordinator.js?v=20261126-v67" integrity="sha256-LK0KihDiraF2M9uU9sUCOMB2Wkw7J1+DTwNoTSpwDcw= sha256-y1p5UFI4z6BzFyw+WumXuxDEhVt36gCAYFcWqzDznFs="></script>
+  <script src="theme.js?v=20261126-v67" integrity="sha256-zKsPUUmXhfpEg6fELxtEBzzFyDoPMVmYX5cuUjSkADQ= sha256-hQcqdZ+jQBCt604hDoeccHvTNLyoat64E1EZDKbCbnw="></script>
+  <script src="gemini-ocr.js?v=20261126-v67" integrity="sha256-vfQ/T9J2Rz3GmxBqfaZxAxZ7TDFf8hMX6QZXShCcsRM= sha256-n/1Y19LcMRQM+T8mKFwa9k9vPdyffEtL2bByF/dl53Y="></script>
+  <script src="ring-media-import.js?v=20261126-v67" integrity="sha256-ZA0YnNJkrFuQYHGfbtpXNoC4xlzWNE5EwVjhrsidu+o= sha256-fWgh/yu1LHDiylLvIlTilzAONBjxrsFg6YzHCNOTCKg="></script>
+  <script src="gemini-invoice-ocr.js?v=20261126-v67" integrity="sha256-lrTSRpGoT/1YBG+/cnDgEHz9TrJ967mg8zyfmPMrA9c= sha256-bMmMML6h7lPp1DfekaqGiOhB+hJK/5mdizkEJXWbWOU="></script>
   <script src="car-add-date.js"></script>
 
   <style>
@@ -87,11 +87,16 @@
     .invoice-scan-section { margin-bottom: 20px; }
     .invoice-scan-label { font-size: 14px; font-weight: 900; color: var(--text); margin: 0 0 10px 2px; }
     .invoice-slot-row {
-      display: flex; gap: 8px; overflow-x: auto; -webkit-overflow-scrolling: touch;
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 6px;
+      overflow: visible;
       padding-bottom: 4px; margin-bottom: 12px;
+      width: 100%;
+      box-sizing: border-box;
     }
     .invoice-slot {
-      flex: 0 0 68px; width: 68px; height: 88px;
+      width: 100%; min-width: 0; height: 88px;
       border: 2px dashed var(--line); border-radius: 12px;
       background: rgba(255, 255, 255, 0.6);
       display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -273,7 +278,7 @@
     }
   </style>
 </head>
-<body>
+<body class="ring-page-bottom-save">
 
   <div class="container">
     <header class="header">
@@ -384,9 +389,9 @@
     </div>
 
     <div id="panel-detail" class="ring-maint-panel" role="tabpanel" aria-labelledby="tabDetail" hidden>
-      <details style="margin-bottom:10px;">
+      <details class="ring-details" style="margin-bottom:10px;">
         <summary style="font-size:13px; font-weight:900; color:var(--muted); cursor:pointer; padding:6px 0; user-select:none;">
-          ▶ 車両詳細情報を入力する（任意）
+          車両詳細情報を入力する（任意）
         </summary>
         <div style="margin-top:10px;">
           <div class="row">

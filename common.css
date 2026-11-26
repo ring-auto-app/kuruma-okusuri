@@ -18,7 +18,8 @@
   --line: #fde047;         
   --text: #2f2a24;         
   --muted: #a16207;        
-  --accent: #eab308;       
+  --accent: #eab308;
+  --accent-on: #1c1917;    /* 黄アクセント上の主要ボタン文字（WCAG） */
   --highlighter: rgba(234, 179, 8, 0.35); 
   --shadow: 0 4px 10px rgba(0,0,0,0.05);
 
@@ -55,7 +56,24 @@ body {
 /* =========================================
    ヘッダー・タイトル周り
 ========================================= */
-.header { margin-bottom: 34px; display: block; }
+.header { margin-bottom: 16px; display: block; min-width: 0; }
+
+/* コンパクト共通ヘッダー（戻る＋タイトル行） */
+.ring-page-header { margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px dashed var(--accent); min-width: 0; }
+.ring-page-header .ring-header-row { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 8px; min-width: 0; }
+.ring-page-header .ring-header-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+/* マーカーは文字幅だけ（flex全幅に伸ばさない） */
+.ring-title-text {
+  font-size: 24px; font-weight: 900; margin: 0;
+  position: relative; display: inline-block; width: max-content; max-width: 100%;
+  line-height: 1.35; min-width: 0; overflow-wrap: anywhere;
+  vertical-align: bottom;
+}
+.ring-title-text::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 4px; height: 12px;
+  background: var(--highlighter); z-index: -1; border-radius: 4px; transform: rotate(-1deg);
+}
 
 .back-link {
   color: var(--muted); 
@@ -80,7 +98,23 @@ textarea {
 
 .title {
   font-size: 24px; font-weight: 900; margin: 0;
-  position: relative; display: inline-block; width: max-content; line-height: 34px;
+  position: relative; display: inline-block; width: max-content; max-width: 100%;
+  line-height: 1.35; min-width: 0; overflow-wrap: anywhere;
+}
+
+/* 検索欄：外枠1つ・inputは枠なし（二重枠防止） */
+.ring-search-wrap,
+.search-wrap.vehicle-search-wrap {
+  display: flex; align-items: center; gap: 0;
+  border: 2px solid var(--accent); border-radius: 10px;
+  background: var(--paper); overflow: hidden; min-width: 0; box-sizing: border-box;
+}
+.ring-search-wrap input[type="search"],
+.ring-search-wrap input[type="text"],
+.search-wrap.vehicle-search-wrap input {
+  border: none !important; border-radius: 0 !important;
+  box-shadow: none !important; min-height: var(--tap-min);
+  flex: 1 1 auto; min-width: 0;
 }
 
 .title::after {
@@ -281,7 +315,7 @@ textarea.ring-auto-grow {
 ========================================= */
 .save-btn {
   width: 100%; max-width: 400px; min-height: var(--tap-primary); height: auto; padding: 14px 24px;
-  background: var(--accent); color: white; border: none;
+  background: var(--accent); color: var(--accent-on, #fff); border: none;
   border-radius: var(--btn-radius); font-size: var(--font-primary); font-weight: 900;
   box-shadow: 0 8px 25px var(--highlighter); cursor: pointer;
   transition: 0.2s; display: block; margin: 0 auto;
@@ -291,8 +325,37 @@ textarea.ring-auto-grow {
 .save-btn:active { transform: scale(0.96); }
 .save-btn:disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
 
-/* 長いフォームで保存ボタンを親指圏内に（kannsa 中: sticky save） */
+/* 長いフォーム：下部固定の保存ドック（入力欄を隠さない） */
+body.ring-page-bottom-save {
+  padding-bottom: calc(82px + var(--safe-bottom));
+}
 @media (max-width: 520px) {
+  .ring-sticky-save-wrap {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    max-width: 600px;
+    margin: 0 auto;
+    box-sizing: border-box;
+    padding: 8px 16px calc(10px + var(--safe-bottom));
+    background: linear-gradient(180deg, rgba(247, 243, 234, 0.45) 0%, var(--page-bg) 32%);
+    border-top: 1px solid rgba(0, 0, 0, 0.07);
+    box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.06);
+    margin-top: 0;
+    border-radius: 0;
+  }
+  body.ring-page-bottom-save .ring-sticky-save-wrap {
+    width: 100%;
+  }
+  .ring-sticky-save-wrap .save-btn {
+    max-width: 100%;
+    margin: 0;
+    min-height: var(--tap-primary);
+  }
+}
+@media (min-width: 521px) {
   .ring-sticky-save-wrap {
     position: sticky;
     bottom: 0;
@@ -338,7 +401,7 @@ textarea.ring-auto-grow {
   min-height: var(--tap-primary);
   padding: 0 24px;
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-on, #fff);
   border-color: var(--accent);
   border-radius: var(--btn-radius);
   font-size: var(--font-primary);
@@ -592,19 +655,22 @@ textarea.ring-auto-grow {
   bottom: calc(90px + var(--safe-bottom));
   left: 50%;
   transform: translateX(-50%) translateY(20px);
-  padding: 12px 24px;
-  border-radius: 999px;
+  padding: 12px 16px;
+  border-radius: 12px;
   font-size: 14px;
-  font-weight: 900;
+  font-weight: 800;
+  line-height: 1.5;
   color: #fff;
   white-space: normal;
+  overflow-wrap: anywhere;
   text-align: center;
-  max-width: min(90vw, 360px);
+  max-width: min(92vw, 360px);
   z-index: 10000;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.2s, transform 0.2s;
   box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+  box-sizing: border-box;
 }
 .ring-toast--show {
   opacity: 1;
@@ -1404,8 +1470,65 @@ textarea.ring-auto-grow {
   width: 100%;
 }
 .ring-history-header-title-row .title {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
+  width: max-content;
+  max-width: 100%;
   min-width: 0;
+}
+.ring-history-header-title .title.ring-title-text {
+  display: inline-block;
+  width: max-content;
+}
+
+/* details 展開矢印（ブラウザ標準と重複しない） */
+.ring-details summary {
+  list-style: none;
+}
+.ring-details summary::-webkit-details-marker {
+  display: none;
+}
+.ring-details summary::before {
+  content: "▶ ";
+  display: inline;
+  font-size: 0.85em;
+}
+.ring-details[open] summary::before {
+  content: "▼ ";
+}
+
+/* ホーム：日付はリボン（右上）と重ならない左下配置 */
+.ring-home-header {
+  display: block;
+  margin-bottom: 16px;
+  padding-bottom: 10px;
+  padding-right: 48px;
+  min-width: 0;
+}
+.ring-home-date {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--muted);
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+/* 同期状態（空のとき余白を取らない） */
+.ring-sync-status:empty {
+  display: none;
+  min-height: 0 !important;
+}
+.ring-sync-status {
+  min-height: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  font-weight: 700;
+  margin: 0;
+}
+.ring-last-sync:empty {
+  display: none;
+  min-height: 0 !important;
 }
 .ring-vis-header-slot {
   position: absolute; top: 0; right: 0; max-width: 52%;
@@ -1436,3 +1559,12 @@ label:has(#ring-log-vis-toggle), label:has(#ring-bulk-private-toggle), .back-lin
 .owner-input-field { display:grid; gap:.45rem; font-weight:700; }
 .owner-input-field input { padding:.65rem; border:1px solid #94a3b8; border-radius:8px; }
 .owner-input-field [role=alert] { color:#9b2525; }
+
+/* v67-2b 状態表示（コンパクト・横はみ出し抑制） */
+.ring-inline-status {
+  font-size: 12px; font-weight: 800; color: var(--muted);
+  padding: 6px 10px; margin: 6px 0; line-height: 1.35;
+  border-radius: 8px; background: rgba(255, 255, 255, 0.65);
+}
+.ring-inline-status.is-error { color: #b91c1c; background: #fef2f2; }
+.ring-inline-status.is-loading { color: var(--accent); }

@@ -10,86 +10,181 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
   <link rel="manifest" href="manifest.json">
-    <title>車のお薬手帳</title>
-  
-  <link rel="stylesheet" href="common.css?v=20261125-v65" integrity="sha256-EXwjSgVGXvhNpoJgmEIbhsR2XpjKmoJ14gGGvvD8mMU= sha256-LQfH4hnXSXXlwqRSARoFKqMnfVhyc8j6A3AlhcI/GHw=">
-  <script src="app.js?v=20261125-v65" integrity="sha256-GtnmU9yMlEb0DG16PQCb3UJuk76VwfiDhZIDmXDuvTE= sha256-LJclkan7QWtYfbRTSHDf3+Aj4p7dfJvS8giPhrm+3pY=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
-  <script src="ring-browse-coordinator.js?v=20261125-v65" integrity="sha256-LK0KihDiraF2M9uU9sUCOMB2Wkw7J1+DTwNoTSpwDcw= sha256-y1p5UFI4z6BzFyw+WumXuxDEhVt36gCAYFcWqzDznFs="></script>
-  <script src="theme.js"></script>
-  
+  <title>車のお薬手帳</title>
+
+  <link rel="stylesheet" href="common.css?v=20261126-v67" integrity="sha256-urUbZlU7GPwDkd2DWP7qX12L9MdXGCfPsYEh5O7M17k= sha256-jzVvci++r0tpT1VuWcJ3zY7jed40bN/DaRnD3NFPnUA=">
+  <script src="app.js?v=20261126-v67" integrity="sha256-LC2kKJE8S4ybFw6/Y9R7gZalAYyWiGW0HullHUBVmdc= sha256-jXAFBO25jZm/CKR8LYFTRnQ2to6HviM3WnDHDDFZDJc=" crossorigin="anonymous" onerror="window.__ringAppLoadFailed=true;window.addEventListener('DOMContentLoaded',function(){var p=document.createElement('div');p.id='ringAppUpdateError';p.setAttribute('role','alert');p.style.cssText='padding:32px;background:white;color:#18344e;font:16px sans-serif';p.textContent='アプリの更新を確認できません。通信を確認して再読み込みしてください。端末内のデータは保持されています。';var b=document.createElement('button');b.textContent='再読み込み';b.onclick=function(){location.reload();};p.appendChild(b);document.body.replaceChildren(p);},{once:true})"></script>
+  <script src="ring-browse-coordinator.js?v=20261126-v67" integrity="sha256-LK0KihDiraF2M9uU9sUCOMB2Wkw7J1+DTwNoTSpwDcw= sha256-y1p5UFI4z6BzFyw+WumXuxDEhVt36gCAYFcWqzDznFs="></script>
+  <script src="theme.js?v=20261126-v67" integrity="sha256-zKsPUUmXhfpEg6fELxtEBzzFyDoPMVmYX5cuUjSkADQ= sha256-hQcqdZ+jQBCt604hDoeccHvTNLyoat64E1EZDKbCbnw="></script>
+
   <style>
-    /* 34pxグリッド設計および事業者用プレーンデザインを完全維持 */
+    :root {
+      --dealer-red: #dc2626;
+      --dealer-light: #fef2f2;
+    }
+
     body {
-      margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background:
-        linear-gradient(to bottom, var(--page-line) 1px, transparent 1px) 0 0 / 100% 34px,
-        var(--page-bg);
-      color: var(--text); display: flex; justify-content: center; min-height: 100vh;
+      margin: 0;
+      font-family: -apple-system, sans-serif;
+      background: linear-gradient(to bottom, var(--page-line) 1px, transparent 1px) 0 0 / 100% 34px, var(--page-bg);
+      color: var(--text);
+      padding: 34px 16px 100px;
+      line-height: 1.45;
     }
 
-    .app-page {
-      width: 100%; max-width: 600px; display: flex; flex-direction: column;
-      padding: 34px 16px 68px 16px; 
+    .container { max-width: 600px; margin: 0 auto; }
+
+    .header {
+      margin-bottom: 16px;
+      border-bottom: 2px solid var(--dealer-red);
+      padding-bottom: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 12px;
+      flex-wrap: wrap;
     }
 
-    .page-header { display: flex; flex-direction: column; align-items: flex-start; margin-bottom: 34px; }
-
-    .page-title {
-      display: inline-block; position: relative; margin: 0;
-      font-size: 28px; font-weight: 900; letter-spacing: 0.05em;
-      z-index: 1; height: 34px; line-height: 34px; 
+    .title {
+      font-size: 24px;
+      font-weight: 900;
+      color: var(--dealer-red);
+      margin: 0;
+      position: relative;
+      display: inline-block;
+      line-height: 1.35;
     }
-    .page-title::after {
-      content: ""; position: absolute; left: -8px; right: -8px; bottom: 2px;
-      height: 12px; background: var(--highlighter); border-radius: 8px;
-      z-index: -1; transform: rotate(-1deg);
+    .title::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 4px;
+      height: 12px;
+      background: var(--highlighter);
+      z-index: -1;
+      border-radius: 4px;
+      transform: rotate(-1deg);
     }
 
-    .shop-info { margin: 0; color: var(--muted); font-size: 14px; font-weight: 800; height: 34px; line-height: 34px; }
-    .fac-code { margin: 0; color: var(--accent); font-size: 13px; font-weight: 900; height: 34px; line-height: 34px; }
+  #displayDate {
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--muted);
+      line-height: 1.3;
+      white-space: nowrap;
+    }
 
-    .menu-grid { display: grid; grid-template-columns: 1fr; gap: 16px; margin-top: 17px; }
+    .shop-info {
+      background: var(--dealer-light);
+      border: 2px solid var(--dealer-red);
+      border-radius: 12px;
+      padding: 14px 16px;
+      margin-bottom: 24px;
+      line-height: 1.45;
+      min-width: 0;
+    }
+    .shop-name {
+      font-size: 18px;
+      font-weight: 900;
+      color: var(--dealer-red);
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      line-height: 1.35;
+    }
+    .staff-name {
+      margin-top: 6px;
+      font-size: 14px;
+      color: var(--text);
+      font-weight: 700;
+      line-height: 1.4;
+    }
+    .fac-code {
+      margin-top: 6px;
+      font-size: 13px;
+      font-weight: 800;
+      color: var(--muted);
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+    }
+
+    .ring-pending-sync {
+      background: #fef3c7;
+      border: 2px solid #f59e0b;
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin-bottom: 16px;
+      font-size: 13px;
+      font-weight: 800;
+      color: #92400e;
+      line-height: 1.5;
+    }
+
+    .menu-grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
 
     .menu-card {
-      display: flex; flex-direction: column; align-items: center; justify-content: center;
-      background: var(--paper); border: 2px solid var(--line); border-radius: 16px;
-      padding: 24px 16px; text-align: center; text-decoration: none; color: var(--text);
-      box-shadow: var(--shadow); transition: transform 0.1s; cursor: pointer; gap: 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: var(--paper);
+      border: 2px solid var(--line);
+      border-radius: 16px;
+      padding: 24px 16px;
+      text-align: center;
+      text-decoration: none;
+      color: var(--text);
+      box-shadow: var(--shadow);
+      transition: transform 0.1s;
+      cursor: pointer;
+      gap: 8px;
     }
     .menu-card:active { transform: scale(0.96); }
-    .menu-card:hover { border-color: var(--accent); }
-
-    .menu-card.disabled { background: #f8f9fa; border-color: #cbd5e1; opacity: 0.6; cursor: not-allowed; box-shadow: none; transform: none; }
-    /* ロックバッジの色は共通の赤で固定 */
-    .badge-disabled { background: #ef4444; color: #ffffff; font-size: 11px; padding: 2px 8px; border-radius: 99px; margin-left: 8px; display: none; vertical-align: middle; }
-
-    .menu-icon { font-size: 32px; line-height: 1; }
-    .menu-label { font-size: 15px; font-weight: 900; line-height: 1.2; color: var(--accent); margin: 0; }
-    .ring-pending-sync {
-      background: #fef3c7; border: 2px solid #f59e0b; border-radius: 12px;
-      padding: 12px 14px; margin-bottom: 20px; font-size: 13px; font-weight: 800; color: #92400e; line-height: 1.5;
+    .menu-card.disabled {
+      background: #f8f9fa;
+      border-color: #cbd5e1;
+      opacity: 0.6;
+      cursor: not-allowed;
+      box-shadow: none;
+      transform: none;
     }
+    .badge-disabled {
+      background: #ef4444;
+      color: #ffffff;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 99px;
+      margin-left: 8px;
+      display: none;
+      vertical-align: middle;
+    }
+    .menu-icon { font-size: 32px; line-height: 1; }
+    .menu-label { font-size: 15px; font-weight: 900; line-height: 1.25; color: var(--accent); margin: 0; }
   </style>
 </head>
 <body>
+  <div class="container">
+    <div class="header ring-home-header">
+      <h1 class="title ring-title-text">事業者ホーム</h1>
+      <span id="displayDate" class="ring-home-date"></span>
+    </div>
 
-  <div class="app-page">
-    <header class="page-header">
-      <h1 class="page-title">事業者ホーム</h1>
-      <div class="shop-info" id="shopName">ログイン確認中...</div>
-      <div class="fac-code" id="facCodeDisplay"></div>
-    </header>
+    <div class="shop-info">
+      <div class="shop-name" id="shopName">--- 事業者</div>
+      <div class="staff-name" id="staffName">担当：未設定</div>
+      <div class="fac-code" id="facCodeDisplay">事業者ID: ---</div>
+    </div>
 
     <div id="ringPendingSyncBar" class="ring-pending-sync" style="display:none;" role="status"></div>
 
     <div class="menu-grid">
       <a href="maintenance_input.html" class="menu-card" id="btnInput">
-        <span class="menu-icon">🏢</span>
+        <span class="menu-icon">🛠</span>
         <span class="menu-label">整備入力 <span id="badgeViewer" class="badge-disabled">ロック中</span></span>
       </a>
 
       <a href="vehicles.html" class="menu-card">
-        <span class="menu-icon">🚙</span>
+        <span class="menu-icon">🚗</span>
         <span class="menu-label">管理車両</span>
       </a>
 
@@ -120,47 +215,59 @@
         }
       }
 
-      const profile = typeof getCurrentProfile === "function" ? getCurrentProfile() : null;
+      var profile = typeof getCurrentProfile === 'function' ? getCurrentProfile() : null;
 
       if (!profile || profile.shopType !== 'dealer') {
         location.replace('login.html?tab=business');
         return;
       }
 
-      document.getElementById("shopName").innerText = "ログイン中: " + profile.shopName + " (担当: " + (profile.displayName || profile.staffId) + ")";
-      document.getElementById("facCodeDisplay").innerText = "事業者ID: " + profile.shopId;
+      var now = new Date();
+      document.getElementById('displayDate').innerText =
+        now.getFullYear() + '/' + (now.getMonth() + 1) + '/' + now.getDate();
+
+      document.getElementById('shopName').innerText = profile.shopName || '登録事業者';
+
+      var staffLabel = profile.staffName || profile.userName || profile.displayName;
+      if (staffLabel === undefined || staffLabel === null || String(staffLabel).trim() === '') {
+        staffLabel = '未設定';
+      }
+      document.getElementById('staffName').innerText = '担当：' + staffLabel;
+
+      var shopId = profile.shopId;
+      document.getElementById('facCodeDisplay').innerText =
+        '事業者ID: ' + (shopId ? String(shopId) : '---');
 
       if (profile.role === 'viewer') {
-        const btnInput = document.getElementById('btnInput');
-        const badgeViewer = document.getElementById('badgeViewer');
-
+        var btnInput = document.getElementById('btnInput');
+        var badgeViewer = document.getElementById('badgeViewer');
         btnInput.classList.add('disabled');
-        btnInput.href = "javascript:void(0);";
-        badgeViewer.style.display = "inline-block";
-
-        btnInput.onclick = function() {
-          alert("【閲覧専用】入力機能は制限されています。");
+        btnInput.href = 'javascript:void(0);';
+        badgeViewer.style.display = 'inline-block';
+        btnInput.onclick = function () {
+          alert('【閲覧専用】入力機能は制限されています。');
           return false;
         };
       }
 
-      if (typeof ringDeferAfterPaint_ === 'function') {
-        ringDeferAfterPaint_(function () {
-          const pend = typeof getPendingRetryCount === 'function' ? getPendingRetryCount() : 0;
-          const pbar = document.getElementById('ringPendingSyncBar');
-          if (pbar && pend > 0) {
-            pbar.style.display = 'block';
-            pbar.textContent = '未送信のデータがあります（' + pend + '件）。接続後に送信します。';
-          }
-          if (typeof ringAdsInit === 'function') ringAdsInit('dealer_home');
-        });
-      } else {
-        const pend = typeof getPendingRetryCount === 'function' ? getPendingRetryCount() : 0;
-        const pbar = document.getElementById('ringPendingSyncBar');
+      function refreshPendingBar() {
+        var pend = typeof getPendingRetryCount === 'function' ? getPendingRetryCount() : 0;
+        var pbar = document.getElementById('ringPendingSyncBar');
         if (pbar && pend > 0) {
           pbar.style.display = 'block';
           pbar.textContent = '未送信のデータがあります（' + pend + '件）。接続後に送信します。';
+        } else if (pbar) {
+          pbar.style.display = 'none';
         }
+      }
+
+      if (typeof ringDeferAfterPaint_ === 'function') {
+        ringDeferAfterPaint_(function () {
+          refreshPendingBar();
+          if (typeof ringAdsInit === 'function') ringAdsInit('dealer_home');
+        });
+      } else {
+        refreshPendingBar();
         if (typeof ringAdsInit === 'function') ringAdsInit('dealer_home');
       }
     });

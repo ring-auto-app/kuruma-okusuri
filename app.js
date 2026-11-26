@@ -10784,7 +10784,6 @@ function createGlobalUI() {
       .nappy-tab:hover { height: 58px; }
       #nappy-qr-tab { background-color: #C7DCC5; color: #4F6650; font-weight: bold; font-size: 11px; }
       #nappy-settings-tab { background: #7a7167; color: #fff; }
-      #displayDate { position: fixed; top: 6px; left: 50%; right: auto; transform: translateX(-50%); text-align: center; margin-top: 0; z-index: 10000; width: max-content; }
     </style>
     
     ${panelsHtml}

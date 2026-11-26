@@ -1,0 +1,9 @@
+# 監査・バックアップはリポジトリ外管理（ローカルのみ）
+backups/
+**/screenshots/
+**/screenshots-after/
+**/screenshots-final/
+**/*.png
+**/metrics/
+capture-*-manifest.json
+node_modules/
